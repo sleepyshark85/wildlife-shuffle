@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Animal Run",
+    "slug": "animal-run",
+    "version": "1.0.0",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTabletMode": true,
+      "bundleIdentifier": "com.sleepyshark.animalrun",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.sleepyshark.animalrun"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "owner": "sleepyshark.85",
+    "extra": {
+      "eas": {
+        "projectId": "e9ff7692-80d8-4bac-80f3-3b3ade4be252"
+      }
+    }
+  }
+}
