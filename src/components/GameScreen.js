@@ -124,9 +124,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f4f8',
     alignItems: 'center',
     flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 8,
   },
   gridWrapper: {
     width: '100%',
+    maxHeight: '85%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
     fontSize: 36,
