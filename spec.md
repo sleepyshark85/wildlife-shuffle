@@ -16,8 +16,8 @@ Wildlife Shuffle is a turn-based puzzle game where animals scroll upward on a gr
 
 ### Animal Types & Sizes
 Animals take up multiple consecutive columns based on their size:
-- **Elephant**: Size 4 columns
-- **Buffalo**: Size 5 columns
+- **Elephant**: Size 5 columns
+- **Buffalo**: Size 4 columns
 - **Elk**: Size 3 columns
 - **Fox**: Size 2 columns
 - **Rat**: Size 1 column
@@ -31,12 +31,17 @@ Each turn follows this sequence:
 
 **Automated Steps (1-5): Initial Setup**
 1. Grid advancement - all rows shift upward by 1 (every animal's y increases by 1)
+   - **Animation timing**: Completes immediately, then 300ms delay before next step
 2. New animals added at Row 0 (bottom) based on spawning rules
+   - With collision checking against existing animals at y=0 to prevent overlapping
+   - Only valid non-overlapping animals are added
 3. Gravity applied - animals fall to lowest non-colliding positions
-4. Row clearing - completely filled rows are checked and processed:
+4. Row clearing with chain clearing support - completely filled rows are checked and processed:
    - Rows without buffalo: completely removed, empty rows added at top
    - Rows with buffalo: all non-buffalo animals removed, buffalo size reduced by 1 (min size 1)
    - Animation: filled rows flash for 1200ms
+   - **Chain clearing**: After gravity is applied, system checks if new rows are now filled
+   - If more rows are filled, repeat steps 4-5 until no more rows can be cleared
 5. Gravity applied again if any rows were cleared in step 4
 
 **Player Action (Step 6)**
@@ -78,21 +83,24 @@ Each turn follows this sequence:
 
 ### Row Clearing System
 - **Trigger**: When a row is completely filled (all columns occupied)
-- **Animation**: Filled rows flash yellow/gray for 1200ms (8 flashes at 150ms each)
+- **Animation**: Filled rows flash yellow/orange for 1200ms
 - **Clearing Process**:
   1. Identify all filled rows
   2. Display flashing animation for 1200ms
   3. Remove non-buffalo animals from cleared rows
   4. Shrink any buffalo in cleared rows (size reduced by 1, minimum 1)
-  5. Apply gravity once to handle all movement (no double-movement)
-  6. Add empty rows at the top
+  5. Apply gravity once to handle all movement
+  6. **Chain Clearing Check**: Check if new rows are now filled after gravity
+  7. If more filled rows exist, repeat process from step 2 for those rows
+  8. Continue until no more rows can be filled (prevents cascading rows from being missed)
 - **Buffalo Mechanic** (Special Rule):
   - If a buffalo exists in a cleared row: **buffalo shrinks by 1**
   - All other animals in that row disappear
-  - Buffalo continues shrinking with each row clearing: 5 → 4 → 3 → 2 → 1 → 0 (disappears)
-  - Example: Buffalo (size 5) → Buffalo (size 4) → ... → Buffalo (size 1) → disappears
-- **Multiple Rows**: Multiple rows can be cleared simultaneously
-- **Timing**: Gravity is applied ONCE after clearing completes (after animation)
+  - Buffalo continues shrinking with each row clearing: 4 → 3 → 2 → 1 → 0 (disappears)
+  - Example: Buffalo (size 4) → Buffalo (size 3) → ... → Buffalo (size 1) → disappears
+- **Multiple Rows**: Multiple rows can be cleared simultaneously in initial check
+- **Cascade Effect**: Clearing rows and applying gravity can cause new rows to become filled
+- **Timing**: Each clearing animation takes 1200ms, chain clears repeat this timing
 
 ### Auto-Turn When Grid Clears
 - **Trigger**: All animals are removed from the grid (grid becomes completely empty)
@@ -160,9 +168,13 @@ Each animal object contains its position (x, y) and properties
 
 ### Initialization
 1. Create 20×10 empty grid
-2. Generate first animal and place at Row 0
-3. Generate preview for next row
-4. Display Turn 0
+2. Generate first animals and place at Row 0
+3. **Auto-Clear Check**: If initial animals form any filled rows:
+   - Display clearing animation (1200ms)
+   - Clear the rows and apply chain clearing
+   - Automatically advance to Turn 1 (player cannot interact with immediately-cleared animals)
+4. Generate preview for next row
+5. Display Turn 0 (or Turn 1 if initial clear occurred)
 
 See **Turn Structure** under Game Mechanics for the step-by-step sequence of each turn.
 
@@ -179,6 +191,9 @@ See **Turn Structure** under Game Mechanics for the step-by-step sequence of eac
 ### New Row Validation
 - All animals in new row must fit within bounds (accounting for animal size)
 - Cannot spawn outside grid boundaries
+- **Spawn Row Collision Detection**: New animals are checked against existing animals already at Row 0
+  - If a new animal would overlap with an existing animal at y=0, it is filtered out and not added
+  - Only non-overlapping animals are allowed to spawn
 
 ### Gravity Validation
 - Animals cannot fall through other animals
@@ -236,6 +251,32 @@ See **Turn Structure** under Game Mechanics for the step-by-step sequence of eac
 - ✅ Player makes first move, then turn sequence begins
 - ✅ All rows checked and cleared if filled
 - ✅ Proper game over detection at Row 19
+
+### V2.1 (Gameplay & Visual Polish - Current)
+
+**Gameplay Enhancements**
+- ✅ Sequential turn effects: Grid advancement, animal spawning, and gravity now happen with 300ms delays between steps for better visual feedback
+- ✅ Buffalo overlapping prevention: New animals check for collisions with existing animals at spawn row (y=0) before being added
+- ✅ Chain clearing system: Row clearing loops until no more rows can be cleared after gravity is applied
+  - Prevents missed rows when clearing causes cascading fills
+  - Each chain iteration shows clearing animation (1200ms)
+- ✅ Auto-clear initial spawn: If turn 0 animals immediately form filled rows, they are automatically cleared and game advances to turn 1
+
+**Animal Balance Changes**
+- ✅ Elephant: Increased from size 4 to size 5 (larger, harder to place)
+- ✅ Buffalo: Decreased from size 5 to size 4 (more manageable, appears less threatening)
+
+**Visual Design Updates**
+- ✅ Flat design aesthetic: Removed all shadows and elevation effects for cleaner look
+- ✅ Minimal grid lines: Reduced opacity and thickness of cell dividers for less visual clutter
+- ✅ Solid animal colors: Changed from semi-transparent to solid blue backgrounds for animals
+- ✅ Unified container: Grid and preview row styled as single flat element without visual separation
+- ✅ Removed footer instructions: Footer text removed to prevent blocking game view
+
+**UI/UX Improvements**
+- ✅ Better space utilization: More vertical space available for gameplay with compact header/controls
+- ✅ Cleaner aesthetic: Flat design matches modern mobile game UI patterns
+- ✅ Reduced visual noise: Minimal borders and shadows improve focus on gameplay
 
 ### V3 (Planned Enhancements)
 - Sound effects and background music

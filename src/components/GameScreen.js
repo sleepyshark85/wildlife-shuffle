@@ -78,11 +78,6 @@ export default function GameScreen({ config, onBackToSettings }) {
         <GamePreview nextAnimals={store.nextAnimals} gridWidth={store.config.gridWidth} />
       </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.instructions}>
-          Drag an animal left or right to move it. Complete rows to clear them!
-        </Text>
-      </View>
     </SafeAreaView>
   );
 }
@@ -146,21 +141,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   footer: {
-    padding: 16,
+    padding: 8,
+    paddingHorizontal: 12,
     backgroundColor: '#fff',
-    borderTopWidth: 2,
+    borderTopWidth: 1,
     borderTopColor: '#0f3460',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 4,
   },
   instructions: {
-    fontSize: 14,
-    color: '#0f3460',
-    lineHeight: 20,
-    fontWeight: '500',
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 16,
+    fontWeight: '400',
   },
   gameOverContainer: {
     flex: 1,

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Wildlife Shuffle",
-    "slug": "wildlife-shuffle",
+    "slug": "animal-run",
     "version": "1.0.0",
     "assetBundlePatterns": [
       "**/*"
