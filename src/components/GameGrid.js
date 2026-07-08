@@ -74,7 +74,8 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
             {
               left: x * CELL_SIZE,
               top: visualY,
-              backgroundColor: isClearing ? '#FFFF00' : '#f0f0f0',
+              backgroundColor: isClearing ? '#FFD700' : '#1e3a52',
+              borderColor: isClearing ? '#FF8C00' : '#5a8ace',
             },
           ]}
         />
@@ -106,9 +107,15 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
                     width: animal.size * CELL_SIZE,
                     height: CELL_SIZE,
                     borderWidth: 3,
-                    borderColor: '#FF9800',
-                    borderRadius: 4,
-                    backgroundColor: 'rgba(255, 152, 0, 0.25)',
+                    borderColor: '#FFB84D',
+                    borderRadius: 6,
+                    backgroundColor: 'rgba(255, 152, 0, 0.15)',
+                    borderStyle: 'dashed',
+                    opacity: 0.7,
+                    shadowColor: '#FF9800',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 4,
                   }}
                 />
               )}
@@ -134,20 +141,20 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 16,
   },
   grid: {
     position: 'relative',
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: '#333',
+    backgroundColor: '#0f1a2e',
+    borderWidth: 0,
   },
   cell: {
     position: 'absolute',
     width: CELL_SIZE,
     height: CELL_SIZE,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderWidth: 0.5,
+    borderColor: '#2a4a7e',
+    backgroundColor: '#1e3a52',
   },
   clearingCell: {
   },

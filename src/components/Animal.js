@@ -28,8 +28,8 @@ export default function Animal({ animal, x, y, cellSize = CELL_SIZE, isDragging,
           top: y * cellSize,
           width,
           height: cellSize,
-          backgroundColor: isDragging ? 'rgba(100, 150, 255, 0.6)' : 'rgba(150, 180, 255, 0.4)',
-          borderColor: isDragging ? '#0066ff' : '#4488ff',
+          backgroundColor: isDragging ? '#3366ff' : '#2255dd',
+          borderColor: isDragging ? '#00d4ff' : '#4da6ff',
         },
       ]}
       {...panHandlers}
@@ -44,13 +44,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 4,
-    borderWidth: 2,
+    borderRadius: 2,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   dropping: {
   },
   emoji: {
     fontWeight: 'bold',
     textAlignVertical: 'center',
+    textAlign: 'center',
   },
 });
