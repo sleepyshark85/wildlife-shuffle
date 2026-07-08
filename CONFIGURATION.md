@@ -1,4 +1,4 @@
-# Animal Run - Configuration System
+# Wildlife Shuffle - Configuration System
 
 ## Overview
 

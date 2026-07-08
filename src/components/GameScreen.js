@@ -58,7 +58,7 @@ export default function GameScreen({ config, onBackToSettings }) {
             <Text style={styles.settingsButtonText}>⚙️ Settings</Text>
           </Pressable>
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>Animal Run</Text>
+            <Text style={styles.title}>Wildlife Shuffle</Text>
             <Text style={styles.turnText}>Turn: {store.turn}</Text>
           </View>
           <View style={styles.settingsButton} />

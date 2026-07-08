@@ -1,7 +1,7 @@
-# Animal Run Game - Specification
+# Wildlife Shuffle Game - Specification
 
 ## Overview
-Animal Run is a turn-based puzzle game where animals scroll upward on a grid. Players drag animals horizontally to reposition them, and complete rows disappear when filled. The game ends when any animal reaches the top row.
+Wildlife Shuffle is a turn-based puzzle game where animals scroll upward on a grid. Players drag animals horizontally to reposition them, and complete rows disappear when filled. The game ends when any animal reaches the top row.
 
 ---
 

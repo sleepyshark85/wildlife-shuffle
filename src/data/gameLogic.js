@@ -42,7 +42,7 @@ export function generateAnimal(turn) {
   };
 }
 
-export function generateAnimalsForTurn(turn, animalsPerTurn, width = GRID_WIDTH) {
+export function generateAnimalsForTurn(turn, animalsPerTurn, width = GRID_WIDTH, existingAnimals = []) {
   const count = Math.ceil(animalsPerTurn);
   const animals = [];
   let buffaloAdded = false; // Track if we've already added a buffalo
@@ -75,13 +75,25 @@ export function generateAnimalsForTurn(turn, animalsPerTurn, width = GRID_WIDTH)
       const fitsInBounds = animal.x >= 0 && animal.x + animal.size <= width;
 
       // Check if it overlaps with other animals in this batch
-      const overlaps = !fitsInBounds || animals.some(other => {
+      const overlapsInBatch = animals.some(other => {
         const newStart = animal.x;
         const newEnd = animal.x + animal.size;
         const otherStart = other.x;
         const otherEnd = other.x + other.size;
         return !(newEnd <= otherStart || newStart >= otherEnd);
       });
+
+      // Check if it overlaps with existing animals at y=0
+      const overlapsExisting = existingAnimals.some(other => {
+        if (other.y !== 0) return false; // Only check animals at spawn row
+        const newStart = animal.x;
+        const newEnd = animal.x + animal.size;
+        const otherStart = other.x;
+        const otherEnd = other.x + other.size;
+        return !(newEnd <= otherStart || newStart >= otherEnd);
+      });
+
+      const overlaps = !fitsInBounds || overlapsInBatch || overlapsExisting;
 
       if (!overlaps) {
         // Valid animal found

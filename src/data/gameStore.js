@@ -30,40 +30,55 @@ export function useGameStore(config = null) {
   const [turn, setTurn] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [nextAnimals, setNextAnimals] = useState(() =>
-    generateAnimalsForTurn(1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn)
+    generateAnimalsForTurn(1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, [])
   );
   const [clearingRows, setClearingRows] = useState([]);
 
   const executeTurnSequence = useCallback(() => {
     setAnimals(prevAnimals => {
       // Step 1: Grid advancement - all rows shift upward by 1
-      let updated = advanceGrid(prevAnimals);
-
-      // Step 2: New animals added at Row 0 (bottom)
-      updated = [...nextAnimals, ...updated];
-
-      // Step 3: Gravity is applied
-      updated = applyGravity(updated);
-
-      // Step 4 & 5: Row clearing
-      let filledRows = getFilledRows(updated, gameConfig.gridWidth, gameConfig.gridHeight);
-      if (filledRows.length > 0) {
-        setClearingRows(filledRows);
-        setTimeout(() => {
-          setAnimals(current => {
-            const { animals: cleared } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
-            // Apply gravity again after clearing
-            return applyGravity(cleared);
-          });
-          setClearingRows([]);
-        }, 1200);
-      }
-
-      return updated;
+      return advanceGrid(prevAnimals);
     });
 
+    // Step 2: New animals added at Row 0 (bottom) - with 300ms delay
+    setTimeout(() => {
+      setAnimals(prevAnimals => {
+        // Filter out new animals that would overlap with existing animals at y=0
+        const validNextAnimals = nextAnimals.filter(newAnimal => {
+          return !prevAnimals.some(existing => {
+            if (existing.y !== 0) return false; // Only check animals at spawn row
+            const newStart = newAnimal.x;
+            const newEnd = newAnimal.x + newAnimal.size;
+            const existingStart = existing.x;
+            const existingEnd = existing.x + existing.size;
+            return !(newEnd <= existingStart || newStart >= existingEnd);
+          });
+        });
+
+        let updated = [...validNextAnimals, ...prevAnimals];
+        // Step 3: Gravity is applied
+        updated = applyGravity(updated);
+
+        // Step 4 & 5: Row clearing
+        let filledRows = getFilledRows(updated, gameConfig.gridWidth, gameConfig.gridHeight);
+        if (filledRows.length > 0) {
+          setClearingRows(filledRows);
+          setTimeout(() => {
+            setAnimals(current => {
+              const { animals: cleared } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
+              // Apply gravity again after clearing
+              return applyGravity(cleared);
+            });
+            setClearingRows([]);
+          }, 1200);
+        }
+
+        return updated;
+      });
+    }, 300);
+
     // Generate next animals for the next player move (turn + 1)
-    setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn));
+    setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
   }, [turn, nextAnimals]);
 
   const moveSelectedAnimal = useCallback((animalId, newX, onMoveComplete) => {
@@ -92,7 +107,7 @@ export function useGameStore(config = null) {
 
           // Step 9 & 10: Game over check, turn increment, and next animals generation
           setTurn(prev => prev + 1);
-          setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn));
+          setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
 
           // Continue to next turn after clearing completes
           if (onMoveComplete) onMoveComplete();
@@ -107,7 +122,7 @@ export function useGameStore(config = null) {
           return current;
         });
         setTurn(prev => prev + 1);
-        setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn));
+        setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
 
         if (onMoveComplete) onMoveComplete();
       }
@@ -120,7 +135,7 @@ export function useGameStore(config = null) {
     setAnimals(createInitialAnimals(gameConfig));
     setTurn(0);
     setGameOver(false);
-    setNextAnimals(generateAnimalsForTurn(1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn));
+    setNextAnimals(generateAnimalsForTurn(1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
     setClearingRows([]);
   }, []);
 

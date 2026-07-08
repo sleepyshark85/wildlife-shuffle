@@ -29,7 +29,7 @@ export default function SettingsMenu({ onStartGame }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>Animal Run</Text>
+          <Text style={styles.title}>Wildlife Shuffle</Text>
           <Text style={styles.subtitle}>Game Settings</Text>
         </View>
 

@@ -1,6 +1,6 @@
-# Animal Run - V2 (Complete Implementation)
+# Wildlife Shuffle - V2 (Complete Implementation)
 
-A fully-featured, production-ready implementation of Animal Run with a complete configuration system and robust game mechanics.
+A fully-featured, production-ready implementation of Wildlife Shuffle with a complete configuration system and robust game mechanics.
 
 ## Key Features
 

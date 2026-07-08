@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, PanResponder } from 'react-native';
 import Animal from './Animal';
 
 const CELL_SIZE = 32;
@@ -15,50 +15,46 @@ const ANIMAL_EMOJIS = {
 export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidth = 10, gridHeight = 20 }) {
   const [selectedAnimal, setSelectedAnimal] = useState(null);
   const [dragPreview, setDragPreview] = useState(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const panResponderRef = useRef(null);
+  const dragStartXRef = useRef(null);
 
-  const handleMouseDown = (animalId, event) => {
-    setSelectedAnimal({ id: animalId, startX: event.clientX });
-    setIsDragging(true);
-  };
+  const createPanResponder = (animalId) => {
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        dragStartXRef.current = evt.nativeEvent.pageX;
+        setSelectedAnimal({ id: animalId, startX: evt.nativeEvent.pageX });
+      },
+      onPanResponderMove: (evt) => {
+        const animal = animals.find(a => a.id === animalId);
+        if (!animal || !dragStartXRef.current) return;
 
-  const handleMouseMove = (event) => {
-    if (!isDragging || !selectedAnimal) return;
+        const currentX = evt.nativeEvent.pageX;
+        const dragDelta = currentX - dragStartXRef.current;
+        const cellsToMove = Math.round(dragDelta / CELL_SIZE);
+        const previewX = Math.max(0, Math.min(gridWidth - animal.size, animal.x + cellsToMove));
 
-    const animal = animals.find(a => a.id === selectedAnimal.id);
-    if (!animal) return;
+        setDragPreview({ animalId, previewX });
+      },
+      onPanResponderRelease: () => {
+        if (selectedAnimal && dragPreview) {
+          const animal = animals.find(a => a.id === selectedAnimal.id);
+          if (animal && animal.x !== dragPreview.previewX) {
+            onMoveAnimal(selectedAnimal.id, dragPreview.previewX);
+          }
+        }
 
-    const currentX = event.clientX;
-    const dragDelta = currentX - selectedAnimal.startX;
-    const cellsToMove = Math.round(dragDelta / CELL_SIZE);
-    const previewX = Math.max(0, Math.min(gridWidth - animal.size, animal.x + cellsToMove));
-
-    setDragPreview({ animalId: selectedAnimal.id, previewX });
-  };
-
-  const handleMouseUp = (event) => {
-    setIsDragging(false);
-
-    if (!selectedAnimal || !dragPreview) {
-      setSelectedAnimal(null);
-      setDragPreview(null);
-      return;
-    }
-
-    // Only trigger move if position actually changed
-    const animal = animals.find(a => a.id === selectedAnimal.id);
-    if (animal && animal.x !== dragPreview.previewX) {
-      onMoveAnimal(selectedAnimal.id, dragPreview.previewX);
-    }
-
-    setSelectedAnimal(null);
-    setDragPreview(null);
-  };
-
-  const handleMouseLeave = () => {
-    setIsDragging(false);
-    setSelectedAnimal(null);
-    setDragPreview(null);
+        setSelectedAnimal(null);
+        setDragPreview(null);
+        dragStartXRef.current = null;
+      },
+      onPanResponderTerminate: () => {
+        setSelectedAnimal(null);
+        setDragPreview(null);
+        dragStartXRef.current = null;
+      },
+    });
   };
 
   const gridPixelWidth = gridWidth * CELL_SIZE;
@@ -79,7 +75,6 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
               left: x * CELL_SIZE,
               top: visualY,
               backgroundColor: isClearing ? '#FFFF00' : '#f0f0f0',
-              animation: isClearing ? 'flash 1.2s ease-in-out' : 'none',
             },
           ]}
         />
@@ -88,12 +83,7 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
   }
 
   return (
-    <View
-      style={[styles.container, { userSelect: 'none' }]}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseLeave}
-    >
+    <View style={styles.container}>
       <View style={[styles.grid, { width: gridPixelWidth, height: gridPixelHeight }]}>
         {backgroundCells}
 
@@ -102,6 +92,7 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
           const isSelected = selectedAnimal?.id === animal.id;
           const displayX = dragPreview?.animalId === animal.id ? dragPreview.previewX : animal.x;
           const visualY = gridHeight - 1 - animal.y;
+          const panResponder = createPanResponder(animal.id);
 
           return (
             <View key={animal.id}>
@@ -118,7 +109,6 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
                     borderColor: '#FF9800',
                     borderRadius: 4,
                     backgroundColor: 'rgba(255, 152, 0, 0.25)',
-                    borderStyle: 'dashed',
                   }}
                 />
               )}
@@ -130,7 +120,7 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
                 y={visualY}
                 cellSize={CELL_SIZE}
                 isDragging={isSelected}
-                onMouseDown={e => handleMouseDown(animal.id, e)}
+                {...panResponder.panHandlers}
                 emoji={ANIMAL_EMOJIS[animal.type]}
               />
             </View>
@@ -160,48 +150,5 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
   },
   clearingCell: {
-    // Animation applied via inline style
   },
 });
-
-// Add row clearing flash animation
-if (typeof document !== 'undefined') {
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes flash {
-      0%, 100% {
-        background-color: #FFFF00;
-        opacity: 1;
-      }
-      12.5% {
-        background-color: #f0f0f0;
-        opacity: 1;
-      }
-      25% {
-        background-color: #FFFF00;
-        opacity: 1;
-      }
-      37.5% {
-        background-color: #f0f0f0;
-        opacity: 1;
-      }
-      50% {
-        background-color: #FFFF00;
-        opacity: 1;
-      }
-      62.5% {
-        background-color: #f0f0f0;
-        opacity: 1;
-      }
-      75% {
-        background-color: #FFFF00;
-        opacity: 1;
-      }
-      87.5% {
-        background-color: #f0f0f0;
-        opacity: 1;
-      }
-    }
-  `;
-  document.head.appendChild(style);
-}
