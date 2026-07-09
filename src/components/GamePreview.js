@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 
-const CELL_SIZE = 32;
+const BASE_CELL_SIZE = 32;
 
 const ANIMAL_EMOJIS = {
   elephant: '🐘',
@@ -13,6 +13,12 @@ const ANIMAL_EMOJIS = {
 
 export default function GamePreview({ nextAnimals, gridWidth = 10 }) {
   if (!nextAnimals || nextAnimals.length === 0) return null;
+
+  const { width: screenWidth } = useWindowDimensions();
+
+  // Calculate responsive cell size (match GameGrid sizing)
+  const maxWidthCellSize = Math.floor((screenWidth - 32) / gridWidth);
+  const CELL_SIZE = Math.max(24, maxWidthCellSize);
 
   const previewWidth = gridWidth * CELL_SIZE;
 

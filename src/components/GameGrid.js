@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { View, StyleSheet, PanResponder } from 'react-native';
+import { View, StyleSheet, PanResponder, useWindowDimensions } from 'react-native';
 import Animal from './Animal';
 
-const CELL_SIZE = 32;
+const BASE_CELL_SIZE = 32;
 
 const ANIMAL_EMOJIS = {
   elephant: '🐘',
@@ -17,6 +17,12 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
   const [dragPreview, setDragPreview] = useState(null);
   const panResponderRef = useRef(null);
   const dragStartXRef = useRef(null);
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+
+  // Calculate responsive cell size - scales up on big screens, down on small screens
+  const maxWidthCellSize = Math.floor((screenWidth - 32) / gridWidth); // 32 for padding
+  const maxHeightCellSize = Math.floor((screenHeight - 300) / gridHeight); // 300 for header, preview, etc.
+  const CELL_SIZE = Math.max(24, Math.min(maxWidthCellSize, maxHeightCellSize));
 
   const createPanResponder = (animalId) => {
     return PanResponder.create({
