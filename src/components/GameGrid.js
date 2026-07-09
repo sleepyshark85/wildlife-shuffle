@@ -67,6 +67,7 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
 
   const gridPixelWidth = gridWidth * CELL_SIZE;
   const gridPixelHeight = gridHeight * CELL_SIZE;
+  console.log(`🔍 Grid: screenWidth=${screenWidth}, CELL_SIZE=${CELL_SIZE}, gridWidth=${gridWidth}, gridPixelWidth=${gridPixelWidth}`);
 
   // Create grid background
   const backgroundCells = [];

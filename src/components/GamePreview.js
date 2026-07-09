@@ -3,73 +3,46 @@ import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 
 const BASE_CELL_SIZE = 32;
 
-const ANIMAL_EMOJIS = {
-  elephant: '🐘',
-  buffalo: '🐃',
-  elk: '🦌',
-  fox: '🦊',
-  rat: '🐀',
-};
-
-export default function GamePreview({ nextAnimals, gridWidth = 10 }) {
+export default function GamePreview({ nextAnimals, gridWidth = 10, gridHeight = 20 }) {
   if (!nextAnimals || nextAnimals.length === 0) return null;
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-  // Calculate responsive cell size (match GameGrid sizing)
+  // Calculate cell size using SAME formula as GameGrid
   const maxWidthCellSize = Math.floor((screenWidth - 32) / gridWidth);
-  const maxHeightCellSize = Math.floor((screenHeight - 300) / 20); // Similar constraint as GameGrid
+  const maxHeightCellSize = Math.floor((screenHeight - 300) / gridHeight);
   const CELL_SIZE = Math.max(24, Math.min(maxWidthCellSize, maxHeightCellSize));
+  const INDICATOR_HEIGHT = 16; // Much thinner indicator row
 
   const previewWidth = gridWidth * CELL_SIZE;
+  console.log(`🔍 Preview: screenWidth=${screenWidth}, screenHeight=${screenHeight}, CELL_SIZE=${CELL_SIZE}, gridWidth=${gridWidth}, previewWidth=${previewWidth}`);
+
+  // Create occupancy map for next row (row 0)
+  const occupancy = new Array(gridWidth).fill(false);
+  nextAnimals.forEach(animal => {
+    for (let col = animal.x; col < animal.x + animal.size && col < gridWidth; col++) {
+      occupancy[col] = true;
+    }
+  });
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>Next Animals (Row 0 - bottom):</Text>
-      <View style={[styles.preview, { width: previewWidth, height: CELL_SIZE }]}>
-        {/* Background grid cells */}
-        {Array.from({ length: gridWidth }).map((_, i) => (
+    <View style={[styles.container, { width: previewWidth, alignItems: 'center' }]}>
+      <Text style={styles.label}>Next row:</Text>
+      <View style={[styles.preview, { width: previewWidth, height: INDICATOR_HEIGHT }]}>
+        {/* Cell occupancy indicators */}
+        {occupancy.map((isFilled, col) => (
           <View
-            key={`cell-${i}`}
+            key={`cell-${col}`}
             style={{
               position: 'absolute',
               width: CELL_SIZE,
-              height: CELL_SIZE,
-              top: 0,
-              borderWidth: 0.5,
-              borderColor: '#2a4a7e',
-              backgroundColor: '#1e3a52',
-              left: i * CELL_SIZE,
+              height: INDICATOR_HEIGHT,
+              left: col * CELL_SIZE,
+              backgroundColor: isFilled ? '#22DD00' : '#0a0f1a',
+              borderWidth: 1,
+              borderColor: isFilled ? '#00AA00' : '#1a2a3a',
             }}
           />
-        ))}
-
-        {/* Next animals */}
-        {nextAnimals.map(animal => (
-          <View
-            key={animal.id}
-            style={{
-              position: 'absolute',
-              height: CELL_SIZE,
-              top: 0,
-              justifyContent: 'center',
-              alignItems: 'center',
-              backgroundColor: '#2255dd',
-              borderWidth: 1,
-              borderColor: '#4da6ff',
-              borderRadius: 2,
-              left: animal.x * CELL_SIZE,
-              width: animal.size * CELL_SIZE,
-            }}
-          >
-            <Text style={{
-              fontWeight: 'bold',
-              fontSize: CELL_SIZE - 4,
-              textAlign: 'center',
-            }}>
-              {ANIMAL_EMOJIS[animal.type]}
-            </Text>
-          </View>
         ))}
       </View>
     </View>
@@ -78,21 +51,25 @@ export default function GamePreview({ nextAnimals, gridWidth = 10 }) {
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    marginTop: 12,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
     color: '#0f3460',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   preview: {
     position: 'relative',
     backgroundColor: '#0f1a2e',
-    borderWidth: 0,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderTopWidth: 0,
+    borderColor: '#0f3460',
     overflow: 'hidden',
   },
 });

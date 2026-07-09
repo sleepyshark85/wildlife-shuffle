@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, SafeAreaView, useWindowDimensions } from 'react-native';
 import GameGrid from './GameGrid';
 import GamePreview from './GamePreview';
 import { useGameStore } from '../data/gameStore';
 
+const BASE_CELL_SIZE = 32;
+
 export default function GameScreen({ config, onBackToSettings }) {
+  const { width: screenWidth } = useWindowDimensions();
   const store = useGameStore(config);
+
+  // Calculate the exact container width needed for the grid
+  const maxWidthCellSize = Math.floor((screenWidth - 32) / store.config.gridWidth);
+  const CELL_SIZE = Math.max(24, maxWidthCellSize);
+  const containerWidth = store.config.gridWidth * CELL_SIZE;
   const [waitingForPlayer, setWaitingForPlayer] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
@@ -65,7 +73,7 @@ export default function GameScreen({ config, onBackToSettings }) {
         </View>
       </View>
 
-      <View style={styles.gameContainer}>
+      <View style={[styles.gameContainer, { width: containerWidth, alignSelf: 'center' }]}>
         <View style={styles.gridWrapper}>
           <GameGrid
             animals={store.animals}
@@ -75,7 +83,7 @@ export default function GameScreen({ config, onBackToSettings }) {
             gridHeight={store.config.gridHeight}
           />
         </View>
-        <GamePreview nextAnimals={store.nextAnimals} gridWidth={store.config.gridWidth} />
+        <GamePreview nextAnimals={store.nextAnimals} gridWidth={store.config.gridWidth} gridHeight={store.config.gridHeight} />
       </View>
 
     </SafeAreaView>
@@ -120,13 +128,12 @@ const styles = StyleSheet.create({
     color: '#0f3460',
   },
   gameContainer: {
-    width: '100%',
     backgroundColor: '#f0f4f8',
     alignItems: 'center',
     paddingVertical: 12,
   },
   gridWrapper: {
-    width: '100%',
+    alignItems: 'center',
   },
   title: {
     fontSize: 36,
