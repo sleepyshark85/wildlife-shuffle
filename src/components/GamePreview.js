@@ -30,12 +30,16 @@ export default function GamePreview({ nextAnimals, gridWidth = 10 }) {
         {Array.from({ length: gridWidth }).map((_, i) => (
           <View
             key={`cell-${i}`}
-            style={[
-              styles.previewCell,
-              {
-                left: i * CELL_SIZE,
-              },
-            ]}
+            style={{
+              position: 'absolute',
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+              top: 0,
+              borderWidth: 0.5,
+              borderColor: '#2a4a7e',
+              backgroundColor: '#1e3a52',
+              left: i * CELL_SIZE,
+            }}
           />
         ))}
 
@@ -79,15 +83,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f1a2e',
     borderWidth: 0,
     overflow: 'hidden',
-  },
-  previewCell: {
-    position: 'absolute',
-    width: CELL_SIZE,
-    height: CELL_SIZE,
-    top: 0,
-    borderWidth: 0.5,
-    borderColor: '#2a4a7e',
-    backgroundColor: '#1e3a52',
   },
   animal: {
     position: 'absolute',
