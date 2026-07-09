@@ -75,15 +75,16 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
       backgroundCells.push(
         <View
           key={`cell-${y}-${x}`}
-          style={[
-            styles.cell,
-            {
-              left: x * CELL_SIZE,
-              top: visualY,
-              backgroundColor: isClearing ? '#FFD700' : '#1e3a52',
-              borderColor: isClearing ? '#FF8C00' : '#5a8ace',
-            },
-          ]}
+          style={{
+            position: 'absolute',
+            width: CELL_SIZE,
+            height: CELL_SIZE,
+            borderWidth: 0.5,
+            left: x * CELL_SIZE,
+            top: visualY,
+            backgroundColor: isClearing ? '#FFD700' : '#1e3a52',
+            borderColor: isClearing ? '#FF8C00' : '#5a8ace',
+          }}
         />
       );
     }
@@ -153,15 +154,5 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: '#0f1a2e',
     borderWidth: 0,
-  },
-  cell: {
-    position: 'absolute',
-    width: CELL_SIZE,
-    height: CELL_SIZE,
-    borderWidth: 0.5,
-    borderColor: '#2a4a7e',
-    backgroundColor: '#1e3a52',
-  },
-  clearingCell: {
   },
 });
