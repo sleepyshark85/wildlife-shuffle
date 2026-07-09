@@ -1,14 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, SafeAreaView, useWindowDimensions } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import GameGrid from './GameGrid';
 import GamePreview from './GamePreview';
+import StatsPanel from './StatsPanel';
 import { useGameStore } from '../data/gameStore';
 
 const BASE_CELL_SIZE = 32;
 
 export default function GameScreen({ config, onBackToSettings }) {
   const { width: screenWidth } = useWindowDimensions();
-  const store = useGameStore(config);
+  const [resumeSession, setResumeSession] = useState(null);
+  const [showStats, setShowStats] = useState(false);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+
+  // Load saved session from AsyncStorage on mount
+  useEffect(() => {
+    const loadSavedSession = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('wildlife-shuffle-current-session');
+        if (saved) {
+          setResumeSession(JSON.parse(saved));
+        }
+      } catch (error) {
+        console.error('Error loading saved session:', error);
+      } finally {
+        setSessionLoaded(true);
+      }
+    };
+
+    loadSavedSession();
+  }, []);
+
+  const store = useGameStore(config, resumeSession);
 
   // Calculate the exact container width needed for the grid
   const maxWidthCellSize = Math.floor((screenWidth - 32) / store.config.gridWidth);
@@ -39,17 +63,32 @@ export default function GameScreen({ config, onBackToSettings }) {
     store.moveSelectedAnimal(animalId, newX, onMoveComplete);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
+    try {
+      // Clear saved session when starting a new game
+      await AsyncStorage.removeItem('wildlife-shuffle-current-session');
+    } catch (error) {
+      console.error('Error clearing saved session:', error);
+    }
     store.resetGame();
     setWaitingForPlayer(true);
   };
 
   if (store.gameOver) {
+    const isNewHighScore = store.score > store.highScore;
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.gameOverContainer}>
           <Text style={styles.gameOverText}>Game Over!</Text>
-          <Text style={styles.scoreText}>Turn: {store.turn}</Text>
+          {isNewHighScore && <Text style={styles.newHighScoreText}>🎉 New High Score! 🎉</Text>}
+          <View style={styles.gameOverStats}>
+            <Text style={styles.gameOverStatLabel}>Turn:</Text>
+            <Text style={styles.gameOverStatValue}>{store.turn}</Text>
+            <Text style={styles.gameOverStatLabel}>Score:</Text>
+            <Text style={styles.gameOverStatValue}>{store.score}</Text>
+            <Text style={styles.gameOverStatLabel}>Best:</Text>
+            <Text style={styles.gameOverStatValue}>{store.highScore}</Text>
+          </View>
           <Pressable style={styles.resetButton} onPress={handleReset}>
             <Text style={styles.resetButtonText}>Play Again</Text>
           </Pressable>
@@ -69,7 +108,13 @@ export default function GameScreen({ config, onBackToSettings }) {
             <Text style={styles.title}>Wildlife Shuffle</Text>
             <Text style={styles.turnText}>Turn: {store.turn}</Text>
           </View>
-          <View style={styles.settingsButton} />
+          <Pressable style={styles.settingsButton} onPress={() => setShowStats(true)}>
+            <Text style={styles.settingsButtonText}>📊 Stats</Text>
+          </Pressable>
+        </View>
+        <View style={styles.statsRow}>
+          <Text style={styles.statText}>Score: {store.score}</Text>
+          <Text style={styles.statText}>Best: {store.highScore}</Text>
         </View>
       </View>
 
@@ -85,6 +130,14 @@ export default function GameScreen({ config, onBackToSettings }) {
         </View>
         <GamePreview nextAnimals={store.nextAnimals} gridWidth={store.config.gridWidth} gridHeight={store.config.gridHeight} />
       </View>
+
+      {showStats && (
+        <StatsPanel
+          stats={store.stats}
+          sessionHistory={store.sessionHistory}
+          onClose={() => setShowStats(false)}
+        />
+      )}
 
     </SafeAreaView>
   );
@@ -111,6 +164,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  statText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f3460',
   },
   titleContainer: {
     alignItems: 'center',
@@ -172,6 +236,29 @@ const styles = StyleSheet.create({
     color: '#e74c3c',
     marginBottom: 20,
     letterSpacing: -1,
+  },
+  newHighScoreText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#f39c12',
+    marginBottom: 20,
+  },
+  gameOverStats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 40,
+    gap: 12,
+  },
+  gameOverStatLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f3460',
+  },
+  gameOverStatValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#4da6ff',
   },
   scoreText: {
     fontSize: 26,

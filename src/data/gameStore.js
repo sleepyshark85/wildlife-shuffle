@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   generateAnimal,
   generateAnimalsForTurn,
@@ -13,6 +14,8 @@ import {
   setGridDimensions,
 } from './gameLogic';
 import { DIFFICULTY_LEVELS, validateConfig } from './gameConfig';
+import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useSoundManager } from '../hooks/useSoundManager';
 
 function createInitialAnimals(gameConfig) {
   resetAnimalsCounter();
@@ -20,20 +23,63 @@ function createInitialAnimals(gameConfig) {
   return animals;
 }
 
-export function useGameStore(config = null) {
+function calculateClearPoints(clearedAnimals) {
+  // Points equal to sum of sizes of cleared animals
+  return clearedAnimals.reduce((total, animal) => total + animal.size, 0);
+}
+
+export function useGameStore(config = null, resumeSession = null) {
   const gameConfig = config ? validateConfig(config) : { gridWidth: 10, gridHeight: 20, difficulty: 'normal' };
 
   // Set grid dimensions
   setGridDimensions(gameConfig.gridWidth, gameConfig.gridHeight);
 
-  const [animals, setAnimals] = useState(() => createInitialAnimals(gameConfig));
-  const [turn, setTurn] = useState(0);
+  const { playSound } = useSoundManager();
+
+  const [animals, setAnimals] = useState(() =>
+    resumeSession?.animals || createInitialAnimals(gameConfig)
+  );
+  const [turn, setTurn] = useState(resumeSession?.turn || 0);
+  const [score, setScore] = useState(resumeSession?.score || 0);
   const [gameOver, setGameOver] = useState(false);
   const [nextAnimals, setNextAnimals] = useState(() =>
-    generateAnimalsForTurn(1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, [])
+    resumeSession?.nextAnimals || generateAnimalsForTurn(1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, [])
   );
   const [clearingRows, setClearingRows] = useState([]);
   const clearingTimeoutRef = useRef(null);
+
+  // Local storage for high score and session history
+  const [highScore, setHighScore] = useLocalStorage('wildlife-shuffle-highscore', 0);
+  const [sessionHistory, setSessionHistory] = useLocalStorage('wildlife-shuffle-history', []);
+  const [stats, setStats] = useLocalStorage('wildlife-shuffle-stats', {
+    totalGames: 0,
+    totalTurns: 0,
+    totalScore: 0,
+    bestTurnCount: 0,
+  });
+
+  // Auto-save game state periodically (every 5 seconds if game is active)
+  useEffect(() => {
+    if (!gameOver && animals.length > 0) {
+      const saveGameState = async () => {
+        try {
+          const sessionData = {
+            animals,
+            turn,
+            score,
+            nextAnimals,
+            config: gameConfig,
+          };
+          await AsyncStorage.setItem('wildlife-shuffle-current-session', JSON.stringify(sessionData));
+        } catch (error) {
+          console.error('Error auto-saving game state:', error);
+        }
+      };
+
+      const interval = setInterval(saveGameState, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [animals, turn, score, nextAnimals, gameOver, gameConfig]);
 
   const executeChainClear = useCallback((animals) => {
     const filledRows = getFilledRows(animals, gameConfig.gridWidth, gameConfig.gridHeight);
@@ -52,8 +98,16 @@ export function useGameStore(config = null) {
     clearingTimeoutRef.current = setTimeout(() => {
       setClearingRows([]);
       setAnimals(current => {
-        const { animals: cleared } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
+        const { animals: cleared, clearedRows } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
         const afterGravity = applyGravity(cleared);
+
+        // Calculate points from cleared animals
+        if (clearedRows.length > 0) {
+          const clearedAnimals = current.filter(a => clearedRows.includes(a.y) && !cleared.find(c => c.id === a.id));
+          const points = calculateClearPoints(clearedAnimals);
+          setScore(prev => prev + points);
+          playSound('clear');
+        }
 
         // Check if more rows are filled for chain clearing
         const nextFilledRows = getFilledRows(afterGravity, gameConfig.gridWidth, gameConfig.gridHeight);
@@ -139,8 +193,16 @@ export function useGameStore(config = null) {
         setClearingRows(filledRows);
         setTimeout(() => {
           setAnimals(current => {
-            const { animals: cleared } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
+            const { animals: cleared, clearedRows } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
             const afterGravity = applyGravity(cleared);
+
+            // Calculate points from cleared animals
+            if (clearedRows.length > 0) {
+              const clearedAnimals = current.filter(a => clearedRows.includes(a.y) && !cleared.find(c => c.id === a.id));
+              const points = calculateClearPoints(clearedAnimals);
+              setScore(prev => prev + points);
+              playSound('clear');
+            }
 
             // Check if more rows are filled for chain clearing
             const nextFilledRows = getFilledRows(afterGravity, gameConfig.gridWidth, gameConfig.gridHeight);
@@ -149,8 +211,16 @@ export function useGameStore(config = null) {
               setClearingRows(nextFilledRows);
               setTimeout(() => {
                 setAnimals(chainCurrent => {
-                  const { animals: chainCleared } = clearFilledRows(chainCurrent, gameConfig.gridWidth, gameConfig.gridHeight);
+                  const { animals: chainCleared, clearedRows: chainClearedRows } = clearFilledRows(chainCurrent, gameConfig.gridWidth, gameConfig.gridHeight);
                   const chainAfterGravity = applyGravity(chainCleared);
+
+                  // Calculate points from chain cleared animals
+                  if (chainClearedRows.length > 0) {
+                    const chainClearedAnimals = chainCurrent.filter(a => chainClearedRows.includes(a.y) && !chainCleared.find(c => c.id === a.id));
+                    const points = calculateClearPoints(chainClearedAnimals);
+                    setScore(prev => prev + points);
+                    playSound('clear');
+                  }
 
                   // Recursively check for more chain clears
                   const moreFilledRows = getFilledRows(chainAfterGravity, gameConfig.gridWidth, gameConfig.gridHeight);
@@ -201,13 +271,46 @@ export function useGameStore(config = null) {
     });
   }, [animals, turn, gameConfig.gridWidth, gameConfig.gridHeight]);
 
+  // Save game session to history when game ends
+  useEffect(() => {
+    if (gameOver && score >= 0) {
+      playSound('gameover');
+      const isNewHighScore = score > highScore;
+
+      const session = {
+        turn,
+        score,
+        timestamp: new Date().toISOString(),
+        config: gameConfig,
+      };
+
+      // Update high score and play celebration sound
+      if (isNewHighScore) {
+        setHighScore(score);
+        playSound('highscore');
+      }
+
+      // Update statistics
+      setStats(prev => ({
+        totalGames: prev.totalGames + 1,
+        totalTurns: prev.totalTurns + turn,
+        totalScore: prev.totalScore + score,
+        bestTurnCount: Math.max(prev.bestTurnCount, turn),
+      }));
+
+      // Add to session history (keep last 10 sessions)
+      setSessionHistory(prev => [session, ...prev.slice(0, 9)]);
+    }
+  }, [gameOver, turn, score, highScore, gameConfig, setHighScore, setSessionHistory, setStats, playSound]);
+
   const resetGame = useCallback(() => {
     setAnimals(createInitialAnimals(gameConfig));
     setTurn(0);
+    setScore(0);
     setGameOver(false);
     setNextAnimals(generateAnimalsForTurn(1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
     setClearingRows([]);
-  }, []);
+  }, [gameConfig]);
 
   // Auto-execute turn when grid becomes completely empty
   useEffect(() => {
@@ -246,15 +349,37 @@ export function useGameStore(config = null) {
     }
   }, [turn, animals.length, clearingRows.length, gameConfig]);
 
+  // Save current game state for resume
+  const saveSession = useCallback(async () => {
+    const sessionData = {
+      animals,
+      turn,
+      score,
+      nextAnimals,
+      config: gameConfig,
+    };
+    try {
+      await AsyncStorage.setItem('wildlife-shuffle-current-session', JSON.stringify(sessionData));
+    } catch (error) {
+      console.error('Error saving session:', error);
+    }
+    return sessionData;
+  }, [animals, turn, score, nextAnimals, gameConfig]);
+
   return {
     animals,
     turn,
+    score,
+    highScore,
+    stats,
     gameOver,
     nextAnimals,
     clearingRows,
     moveSelectedAnimal,
     resetGame,
     executeTurnSequence,
+    saveSession,
     config: gameConfig,
+    sessionHistory,
   };
 }
