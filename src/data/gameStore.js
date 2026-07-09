@@ -77,7 +77,7 @@ export function useGameStore(config = null) {
     setTimeout(() => {
       setAnimals(prevAnimals => {
         // Filter out new animals that would overlap with existing animals at y=0
-        const validNextAnimals = nextAnimals.filter(newAnimal => {
+        const filteredNextAnimals = nextAnimals.filter(newAnimal => {
           return !prevAnimals.some(existing => {
             if (existing.y !== 0) return false; // Only check animals at spawn row
             const newStart = newAnimal.x;
@@ -88,53 +88,7 @@ export function useGameStore(config = null) {
           });
         });
 
-        // Build occupied columns map from existing animals at y=0
-        let occupiedCols = new Array(gameConfig.gridWidth).fill(false);
-        prevAnimals.forEach(animal => {
-          if (animal.y === 0) {
-            for (let col = animal.x; col < animal.x + animal.size; col++) {
-              occupiedCols[col] = true;
-            }
-          }
-        });
-
-        // Regenerate any animals that would overlap with existing ones at y=0
-        const regeneratedAnimals = [];
-        for (const newAnimal of nextAnimals) {
-          // Find available positions for this animal
-          const availablePositions = [];
-          for (let col = 0; col <= gameConfig.gridWidth - newAnimal.size; col++) {
-            let canPlace = true;
-            for (let c = Math.max(0, col - 1); c < Math.min(gameConfig.gridWidth, col + newAnimal.size + 1); c++) {
-              if (occupiedCols[c]) {
-                canPlace = false;
-                break;
-              }
-            }
-            if (canPlace) {
-              availablePositions.push(col);
-            }
-          }
-
-          // If no position available, skip this animal
-          if (availablePositions.length === 0) {
-            continue;
-          }
-
-          // Pick a random available position
-          const newX = availablePositions[Math.floor(Math.random() * availablePositions.length)];
-
-          // Create updated animal with new position
-          const repositioned = { ...newAnimal, x: newX };
-          regeneratedAnimals.push(repositioned);
-
-          // Mark columns as occupied for next animal
-          for (let col = newX; col < newX + newAnimal.size; col++) {
-            occupiedCols[col] = true;
-          }
-        }
-
-        let updated = [...regeneratedAnimals, ...prevAnimals];
+        let updated = [...filteredNextAnimals, ...prevAnimals];
         // Step 3: Gravity is applied
         updated = applyGravity(updated);
 
@@ -157,9 +111,6 @@ export function useGameStore(config = null) {
         return updated;
       });
     }, 300);
-
-    // Generate next animals for the next player move (turn + 1)
-    setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
   }, [turn, nextAnimals, executeChainClear]);
 
   const moveSelectedAnimal = useCallback((animalId, newX, onMoveComplete) => {
@@ -180,7 +131,7 @@ export function useGameStore(config = null) {
         const onChainClearComplete = () => {
           // Step 9 & 10: Game over check, turn increment, and next animals generation
           setTurn(prev => prev + 1);
-          setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
+          setNextAnimals(generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
 
           if (onMoveComplete) onMoveComplete();
         };
@@ -241,7 +192,7 @@ export function useGameStore(config = null) {
           return current;
         });
         setTurn(prev => prev + 1);
-        setNextAnimals(generateAnimalsForTurn(turn + 1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
+        setNextAnimals(generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
 
         if (onMoveComplete) onMoveComplete();
       }

@@ -19,8 +19,6 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
   const dragStartXRef = useRef(null);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-  console.log('GameGrid received clearingRows:', clearingRows);
-
   // Calculate responsive cell size - scales up on big screens, down on small screens
   const maxWidthCellSize = Math.floor((screenWidth - 32) / gridWidth); // 32 for padding
   const maxHeightCellSize = Math.floor((screenHeight - 300) / gridHeight); // 300 for header, preview, etc.
@@ -67,7 +65,6 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
 
   const gridPixelWidth = gridWidth * CELL_SIZE;
   const gridPixelHeight = gridHeight * CELL_SIZE;
-  console.log(`🔍 Grid: screenWidth=${screenWidth}, CELL_SIZE=${CELL_SIZE}, gridWidth=${gridWidth}, gridPixelWidth=${gridPixelWidth}`);
 
   // Create grid background
   const backgroundCells = [];
