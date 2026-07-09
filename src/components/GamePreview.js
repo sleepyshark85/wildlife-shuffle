@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
   label: {
     fontSize: 14,

@@ -123,15 +123,10 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#f0f4f8',
     alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
   gridWrapper: {
     width: '100%',
-    maxHeight: '85%',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   title: {
     fontSize: 36,
