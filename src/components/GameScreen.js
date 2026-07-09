@@ -56,8 +56,8 @@ export default function GameScreen({ config, onBackToSettings }) {
 
   const handleMoveAnimal = (animalId, newX) => {
     setWaitingForPlayer(false);
-    const onMoveComplete = () => {
-      store.executeTurnSequence();
+    const onMoveComplete = (nextAnimalsParam) => {
+      store.executeTurnSequence(nextAnimalsParam);
       setWaitingForPlayer(true);
     };
     store.moveSelectedAnimal(animalId, newX, onMoveComplete);

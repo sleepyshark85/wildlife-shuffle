@@ -121,50 +121,58 @@ export function useGameStore(config = null, resumeSession = null) {
     }, 1000);
   }, [gameConfig.gridWidth, gameConfig.gridHeight]);
 
-  const executeTurnSequence = useCallback(() => {
+  const executeTurnSequence = useCallback((nextAnimalsParam) => {
+    console.log(`🚀 executeTurnSequence called with param:`, nextAnimalsParam?.map(a => `#${a.id}(${a.type})`).join(', '));
+
+    // All state updates in ONE setAnimals call (not batched separately)
     setAnimals(prevAnimals => {
       // Step 1: Grid advancement - all rows shift upward by 1
-      return advanceGrid(prevAnimals);
-    });
+      let updated = advanceGrid(prevAnimals);
 
-    // Step 2: New animals added at Row 0 (bottom) - with 300ms delay
-    setTimeout(() => {
-      setAnimals(prevAnimals => {
-        // Filter out new animals that would overlap with existing animals at y=0
-        const filteredNextAnimals = nextAnimals.filter(newAnimal => {
-          return !prevAnimals.some(existing => {
-            if (existing.y !== 0) return false; // Only check animals at spawn row
-            const newStart = newAnimal.x;
-            const newEnd = newAnimal.x + newAnimal.size;
-            const existingStart = existing.x;
-            const existingEnd = existing.x + existing.size;
-            return !(newEnd <= existingStart || newStart >= existingEnd);
-          });
+      // Step 2: New animals added at Row 0 (bottom)
+      const animalsToAdd = nextAnimalsParam || nextAnimals;
+      console.log(`➕ Adding animals to grid:`, animalsToAdd.map(a => `#${a.id}(${a.type})`).join(', '));
+
+      // Filter out new animals that would overlap with existing animals at y=0
+      const filteredNextAnimals = animalsToAdd.filter(newAnimal => {
+        const hasOverlap = updated.some(existing => {
+          if (existing.y !== 0) return false; // Only check animals at spawn row
+          const newStart = newAnimal.x;
+          const newEnd = newAnimal.x + newAnimal.size;
+          const existingStart = existing.x;
+          const existingEnd = existing.x + existing.size;
+          return !(newEnd <= existingStart || newStart >= existingEnd);
         });
-
-        let updated = [...filteredNextAnimals, ...prevAnimals];
-        // Step 3: Gravity is applied
-        updated = applyGravity(updated);
-
-        // Step 4 & 5: Row clearing with chain clear support
-        const filledRows = getFilledRows(updated, gameConfig.gridWidth, gameConfig.gridHeight);
-        console.log('🔍 Checking for filled rows:', filledRows, 'Total animals:', updated.length);
-        if (filledRows.length > 0) {
-          console.log('🟡 Rows to clear:', filledRows);
-          setClearingRows(filledRows);
-
-          // Clear rows after a short delay
-          setTimeout(() => {
-            setClearingRows([]);
-            executeChainClear(updated);
-          }, 500);
-        } else {
-          executeChainClear(updated);
+        if (hasOverlap) {
+          console.log(`  ❌ Filtering out #${newAnimal.id}(${newAnimal.type}, x=${newAnimal.x}, size=${newAnimal.size}) - overlaps with y=0`);
         }
-
-        return updated;
+        return !hasOverlap;
       });
-    }, 300);
+      console.log(`  ✅ Filtered animals: ${filteredNextAnimals.length}/${animalsToAdd.length}`);
+
+      updated = [...filteredNextAnimals, ...updated];
+
+      // Step 3: Gravity is applied
+      updated = applyGravity(updated);
+
+      // Step 4 & 5: Row clearing with chain clear support
+      const filledRows = getFilledRows(updated, gameConfig.gridWidth, gameConfig.gridHeight);
+      console.log('🔍 Checking for filled rows:', filledRows, 'Total animals:', updated.length);
+      if (filledRows.length > 0) {
+        console.log('🟡 Rows to clear:', filledRows);
+        setClearingRows(filledRows);
+
+        // Clear rows after a short delay
+        setTimeout(() => {
+          setClearingRows([]);
+          executeChainClear(updated);
+        }, 500);
+      } else {
+        executeChainClear(updated);
+      }
+
+      return updated;
+    });
   }, [turn, nextAnimals, executeChainClear]);
 
   const moveSelectedAnimal = useCallback((animalId, newX, onMoveComplete) => {
@@ -183,6 +191,9 @@ export function useGameStore(config = null, resumeSession = null) {
       let filledRows = getFilledRows(updated, gameConfig.gridWidth, gameConfig.gridHeight);
       if (filledRows.length > 0) {
         const onChainClearComplete = () => {
+          // Save current preview animals BEFORE generating new ones
+          const currentPreviewAnimals = nextAnimals;
+
           // Step 9 & 10: Game over check, turn increment, and next animals generation
           console.log(`🔄 Turn increment (chain clear): ${turn} → ${turn + 1}`);
           setTurn(prev => prev + 1);
@@ -190,7 +201,7 @@ export function useGameStore(config = null, resumeSession = null) {
           console.log(`📋 Updated nextAnimals (chain):`, newNextAnimals.map(a => `#${a.id}(${a.type})`).join(', '));
           setNextAnimals(newNextAnimals);
 
-          if (onMoveComplete) onMoveComplete();
+          if (onMoveComplete) onMoveComplete(currentPreviewAnimals);  // Pass CURRENT preview animals, not new ones
         };
 
         setClearingRows(filledRows);
@@ -236,7 +247,10 @@ export function useGameStore(config = null, resumeSession = null) {
                       }
                       return current;
                     });
-                    onChainClearComplete();
+                    // Delay onChainClearComplete to ensure state updates complete before next turn
+                    setTimeout(() => {
+                      onChainClearComplete();
+                    }, 50);
                   }
                   return chainAfterGravity;
                 });
@@ -250,7 +264,10 @@ export function useGameStore(config = null, resumeSession = null) {
                 }
                 return current;
               });
-              onChainClearComplete();
+              // Delay onChainClearComplete to ensure state updates complete before next turn
+              setTimeout(() => {
+                onChainClearComplete();
+              }, 50);
             }
 
             return afterGravity;
@@ -264,13 +281,16 @@ export function useGameStore(config = null, resumeSession = null) {
           }
           return current;
         });
+        // Save current preview animals BEFORE generating new ones
+        const currentPreviewAnimals = nextAnimals;
+
         console.log(`🔄 Turn increment (no clearing): ${turn} → ${turn + 1}`);
         setTurn(prev => prev + 1);
         const newNextAnimals = generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []);
         console.log(`📋 Updated nextAnimals:`, newNextAnimals.map(a => `#${a.id}(${a.type})`).join(', '));
         setNextAnimals(newNextAnimals);
 
-        if (onMoveComplete) onMoveComplete();
+        if (onMoveComplete) onMoveComplete(currentPreviewAnimals);  // Pass CURRENT preview animals, not new ones
       }
 
       return updated;

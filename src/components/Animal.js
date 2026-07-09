@@ -18,23 +18,38 @@ export default function Animal({ animal, x, y, cellSize = CELL_SIZE, isDragging,
     setPrevY(y);
   }, [y, isDragging]);
 
+  // Buffalo styling - more dangerous looking
+  const isBuffalo = animal.type === 'buffalo';
+  const baseColor = isBuffalo ? '#e74c3c' : '#2255dd';
+  const dragColor = isBuffalo ? '#c0392b' : '#3366ff';
+  const borderColor = isBuffalo ? (isDragging ? '#a93226' : '#d35400') : (isDragging ? '#00d4ff' : '#4da6ff');
+  const borderWidth = isBuffalo ? 2.5 : 1;
+  const shadowColor = isBuffalo ? '#e74c3c' : '#2255dd';
+
   return (
     <View
       style={[
         styles.animal,
         isDropping && styles.dropping,
+        isBuffalo && styles.buffaloContainer,
         {
           left: x * cellSize,
           top: y * cellSize,
           width,
           height: cellSize,
-          backgroundColor: isDragging ? '#3366ff' : '#2255dd',
-          borderColor: isDragging ? '#00d4ff' : '#4da6ff',
+          backgroundColor: isDragging ? dragColor : baseColor,
+          borderColor,
+          borderWidth,
+          shadowColor,
+          shadowOffset: isBuffalo ? { width: 0, height: 0 } : { width: 0, height: 0 },
+          shadowOpacity: isBuffalo ? 0.4 : 0,
+          shadowRadius: isBuffalo ? 6 : 0,
+          elevation: isBuffalo ? 8 : 0,
         },
       ]}
       {...panHandlers}
     >
-      <Text style={[styles.emoji, { fontSize: cellSize - 4 }]}>{emoji}</Text>
+      <Text style={[styles.emoji, { fontSize: cellSize - 4, fontWeight: isBuffalo ? '900' : 'bold' }]}>{emoji}</Text>
     </View>
   );
 }
@@ -45,8 +60,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 2,
-    borderWidth: 1,
     overflow: 'hidden',
+  },
+  buffaloContainer: {
+    borderRadius: 4,
   },
   dropping: {
   },
