@@ -14,11 +14,12 @@ const ANIMAL_EMOJIS = {
 export default function GamePreview({ nextAnimals, gridWidth = 10 }) {
   if (!nextAnimals || nextAnimals.length === 0) return null;
 
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // Calculate responsive cell size (match GameGrid sizing)
   const maxWidthCellSize = Math.floor((screenWidth - 32) / gridWidth);
-  const CELL_SIZE = Math.max(24, maxWidthCellSize);
+  const maxHeightCellSize = Math.floor((screenHeight - 300) / 20); // Similar constraint as GameGrid
+  const CELL_SIZE = Math.max(24, Math.min(maxWidthCellSize, maxHeightCellSize));
 
   const previewWidth = gridWidth * CELL_SIZE;
 
@@ -47,15 +48,25 @@ export default function GamePreview({ nextAnimals, gridWidth = 10 }) {
         {nextAnimals.map(animal => (
           <View
             key={animal.id}
-            style={[
-              styles.animal,
-              {
-                left: animal.x * CELL_SIZE,
-                width: animal.size * CELL_SIZE,
-              },
-            ]}
+            style={{
+              position: 'absolute',
+              height: CELL_SIZE,
+              top: 0,
+              justifyContent: 'center',
+              alignItems: 'center',
+              backgroundColor: '#2255dd',
+              borderWidth: 1,
+              borderColor: '#4da6ff',
+              borderRadius: 2,
+              left: animal.x * CELL_SIZE,
+              width: animal.size * CELL_SIZE,
+            }}
           >
-            <Text style={[styles.emoji, { fontSize: CELL_SIZE - 4 }]}>
+            <Text style={{
+              fontWeight: 'bold',
+              fontSize: CELL_SIZE - 4,
+              textAlign: 'center',
+            }}>
               {ANIMAL_EMOJIS[animal.type]}
             </Text>
           </View>
@@ -83,21 +94,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f1a2e',
     borderWidth: 0,
     overflow: 'hidden',
-  },
-  animal: {
-    position: 'absolute',
-    height: CELL_SIZE,
-    top: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#2255dd',
-    borderWidth: 1,
-    borderColor: '#4da6ff',
-    borderRadius: 2,
-  },
-  emoji: {
-    fontWeight: 'bold',
-    fontSize: CELL_SIZE - 6,
-    textAlign: 'center',
   },
 });
