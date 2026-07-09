@@ -184,8 +184,11 @@ export function useGameStore(config = null, resumeSession = null) {
       if (filledRows.length > 0) {
         const onChainClearComplete = () => {
           // Step 9 & 10: Game over check, turn increment, and next animals generation
+          console.log(`🔄 Turn increment (chain clear): ${turn} → ${turn + 1}`);
           setTurn(prev => prev + 1);
-          setNextAnimals(generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
+          const newNextAnimals = generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []);
+          console.log(`📋 Updated nextAnimals (chain):`, newNextAnimals.map(a => `#${a.id}(${a.type})`).join(', '));
+          setNextAnimals(newNextAnimals);
 
           if (onMoveComplete) onMoveComplete();
         };
@@ -261,8 +264,11 @@ export function useGameStore(config = null, resumeSession = null) {
           }
           return current;
         });
+        console.log(`🔄 Turn increment (no clearing): ${turn} → ${turn + 1}`);
         setTurn(prev => prev + 1);
-        setNextAnimals(generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
+        const newNextAnimals = generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []);
+        console.log(`📋 Updated nextAnimals:`, newNextAnimals.map(a => `#${a.id}(${a.type})`).join(', '));
+        setNextAnimals(newNextAnimals);
 
         if (onMoveComplete) onMoveComplete();
       }
