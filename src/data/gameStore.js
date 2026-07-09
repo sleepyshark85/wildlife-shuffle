@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   generateAnimal,
   generateAnimalsForTurn,
@@ -33,13 +33,24 @@ export function useGameStore(config = null) {
     generateAnimalsForTurn(1, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, [])
   );
   const [clearingRows, setClearingRows] = useState([]);
+  const clearingTimeoutRef = useRef(null);
 
   const executeChainClear = useCallback((animals) => {
     const filledRows = getFilledRows(animals, gameConfig.gridWidth, gameConfig.gridHeight);
+    console.log('🔍 Chain clear checking:', filledRows, 'animals:', animals.length);
     if (filledRows.length === 0) return;
 
+    console.log('🟡 Chain clearing rows:', filledRows);
+
+    // Clear any existing timeout
+    if (clearingTimeoutRef.current) clearTimeout(clearingTimeoutRef.current);
+
+    // Show clearing effect first
     setClearingRows(filledRows);
-    setTimeout(() => {
+
+    // After delay, clear and remove animals
+    clearingTimeoutRef.current = setTimeout(() => {
+      setClearingRows([]);
       setAnimals(current => {
         const { animals: cleared } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
         const afterGravity = applyGravity(cleared);
@@ -49,14 +60,11 @@ export function useGameStore(config = null) {
         if (nextFilledRows.length > 0) {
           // Chain clear - recursively clear more rows
           executeChainClear(afterGravity);
-        } else {
-          // No more rows to clear
-          setClearingRows([]);
         }
 
         return afterGravity;
       });
-    }, 1200);
+    }, 1000);
   }, [gameConfig.gridWidth, gameConfig.gridHeight]);
 
   const executeTurnSequence = useCallback(() => {
@@ -80,12 +88,71 @@ export function useGameStore(config = null) {
           });
         });
 
-        let updated = [...validNextAnimals, ...prevAnimals];
+        // Build occupied columns map from existing animals at y=0
+        let occupiedCols = new Array(gameConfig.gridWidth).fill(false);
+        prevAnimals.forEach(animal => {
+          if (animal.y === 0) {
+            for (let col = animal.x; col < animal.x + animal.size; col++) {
+              occupiedCols[col] = true;
+            }
+          }
+        });
+
+        // Regenerate any animals that would overlap with existing ones at y=0
+        const regeneratedAnimals = [];
+        for (const newAnimal of nextAnimals) {
+          // Find available positions for this animal
+          const availablePositions = [];
+          for (let col = 0; col <= gameConfig.gridWidth - newAnimal.size; col++) {
+            let canPlace = true;
+            for (let c = Math.max(0, col - 1); c < Math.min(gameConfig.gridWidth, col + newAnimal.size + 1); c++) {
+              if (occupiedCols[c]) {
+                canPlace = false;
+                break;
+              }
+            }
+            if (canPlace) {
+              availablePositions.push(col);
+            }
+          }
+
+          // If no position available, skip this animal
+          if (availablePositions.length === 0) {
+            continue;
+          }
+
+          // Pick a random available position
+          const newX = availablePositions[Math.floor(Math.random() * availablePositions.length)];
+
+          // Create updated animal with new position
+          const repositioned = { ...newAnimal, x: newX };
+          regeneratedAnimals.push(repositioned);
+
+          // Mark columns as occupied for next animal
+          for (let col = newX; col < newX + newAnimal.size; col++) {
+            occupiedCols[col] = true;
+          }
+        }
+
+        let updated = [...regeneratedAnimals, ...prevAnimals];
         // Step 3: Gravity is applied
         updated = applyGravity(updated);
 
         // Step 4 & 5: Row clearing with chain clear support
-        executeChainClear(updated);
+        const filledRows = getFilledRows(updated, gameConfig.gridWidth, gameConfig.gridHeight);
+        console.log('🔍 Checking for filled rows:', filledRows, 'Total animals:', updated.length);
+        if (filledRows.length > 0) {
+          console.log('🟡 Rows to clear:', filledRows);
+          setClearingRows(filledRows);
+
+          // Clear rows after a short delay
+          setTimeout(() => {
+            setClearingRows([]);
+            executeChainClear(updated);
+          }, 500);
+        } else {
+          executeChainClear(updated);
+        }
 
         return updated;
       });

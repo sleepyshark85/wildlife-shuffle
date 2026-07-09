@@ -45,72 +45,66 @@ export function generateAnimal(turn) {
 export function generateAnimalsForTurn(turn, animalsPerTurn, width = GRID_WIDTH, existingAnimals = []) {
   const count = Math.ceil(animalsPerTurn);
   const animals = [];
-  let buffaloAdded = false; // Track if we've already added a buffalo
+
+  // Create occupied column map including existing animals at y=0
+  let occupiedColumns = new Array(width).fill(false);
+  existingAnimals.forEach(animal => {
+    if (animal.y === 0) {
+      for (let col = animal.x; col < animal.x + animal.size; col++) {
+        occupiedColumns[col] = true;
+      }
+    }
+  });
+
+  let buffaloAdded = false;
 
   for (let i = 0; i < count; i++) {
-    let attempts = 0;
-    let animal = generateAnimal(turn);
+    // Generate animal type (buffalo only once per 10 turns)
+    let type = (turn > 0 && turn % 10 === 0 && !buffaloAdded) ? 'buffalo' : getRandomAnimalType();
+    const size = ANIMAL_TYPES[type].size;
 
-    // Keep regenerating until we find a non-overlapping animal that fits
-    while (attempts < 10) {
-      // If this animal is a buffalo and we already have one, force a non-buffalo type
-      if (animal.type === 'buffalo' && buffaloAdded) {
-        // Explicitly create a non-buffalo animal
-        const types = Object.keys(ANIMAL_TYPES).filter(t => t !== 'buffalo');
-        const type = types[Math.floor(Math.random() * types.length)];
-        const size = ANIMAL_TYPES[type].size;
-        const x = getRandomColumn(size);
-        animal = {
-          id: nextId++,
-          type,
-          x,
-          y: 0,
-          size,
-        };
-        attempts++;
-        continue;
+    // Find available gaps in the grid with buffer spacing
+    const availablePositions = [];
+    for (let col = 0; col <= width - size; col++) {
+      // Check if space is available with buffer of 1 column on each side
+      let canPlace = true;
+      for (let c = Math.max(0, col - 1); c < Math.min(width, col + size + 1); c++) {
+        if (occupiedColumns[c]) {
+          canPlace = false;
+          break;
+        }
       }
-
-      // Check if animal fits within bounds
-      const fitsInBounds = animal.x >= 0 && animal.x + animal.size <= width;
-
-      // Check if it overlaps with other animals in this batch
-      const overlapsInBatch = animals.some(other => {
-        const newStart = animal.x;
-        const newEnd = animal.x + animal.size;
-        const otherStart = other.x;
-        const otherEnd = other.x + other.size;
-        return !(newEnd <= otherStart || newStart >= otherEnd);
-      });
-
-      // Check if it overlaps with existing animals at y=0
-      const overlapsExisting = existingAnimals.some(other => {
-        if (other.y !== 0) return false; // Only check animals at spawn row
-        const newStart = animal.x;
-        const newEnd = animal.x + animal.size;
-        const otherStart = other.x;
-        const otherEnd = other.x + other.size;
-        return !(newEnd <= otherStart || newStart >= otherEnd);
-      });
-
-      const overlaps = !fitsInBounds || overlapsInBatch || overlapsExisting;
-
-      if (!overlaps) {
-        // Valid animal found
-        break;
+      if (canPlace) {
+        availablePositions.push(col);
       }
-
-      // Regenerate with same turn (for consistent behavior)
-      animal = generateAnimal(turn);
-      attempts++;
     }
 
-    // Only add if we found a valid position, otherwise skip
-    if (animal.x >= 0 && animal.x + animal.size <= width) {
-      animals.push(animal);
-      if (animal.type === 'buffalo') {
-        buffaloAdded = true;
-      }
+    // If no space available, skip this animal
+    if (availablePositions.length === 0) {
+      continue;
+    }
+
+    // Randomly pick from available positions
+    const x = availablePositions[Math.floor(Math.random() * availablePositions.length)];
+
+    // Create and add animal
+    const animal = {
+      id: nextId++,
+      type,
+      x,
+      y: 0,
+      size,
+    };
+
+    animals.push(animal);
+
+    // Mark columns as occupied
+    for (let col = animal.x; col < animal.x + animal.size; col++) {
+      occupiedColumns[col] = true;
+    }
+
+    if (animal.type === 'buffalo') {
+      buffaloAdded = true;
     }
   }
 
