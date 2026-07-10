@@ -6,8 +6,8 @@ export const DIFFICULTY_LEVELS = {
 };
 
 export const DEFAULT_CONFIG = {
-  gridWidth: 10,
-  gridHeight: 20,
+  gridWidth: 9,
+  gridHeight: 15,
   difficulty: 'normal',
 };
 

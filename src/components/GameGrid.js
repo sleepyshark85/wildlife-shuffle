@@ -1,6 +1,11 @@
-import React, { useState, useRef } from 'react';
-import { View, StyleSheet, PanResponder, useWindowDimensions } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, StyleSheet, PanResponder, useWindowDimensions, LayoutAnimation, UIManager, Platform } from 'react-native';
 import Animal from './Animal';
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const BASE_CELL_SIZE = 32;
 
@@ -24,6 +29,15 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
   const maxHeightCellSize = Math.floor((screenHeight - 300) / gridHeight); // 300 for header, preview, etc.
   const CELL_SIZE = Math.max(24, Math.min(maxWidthCellSize, maxHeightCellSize));
 
+  // Smooth animation when animals change positions
+  useEffect(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.create(
+      200, // duration
+      LayoutAnimation.Types.easeInEaseOut,
+      LayoutAnimation.Properties.opacity
+    ));
+  }, [animals.length]);
+
   const createPanResponder = (animalId) => {
     return PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -39,7 +53,30 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
         const currentX = evt.nativeEvent.pageX;
         const dragDelta = currentX - dragStartXRef.current;
         const cellsToMove = Math.round(dragDelta / CELL_SIZE);
-        const previewX = Math.max(0, Math.min(gridWidth - animal.size, animal.x + cellsToMove));
+        let previewX = animal.x + cellsToMove;
+
+        // Constrain to grid boundaries first
+        previewX = Math.max(0, Math.min(gridWidth - animal.size, previewX));
+
+        // Find the maximum right position (limited by animals to the right)
+        let maxRightX = gridWidth - animal.size;
+        const otherAnimalsOnRow = animals.filter(a => a.y === animal.y && a.id !== animalId);
+        for (const other of otherAnimalsOnRow) {
+          if (other.x > animal.x) { // Other animal is to the right
+            maxRightX = Math.min(maxRightX, other.x - animal.size);
+          }
+        }
+
+        // Find the minimum left position (limited by animals to the left)
+        let minLeftX = 0;
+        for (const other of otherAnimalsOnRow) {
+          if (other.x < animal.x) { // Other animal is to the left
+            minLeftX = Math.max(minLeftX, other.x + other.size);
+          }
+        }
+
+        // Constrain previewX to not go past any blocking animals
+        previewX = Math.max(minLeftX, Math.min(maxRightX, previewX));
 
         setDragPreview({ animalId, previewX });
       },

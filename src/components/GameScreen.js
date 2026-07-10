@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, SafeAreaView, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, SafeAreaView, useWindowDimensions, Modal, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import GameGrid from './GameGrid';
 import GamePreview from './GamePreview';
@@ -13,6 +13,8 @@ export default function GameScreen({ config, onBackToSettings }) {
   const [resumeSession, setResumeSession] = useState(null);
   const [showStats, setShowStats] = useState(false);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [initialTurn, setInitialTurn] = useState(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   // Load saved session from AsyncStorage on mount
   useEffect(() => {
@@ -41,10 +43,33 @@ export default function GameScreen({ config, onBackToSettings }) {
   const [waitingForPlayer, setWaitingForPlayer] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
-  // Game starts with initial animals, no auto-sequence yet
+  // Track initial turn to detect if player has made moves
   useEffect(() => {
-    setInitialized(true);
+    if (initialTurn === null) {
+      setInitialTurn(store.turn);
+    }
   }, []);
+
+  // Save game session every second during gameplay
+  useEffect(() => {
+    const saveInterval = setInterval(async () => {
+      if (!store.gameOver) {
+        try {
+          await AsyncStorage.setItem('wildlife-shuffle-current-session', JSON.stringify({
+            animals: store.animals,
+            turn: store.turn,
+            score: store.score,
+            nextAnimals: store.nextAnimals,
+            config: store.config,
+          }));
+        } catch (error) {
+          console.error('Error saving session:', error);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(saveInterval);
+  }, [store]);
 
   // Log animal positions
   useEffect(() => {
@@ -63,15 +88,43 @@ export default function GameScreen({ config, onBackToSettings }) {
     store.moveSelectedAnimal(animalId, newX, onMoveComplete);
   };
 
-  const handleReset = async () => {
-    try {
-      // Clear saved session when starting a new game
-      await AsyncStorage.removeItem('wildlife-shuffle-current-session');
-    } catch (error) {
-      console.error('Error clearing saved session:', error);
+  const handleNewGame = () => {
+    const hasMovedBefore = initialTurn !== null && store.turn > initialTurn;
+
+    if (hasMovedBefore) {
+      setShowConfirmation(true);
+    } else {
+      // Clear saved session in the background (non-blocking)
+      AsyncStorage.removeItem('wildlife-shuffle-current-session').catch(error => {
+        console.error('Error clearing session:', error);
+      });
+      onBackToSettings();
     }
+  };
+
+  const handleConfirmNewGame = () => {
+    // Clear saved session in the background (non-blocking)
+    AsyncStorage.removeItem('wildlife-shuffle-current-session').catch(error => {
+      console.error('Error clearing session:', error);
+    });
+    setShowConfirmation(false);
+    // Reset the game immediately instead of going back to settings
     store.resetGame();
+    setInitialTurn(0);
     setWaitingForPlayer(true);
+  };
+
+  const handleCancelNewGame = () => {
+    setShowConfirmation(false);
+  };
+
+  const handleReset = () => {
+    // Clear saved session in the background (non-blocking)
+    AsyncStorage.removeItem('wildlife-shuffle-current-session').catch(error => {
+      console.error('Error clearing saved session:', error);
+    });
+    // Go back to settings immediately
+    onBackToSettings();
   };
 
   if (store.gameOver) {
@@ -101,8 +154,8 @@ export default function GameScreen({ config, onBackToSettings }) {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Pressable style={styles.settingsButton} onPress={onBackToSettings}>
-            <Text style={styles.settingsButtonText}>⚙️ Settings</Text>
+          <Pressable style={styles.settingsButton} onPress={handleNewGame}>
+            <Text style={styles.settingsButtonText}>🆕 New Game</Text>
           </Pressable>
           <View style={styles.titleContainer}>
             <Text style={styles.title}>Wildlife Shuffle</Text>
@@ -137,6 +190,31 @@ export default function GameScreen({ config, onBackToSettings }) {
           sessionHistory={store.sessionHistory}
           onClose={() => setShowStats(false)}
         />
+      )}
+
+      {showConfirmation && (
+        <View style={styles.confirmationOverlay}>
+          <View style={styles.confirmationModal}>
+            <Text style={styles.confirmationTitle}>Start New Game?</Text>
+            <Text style={styles.confirmationMessage}>
+              Are you sure you want to start a new game? Your current progress will be lost.
+            </Text>
+            <View style={styles.confirmationButtons}>
+              <Pressable
+                style={[styles.confirmationButton, styles.cancelButton]}
+                onPress={handleCancelNewGame}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.confirmationButton, styles.confirmButton]}
+                onPress={handleConfirmNewGame}
+              >
+                <Text style={styles.confirmButtonText}>New Game</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       )}
 
     </SafeAreaView>
@@ -282,5 +360,68 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  confirmationOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmationModal: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '80%',
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  confirmationTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f3460',
+    marginBottom: 12,
+  },
+  confirmationMessage: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  confirmationButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmationButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f0f0f0',
+    borderWidth: 2,
+    borderColor: '#ddd',
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  confirmButton: {
+    backgroundColor: '#e74c3c',
+  },
+  confirmButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
   },
 });

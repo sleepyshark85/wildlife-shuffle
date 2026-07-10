@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 
 const CELL_SIZE = 32;
 
@@ -7,6 +7,37 @@ export default function Animal({ animal, x, y, cellSize = CELL_SIZE, isDragging,
   const width = animal.size * cellSize;
   const [isDropping, setIsDropping] = useState(false);
   const [prevY, setPrevY] = useState(y);
+
+  // Animated values for smooth position transitions
+  const animatedTop = useRef(new Animated.Value(y * cellSize)).current;
+  const animatedLeft = useRef(new Animated.Value(x * cellSize)).current;
+  const animatedOpacity = useRef(new Animated.Value(1)).current;
+
+  // Animate position changes
+  useEffect(() => {
+    const topValue = y * cellSize;
+    const leftValue = x * cellSize;
+
+    if (isDragging) {
+      // Instant update while dragging
+      animatedTop.setValue(topValue);
+      animatedLeft.setValue(leftValue);
+    } else {
+      // Smooth animation when not dragging
+      Animated.parallel([
+        Animated.timing(animatedTop, {
+          toValue: topValue,
+          duration: 150,
+          useNativeDriver: false,
+        }),
+        Animated.timing(animatedLeft, {
+          toValue: leftValue,
+          duration: 150,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }
+  }, [y, x, isDragging, animatedTop, animatedLeft, cellSize]);
 
   // Detect when animal drops and trigger animation
   useEffect(() => {
@@ -18,6 +49,18 @@ export default function Animal({ animal, x, y, cellSize = CELL_SIZE, isDragging,
     setPrevY(y);
   }, [y, isDragging]);
 
+  // Fade in new animals
+  useEffect(() => {
+    if (animal.id > 20) { // New animals have higher IDs
+      animatedOpacity.setValue(0.3);
+      Animated.timing(animatedOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, []);
+
   // Buffalo styling - more dangerous looking
   const isBuffalo = animal.type === 'buffalo';
   const baseColor = isBuffalo ? '#e74c3c' : '#2255dd';
@@ -27,14 +70,14 @@ export default function Animal({ animal, x, y, cellSize = CELL_SIZE, isDragging,
   const shadowColor = isBuffalo ? '#e74c3c' : '#2255dd';
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.animal,
         isDropping && styles.dropping,
         isBuffalo && styles.buffaloContainer,
         {
-          left: x * cellSize,
-          top: y * cellSize,
+          left: animatedLeft,
+          top: animatedTop,
           width,
           height: cellSize,
           backgroundColor: isDragging ? dragColor : baseColor,
@@ -45,12 +88,13 @@ export default function Animal({ animal, x, y, cellSize = CELL_SIZE, isDragging,
           shadowOpacity: isBuffalo ? 0.4 : 0,
           shadowRadius: isBuffalo ? 6 : 0,
           elevation: isBuffalo ? 8 : 0,
+          opacity: animatedOpacity,
         },
       ]}
       {...panHandlers}
     >
       <Text style={[styles.emoji, { fontSize: cellSize - 4, fontWeight: isBuffalo ? '900' : 'bold' }]}>{emoji}</Text>
-    </View>
+    </Animated.View>
   );
 }
 

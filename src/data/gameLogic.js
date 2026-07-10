@@ -8,8 +8,8 @@ export function setGridDimensions(width, height) {
 }
 
 const ANIMAL_TYPES = {
-  elephant: { size: 5, emoji: '🐘' },
-  buffalo: { size: 4, emoji: '🐃' },
+  elephant: { size: 4, emoji: '🐘' },
+  buffalo: { size: 5, emoji: '🐃' },
   elk: { size: 3, emoji: '🦌' },
   fox: { size: 2, emoji: '🦊' },
   rat: { size: 1, emoji: '🐀' },
