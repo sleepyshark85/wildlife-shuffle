@@ -17,8 +17,34 @@ const ANIMAL_TYPES = {
 
 let nextId = 1;
 
-function getRandomAnimalType() {
+function getRandomAnimalType(existingAnimals = []) {
   const types = Object.keys(ANIMAL_TYPES).filter(type => type !== 'buffalo');
+
+  // Calculate ratio of big animals (size >= 3) to total animals
+  const bigAnimals = existingAnimals.filter(a => a.size >= 3).length;
+  const totalAnimals = existingAnimals.length;
+
+  if (totalAnimals === 0) {
+    // Start with natural distribution
+    return types[Math.floor(Math.random() * types.length)];
+  }
+
+  const bigRatio = bigAnimals / totalAnimals;
+
+  // If > 50% of animals are big, heavily favor small animals
+  if (bigRatio > 0.5) {
+    return Math.random() < 0.8 ? 'rat' : 'fox'; // 80% rats, 20% foxes
+  }
+
+  // If > 35% are big, moderately favor small animals
+  if (bigRatio > 0.35) {
+    const rand = Math.random();
+    if (rand < 0.5) return 'rat';      // 50% rats
+    if (rand < 0.8) return 'fox';      // 30% foxes
+    return Math.random() < 0.5 ? 'elephant' : 'elk'; // 20% other (elephant/elk)
+  }
+
+  // Normal distribution
   return types[Math.floor(Math.random() * types.length)];
 }
 
@@ -27,9 +53,9 @@ function getRandomColumn(size) {
   return Math.floor(Math.random() * (maxStart + 1));
 }
 
-export function generateAnimal(turn) {
+export function generateAnimal(turn, existingAnimals = []) {
   // Buffalo appears every 10 turns, but NOT at turn 0
-  const type = (turn > 0 && turn % 10 === 0) ? 'buffalo' : getRandomAnimalType();
+  const type = (turn > 0 && turn % 10 === 0) ? 'buffalo' : getRandomAnimalType(existingAnimals);
   const size = ANIMAL_TYPES[type].size;
   const x = getRandomColumn(size);
 
@@ -60,7 +86,7 @@ export function generateAnimalsForTurn(turn, animalsPerTurn, width = GRID_WIDTH,
 
   for (let i = 0; i < count; i++) {
     // Generate animal type (buffalo only once per 10 turns)
-    let type = (turn > 0 && turn % 10 === 0 && !buffaloAdded) ? 'buffalo' : getRandomAnimalType();
+    let type = (turn > 0 && turn % 10 === 0 && !buffaloAdded) ? 'buffalo' : getRandomAnimalType(existingAnimals);
     const size = ANIMAL_TYPES[type].size;
 
     // Find available gaps in the grid with buffer spacing

@@ -29,14 +29,15 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
   const maxHeightCellSize = Math.floor((screenHeight - 300) / gridHeight); // 300 for header, preview, etc.
   const CELL_SIZE = Math.max(24, Math.min(maxWidthCellSize, maxHeightCellSize));
 
-  // Smooth animation when animals change positions
+  // Drop animation when gravity is applied
   useEffect(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.create(
-      200, // duration
-      LayoutAnimation.Types.easeInEaseOut,
-      LayoutAnimation.Properties.opacity
-    ));
-  }, [animals.length]);
+    LayoutAnimation.configureNext({
+      duration: 500,
+      create: { type: LayoutAnimation.Types.spring, property: LayoutAnimation.Properties.opacity, springDamping: 0.7 },
+      update: { type: LayoutAnimation.Types.spring, springDamping: 0.7 },
+      delete: { type: LayoutAnimation.Types.spring, property: LayoutAnimation.Properties.opacity, springDamping: 0.7 },
+    });
+  }, [animals]);
 
   const createPanResponder = (animalId) => {
     return PanResponder.create({
@@ -107,7 +108,6 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
   const backgroundCells = [];
   for (let y = 0; y < gridHeight; y++) {
     for (let x = 0; x < gridWidth; x++) {
-      const isClearing = clearingRows.includes(y);
       const visualY = (gridHeight - 1 - y) * CELL_SIZE;
       backgroundCells.push(
         <View
@@ -119,7 +119,7 @@ export default function GameGrid({ animals, clearingRows, onMoveAnimal, gridWidt
             borderWidth: 0.5,
             left: x * CELL_SIZE,
             top: visualY,
-            backgroundColor: isClearing ? '#FF6600' : '#1e3a52',
+            backgroundColor: '#1e3a52',
             borderColor: '#5a8ace',
           }}
         />

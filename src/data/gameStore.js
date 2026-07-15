@@ -81,50 +81,62 @@ export function useGameStore(config = null, resumeSession = null) {
     }
   }, [animals, turn, score, nextAnimals, gameOver, gameConfig]);
 
-  const executeChainClear = useCallback((animals) => {
-    const filledRows = getFilledRows(animals, gameConfig.gridWidth, gameConfig.gridHeight);
-    console.log('🔍 Chain clear checking:', filledRows, 'animals:', animals.length);
-    if (filledRows.length === 0) return;
+  const executeClearingLoop = useCallback((startingAnimals, onComplete) => {
+    let current = startingAnimals;
+    let totalPoints = 0;
+    let comboCount = 0;
 
-    console.log('🟡 Chain clearing rows:', filledRows);
+    const doClear = () => {
+      const filledRows = getFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
+      console.log('🔍 Checking for filled rows:', filledRows, 'animals:', current.length);
 
-    // Clear any existing timeout
-    if (clearingTimeoutRef.current) clearTimeout(clearingTimeoutRef.current);
+      if (filledRows.length === 0) {
+        // No more rows to clear, loop complete
+        console.log('✅ Clearing loop complete, total points:', totalPoints, 'combo count:', comboCount);
+        setClearingRows([]);
+        setAnimals(current);
+        if (onComplete) onComplete(current, totalPoints);
+        return;
+      }
 
-    // Show clearing effect first
-    setClearingRows(filledRows);
+      console.log('🟡 Clearing rows:', filledRows);
+      setClearingRows(filledRows);
 
-    // After delay, clear and remove animals
-    clearingTimeoutRef.current = setTimeout(() => {
-      setClearingRows([]);
-      setAnimals(current => {
+      setTimeout(() => {
         const { animals: cleared, clearedRows } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
         const afterGravity = applyGravity(cleared);
 
-        // Calculate points from cleared animals
+        // Update React state immediately so UI stays in sync
+        setAnimals(afterGravity);
+
+        // Calculate points from cleared animals with combo multiplier
         if (clearedRows.length > 0) {
+          comboCount++;
+          const comboMultiplier = Math.pow(1.5, comboCount - 1); // 1.0x, 1.5x, 2.25x, 3.375x, ...
+
           const clearedAnimals = current.filter(a => clearedRows.includes(a.y) && !cleared.find(c => c.id === a.id));
-          const points = calculateClearPoints(clearedAnimals);
-          setScore(prev => prev + points);
+          const basePoints = calculateClearPoints(clearedAnimals);
+          const comboPoints = Math.floor(basePoints * comboMultiplier);
+
+          totalPoints += comboPoints;
+          setScore(prev => prev + comboPoints);
+
+          console.log(`🎯 Combo #${comboCount}: ${basePoints} × ${comboMultiplier.toFixed(2)} = ${comboPoints} points`);
           playSound('clear');
         }
 
-        // Check if more rows are filled for chain clearing
-        const nextFilledRows = getFilledRows(afterGravity, gameConfig.gridWidth, gameConfig.gridHeight);
-        if (nextFilledRows.length > 0) {
-          // Chain clear - recursively clear more rows
-          executeChainClear(afterGravity);
-        }
+        current = afterGravity;
+        // Continue loop by checking for more filled rows
+        doClear();
+      }, 1000);
+    };
 
-        return afterGravity;
-      });
-    }, 1000);
-  }, [gameConfig.gridWidth, gameConfig.gridHeight]);
+    doClear();
+  }, [gameConfig.gridWidth, gameConfig.gridHeight, playSound]);
 
   const executeTurnSequence = useCallback((nextAnimalsParam) => {
     console.log(`🚀 executeTurnSequence called with param:`, nextAnimalsParam?.map(a => `#${a.id}(${a.type})`).join(', '));
 
-    // All state updates in ONE setAnimals call (not batched separately)
     setAnimals(prevAnimals => {
       // Step 1: Grid advancement - all rows shift upward by 1
       let updated = advanceGrid(prevAnimals);
@@ -136,7 +148,7 @@ export function useGameStore(config = null, resumeSession = null) {
       // Filter out new animals that would overlap with existing animals at y=0
       const filteredNextAnimals = animalsToAdd.filter(newAnimal => {
         const hasOverlap = updated.some(existing => {
-          if (existing.y !== 0) return false; // Only check animals at spawn row
+          if (existing.y !== 0) return false;
           const newStart = newAnimal.x;
           const newEnd = newAnimal.x + newAnimal.size;
           const existingStart = existing.x;
@@ -152,150 +164,54 @@ export function useGameStore(config = null, resumeSession = null) {
 
       updated = [...filteredNextAnimals, ...updated];
 
-      // Step 3: Gravity is applied
+      // Step 3: Apply gravity
       updated = applyGravity(updated);
 
-      // Step 4 & 5: Row clearing with chain clear support
-      const filledRows = getFilledRows(updated, gameConfig.gridWidth, gameConfig.gridHeight);
-      console.log('🔍 Checking for filled rows:', filledRows, 'Total animals:', updated.length);
-      if (filledRows.length > 0) {
-        console.log('🟡 Rows to clear:', filledRows);
-        setClearingRows(filledRows);
-
-        // Clear rows after a short delay
-        setTimeout(() => {
-          setClearingRows([]);
-          executeChainClear(updated);
-        }, 500);
-      } else {
-        executeChainClear(updated);
-      }
+      // Step 4 & 5: Loop until no rows can be cleared
+      executeClearingLoop(updated, (clearedAnimals) => {
+        // Game over check happens after clearing loop
+        if (checkGameOver(clearedAnimals)) {
+          setGameOver(true);
+        }
+      });
 
       return updated;
     });
-  }, [turn, nextAnimals, executeChainClear]);
+  }, [turn, nextAnimals, executeClearingLoop]);
 
   const moveSelectedAnimal = useCallback((animalId, newX, onMoveComplete) => {
     if (!canMoveAnimal(animals, animalId, newX)) {
       return;
     }
 
-    setAnimals(prev => {
-      // Step 6: Move animal
-      let updated = moveAnimal(prev, animalId, newX);
+    // Step 1: Move animal
+    let updated = moveAnimal(animals, animalId, newX);
 
-      // Step 7: Gravity is applied after player move
-      updated = applyGravity(updated);
+    // Step 2: Apply gravity
+    updated = applyGravity(updated);
 
-      // Step 8: Row clearing after player move with chain clear support
-      let filledRows = getFilledRows(updated, gameConfig.gridWidth, gameConfig.gridHeight);
-      if (filledRows.length > 0) {
-        const onChainClearComplete = () => {
-          // Save current preview animals BEFORE generating new ones
-          const currentPreviewAnimals = nextAnimals;
+    // Step 3-5: Loop until no rows can be cleared
+    const currentPreviewAnimals = nextAnimals;
+    executeClearingLoop(updated, (clearedAnimals) => {
+      // After clearing loop completes
+      setAnimals(clearedAnimals);
 
-          // Step 9 & 10: Game over check, turn increment, and next animals generation
-          console.log(`🔄 Turn increment (chain clear): ${turn} → ${turn + 1}`);
-          setTurn(prev => prev + 1);
-          const newNextAnimals = generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []);
-          console.log(`📋 Updated nextAnimals (chain):`, newNextAnimals.map(a => `#${a.id}(${a.type})`).join(', '));
-          setNextAnimals(newNextAnimals);
-
-          if (onMoveComplete) onMoveComplete(currentPreviewAnimals);  // Pass CURRENT preview animals, not new ones
-        };
-
-        setClearingRows(filledRows);
-        setTimeout(() => {
-          setAnimals(current => {
-            const { animals: cleared, clearedRows } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
-            const afterGravity = applyGravity(cleared);
-
-            // Calculate points from cleared animals
-            if (clearedRows.length > 0) {
-              const clearedAnimals = current.filter(a => clearedRows.includes(a.y) && !cleared.find(c => c.id === a.id));
-              const points = calculateClearPoints(clearedAnimals);
-              setScore(prev => prev + points);
-              playSound('clear');
-            }
-
-            // Check if more rows are filled for chain clearing
-            const nextFilledRows = getFilledRows(afterGravity, gameConfig.gridWidth, gameConfig.gridHeight);
-            if (nextFilledRows.length > 0) {
-              // Chain clear - show next clearing animation
-              setClearingRows(nextFilledRows);
-              setTimeout(() => {
-                setAnimals(chainCurrent => {
-                  const { animals: chainCleared, clearedRows: chainClearedRows } = clearFilledRows(chainCurrent, gameConfig.gridWidth, gameConfig.gridHeight);
-                  const chainAfterGravity = applyGravity(chainCleared);
-
-                  // Calculate points from chain cleared animals
-                  if (chainClearedRows.length > 0) {
-                    const chainClearedAnimals = chainCurrent.filter(a => chainClearedRows.includes(a.y) && !chainCleared.find(c => c.id === a.id));
-                    const points = calculateClearPoints(chainClearedAnimals);
-                    setScore(prev => prev + points);
-                    playSound('clear');
-                  }
-
-                  // Recursively check for more chain clears
-                  const moreFilledRows = getFilledRows(chainAfterGravity, gameConfig.gridWidth, gameConfig.gridHeight);
-                  if (moreFilledRows.length === 0) {
-                    setClearingRows([]);
-                    // Check game over and complete turn
-                    setAnimals(current => {
-                      if (checkGameOver(current)) {
-                        setGameOver(true);
-                      }
-                      return current;
-                    });
-                    // Delay onChainClearComplete to ensure state updates complete before next turn
-                    setTimeout(() => {
-                      onChainClearComplete();
-                    }, 50);
-                  }
-                  return chainAfterGravity;
-                });
-              }, 1200);
-            } else {
-              setClearingRows([]);
-              // Check game over and complete turn
-              setAnimals(current => {
-                if (checkGameOver(current)) {
-                  setGameOver(true);
-                }
-                return current;
-              });
-              // Delay onChainClearComplete to ensure state updates complete before next turn
-              setTimeout(() => {
-                onChainClearComplete();
-              }, 50);
-            }
-
-            return afterGravity;
-          });
-        }, 1200);
-      } else {
-        // No clearing, continue immediately
-        setAnimals(current => {
-          if (checkGameOver(current)) {
-            setGameOver(true);
-          }
-          return current;
-        });
-        // Save current preview animals BEFORE generating new ones
-        const currentPreviewAnimals = nextAnimals;
-
-        console.log(`🔄 Turn increment (no clearing): ${turn} → ${turn + 1}`);
-        setTurn(prev => prev + 1);
-        const newNextAnimals = generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []);
-        console.log(`📋 Updated nextAnimals:`, newNextAnimals.map(a => `#${a.id}(${a.type})`).join(', '));
-        setNextAnimals(newNextAnimals);
-
-        if (onMoveComplete) onMoveComplete(currentPreviewAnimals);  // Pass CURRENT preview animals, not new ones
+      // Step 6: Check game over
+      if (checkGameOver(clearedAnimals)) {
+        setGameOver(true);
+        return;
       }
 
-      return updated;
+      // Step 7: Start new turn (increment turn and generate new animals)
+      console.log(`🔄 Turn increment: ${turn} → ${turn + 1}`);
+      setTurn(prev => prev + 1);
+      const newNextAnimals = generateAnimalsForTurn(turn + 2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []);
+      console.log(`📋 Updated nextAnimals:`, newNextAnimals.map(a => `#${a.id}(${a.type})`).join(', '));
+      setNextAnimals(newNextAnimals);
+
+      if (onMoveComplete) onMoveComplete(currentPreviewAnimals);  // Pass CURRENT preview animals
     });
-  }, [animals, turn, gameConfig.gridWidth, gameConfig.gridHeight]);
+  }, [animals, turn, nextAnimals, executeClearingLoop]);
 
   // Save game session to history when game ends
   useEffect(() => {
@@ -353,27 +269,14 @@ export function useGameStore(config = null, resumeSession = null) {
     if (turn === 0 && clearingRows.length === 0 && animals.length > 0) {
       const filledRows = getFilledRows(animals, gameConfig.gridWidth, gameConfig.gridHeight);
       if (filledRows.length > 0) {
-        // Initial animals form filled rows, clear them automatically
-        setClearingRows(filledRows);
-        setTimeout(() => {
-          setAnimals(current => {
-            const { animals: cleared } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
-            const afterGravity = applyGravity(cleared);
-
-            // Check if more rows are filled
-            const nextFilledRows = getFilledRows(afterGravity, gameConfig.gridWidth, gameConfig.gridHeight);
-            if (nextFilledRows.length === 0) {
-              setClearingRows([]);
-              setTurn(1); // Move to turn 1 after clearing
-              setNextAnimals(generateAnimalsForTurn(2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
-            }
-
-            return afterGravity;
-          });
-        }, 1200);
+        // Initial animals form filled rows, clear them using clearing loop
+        executeClearingLoop(animals, (clearedAnimals) => {
+          setTurn(1); // Move to turn 1 after clearing
+          setNextAnimals(generateAnimalsForTurn(2, DIFFICULTY_LEVELS[gameConfig.difficulty].animalsPerTurn, gameConfig.gridWidth, []));
+        });
       }
     }
-  }, [turn, animals.length, clearingRows.length, gameConfig]);
+  }, [turn, animals.length, clearingRows.length, gameConfig, executeClearingLoop]);
 
   // Save current game state for resume
   const saveSession = useCallback(async () => {
