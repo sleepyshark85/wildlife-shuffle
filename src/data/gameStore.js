@@ -100,13 +100,15 @@ export function useGameStore(config = null, resumeSession = null) {
       }
 
       console.log('🟡 Clearing rows:', filledRows);
+      // Update state with current positions before showing clearing animation
+      setAnimals(current);
       setClearingRows(filledRows);
 
       setTimeout(() => {
         const { animals: cleared, clearedRows } = clearFilledRows(current, gameConfig.gridWidth, gameConfig.gridHeight);
         const afterGravity = applyGravity(cleared);
 
-        // Update React state immediately so UI stays in sync
+        // Update React state after gravity
         setAnimals(afterGravity);
 
         // Calculate points from cleared animals with combo multiplier
