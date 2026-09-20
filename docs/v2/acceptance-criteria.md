@@ -315,6 +315,13 @@ whenever it is called, because a species only becomes a candidate once a free ru
 to hold it exists (`gameplay.md` §5.2 invariant 2). A fallback path in this function is a sign
 the invariant was broken, not a safety net.
 
+**AC-317c** Given the draw-count property, Then it is proven **exactly at `width: 40`**, and
+`width: 10` — the shipped width — is covered by a **one-sided bound**: over 72,000 batches the
+count never *exceeds* the single-pass bound. The exact equality does not hold at width 10
+because a forced placement consumes no draw when `nextInt` short-circuits a degenerate range.
+**Do not "fix" this test to run at width 10** — it will fail, and the failure is in the
+expectation, not the generator. One-sided at the shipped width is the direction that matters.
+
 **AC-318 — PACING.** Given 30 seeds per difficulty played by the deterministic greedy bot with
 perfect information, Then median turns-per-run fall in these ranges:
 
@@ -410,6 +417,11 @@ event, increments `stats.chainGuardTrips`, and stops the loop** — it does not 
 does not throw, and does not silently alter scoring. Reporting is a presentation obligation
 (AC-216, AC-1309).
 
+It **may leave the board unresolved**, with a completed row still standing — it is a crash
+guard, not a recovery path. That is acceptable precisely because it is only reachable once the
+engine is already broken, and it is why AC-504e refuses to persist such a run's score. What
+the guard must not do is alter scoring, or fail to announce itself.
+
 **AC-504e** Given a run in which `stats.chainGuardTrips > 0`, Then that run's score is **not
 written to the high-score table**. The guard means the engine was in a state the rules do not
 describe, so its score is not trustworthy enough to persist as a record.
@@ -419,9 +431,10 @@ that clears a row awards its score. There is no depth past which clearing stops 
 *(The superseded 8-step rail cleared steps 9+ without paying them: on the committed 10-step
 fixture at streak 5 it paid 7,350 of 17,100 and silently swallowed a buffalo retirement.)*
 
-**AC-504d** Given the committed 10-step fixture resolved at streak 5, Then the score awarded
-is **17,100**, `stats.rowsCleared` is 6, `stats.longestChain` is 10, and `stats.buffaloRetired`
-is 1 — with the +500 retirement visible in the score.
+**AC-504d** Given the committed 10-step fixture resolved with **`state.streak === 5` entering
+the turn** (not "the 5th consecutive clearing turn", which would score 14,250), Then the score
+awarded is **17,100**, `stats.rowsCleared` is 6, `stats.longestChain` is 10, and
+`stats.buffaloRetired` is 1 — with the +500 retirement visible in the score.
 
 **AC-505** Given two rows complete in the same step, Then both clear in that single step (not
 sequentially).
@@ -506,17 +519,26 @@ contradicted AC-606 for every pass that cleared, of which the AC-613 Perfect Cle
 only the loudest instance)*. Given the end of any turn, Then the streak is updated by the
 first matching rule:
 
-| # | Condition | Effect on the raw counter |
-|---|---|---|
-| 1 | The board is empty (Perfect Clear) | `streak = max(streak + 1, STREAK_TURNS_AT_CAP)` |
-| 2 | At least one clear step occurred, in Phase 2 **or** Phase 3 | `streak = streak + 1` |
-| 3 | Otherwise | `streak = 0` |
+| # | Condition | Multiplier | Raw counter |
+|---|---|---|---|
+| 1 | The board is empty (Perfect Clear) | jumps to its ×3.0 cap | `max(streak + 1, STREAK_TURNS_AT_CAP)` |
+| 2 | At least one clear step occurred, in Phase 2 **or** Phase 3 | per the AC-606 table | `streak + 1` |
+| 3 | Otherwise | ×1.0 | `0` |
 
-**Rule 1 is a floor on the multiplier, not an assignment to the counter.** *(The approved
-wording said "Set to the ×3.0 cap", which read literally as `streak = 6` and would have moved
-a player on a raw streak of 13 **backwards** to 6 — destroying exactly what AC-607c preserves.
-Rule 1 was written before AC-607c separated the counter from the multiplier; afterwards
-"the cap" meant two different things and rule 1 kept pointing at the wrong one.)*
+**Two columns, because they are two different things.** Every round of confusion over this
+rule came from one phrase — "set to the ×3.0 cap" — having to mean both, so the table now
+separates them structurally rather than explaining the distinction in a footnote.
+
+*(The original wording said "Set to the ×3.0 cap", which read literally as `streak = 6` and
+would have moved a player on a raw streak of 13 **backwards** to 6 — destroying exactly what
+AC-607c preserves. It was written before AC-607c separated the counter from the multiplier;
+afterwards "the cap" meant two things and rule 1 kept pointing at the wrong one.)*
+
+**The two readings are indistinguishable in play**, which is why this survived several passes:
+verified across 5,001 entering streak values, `streakMult` is identical under both, because
+both land at or above the cap index and the AC-606 table is flat from 6. They diverge **only**
+in the raw counter, and only for an entering streak ≥ 6 — which is invisible during a run and
+shows up solely in `longestStreak` on the Game Over sheet.
 
 **AC-609b** Given the player taps Pass and the resulting arrival completes a row, Then that
 turn **increments** the streak — the streak follows the board, not the input method.
@@ -594,10 +616,25 @@ that difficulty, and four run stats: turns survived, rows cleared, longest chain
 retired.
 
 **AC-706b — ONE SOURCE.** Given any run, Then every statistic on the Game Over sheet is
-derived from **the same `events[]` array the score is summed from**: `rowsCleared` is the sum
-of `n` across events, `longestChain` is the highest `step` in any event, `buffaloRetired` is
-the count of events carrying a retirement. **A statistic incremented at a second site is a
-defect even while it happens to agree with the score.**
+derived from **the same `events[]` array the score is summed from**:
+
+| statistic | derivation |
+|---|---|
+| `rowsCleared` | sum of `n` across clear events |
+| `longestChain` | highest `step` in any clear event |
+| `buffaloRetired` | count of events carrying a retirement |
+| `longestStreak` | highest `streak` across **`ADVANCE` events** |
+
+**A statistic incremented at a second site is a defect even while it happens to agree with the
+score.**
+
+**AC-706e** Given the `ADVANCE` event, Then it **carries the turn's `streak` value**. A streak
+is a turn-level fact rather than a clear-level one, so without this the stream cannot express
+it and `longestStreak` has to be folded from state — which is a second site, and re-opens
+exactly the divergence AC-706b exists to close. *(Slice 1 folded it from per-turn state; the
+value was correct in all 150 verified runs, but the stated mechanism was not. The fix is to
+make the mechanism true, not to carve out an exception: an absolute rule is what makes the
+structural guarantee hold, and one exception is all it takes to need a sync rule again.)*
 
 **AC-706c** Given any run, Then no Game Over statistic can report an event the score was not
 paid for, and none can under-report one that was. *(The defect this closes: `buffaloRetired`

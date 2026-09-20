@@ -198,7 +198,7 @@ function rngStepsBetween(before, after, max = 200) {
   return -1;
 }
 
-test('AC-317b the generator draws exactly once per decision — no re-picking', () => {
+test('AC-317b/c the generator draws exactly once per decision at width 40', () => {
   // A retry loop would have to consume extra PRNG draws, whatever it was called.
   // On a board wide enough that every placement has several valid starts, the
   // draw count of a single-pass generator is exact: one for the target, one per
@@ -223,6 +223,39 @@ test('AC-317b the generator draws exactly once per decision — no re-picking', 
     }
   }
   assert.ok(checked >= 2000, `only ${checked} batches checked`);
+});
+
+test('AC-317c at the shipped width the draw count never exceeds the single-pass bound', () => {
+  // At width 10 the equality does not hold, and must not be "fixed" to: a forced
+  // placement consumes no draw at all, because nextInt short-circuits a range
+  // whose ends are equal. One-sided is the direction that matters — a retry can
+  // only ever add draws.
+  let checked = 0;
+  let belowBound = 0;
+  for (const difficulty of Object.keys(DIFFICULTIES)) {
+    for (let seed = 0; seed < 200; seed++) {
+      let rng = makeRng(seed * 7919 + difficulty.length);
+      let nextId = 1;
+      for (let turn = 1; turn <= 120; turn++) {
+        const before = rng;
+        const out = generateBatch({ turn, difficulty, rng, nextId });
+        rng = out.rng;
+        nextId = out.nextId;
+
+        const buffalo = out.batch.filter((a) => a.type === 'buffalo').length;
+        const drawn = out.batch.length - buffalo;
+        const bound = 1 + buffalo + 2 * drawn + Math.max(0, out.batch.length - 1);
+        const actual = rngStepsBetween(before, out.rng);
+
+        assert.ok(actual >= 0, 'the draw count is recoverable');
+        assert.ok(actual <= bound, `${difficulty} turn ${turn} seed ${seed}: ${actual} > ${bound}`);
+        if (actual < bound) belowBound += 1;
+        checked += 1;
+      }
+    }
+  }
+  assert.equal(checked, 72000);
+  assert.ok(belowBound > 0, 'and the bound really is one-sided at width 10');
 });
 
 test('AC-317b the generator has no retry loop, backtracking or fallback', () => {

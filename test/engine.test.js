@@ -795,6 +795,7 @@ test('AC-706b every statistic equals the one derived from the same events', () =
         buffaloRetired: 0,
         buffaloShrinks: 0,
         perfectClears: 0,
+        longestStreak: 0,
       };
 
       for (let i = 0; i < 150 && state.status === STATUS.READY; i++) {
@@ -808,6 +809,7 @@ test('AC-706b every statistic equals the one derived from the same events', () =
         running.buffaloRetired += turn.buffaloRetired;
         running.buffaloShrinks += turn.buffaloShrinks;
         running.perfectClears += turn.perfectClears;
+        running.longestStreak = Math.max(running.longestStreak, turn.longestStreak);
 
         const where = `${difficulty}/${seed}/turn ${state.lastTurn.turn}`;
         assert.equal(state.lastTurn.score, turn.score, `${where}: turn score`);
@@ -817,6 +819,7 @@ test('AC-706b every statistic equals the one derived from the same events', () =
         assert.equal(state.stats.buffaloRetired, running.buffaloRetired, `${where}: retired`);
         assert.equal(state.stats.buffaloShrinks, running.buffaloShrinks, `${where}: shrinks`);
         assert.equal(state.stats.perfectClears, running.perfectClears, `${where}: perfect`);
+        assert.equal(state.stats.longestStreak, running.longestStreak, `${where}: longestStreak`);
       }
     }
   }
@@ -932,4 +935,75 @@ test('longestStreak records the best streak of the run, not the last', () => {
   state = reduce({ ...state, animals: [animal('rat', 0, 0)], queue: [] }, { type: ACTIONS.PASS });
   assert.equal(state.streak, 0, 'broken');
   assert.equal(runRecord(state).longestStreak, 4, 'but remembered');
+});
+
+test('AC-706e longestStreak is carried by the ADVANCE event, not folded separately', () => {
+  const base = createRun({ seed: 4 });
+  let state = base;
+  for (let i = 0; i < 4; i++) {
+    const mover = animal('rat', 8, 6);
+    state = { ...state, animals: [...rowExcept(0, [9]), mover, animal('fox', 0, 9)], queue: [] };
+    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+  }
+
+  const advance = state.lastTurn.events.find((e) => e.type === 'ADVANCE');
+  assert.ok(advance, 'every advancing turn emits an ADVANCE event');
+  assert.equal(advance.streak, state.streak, 'and it carries the settled streak');
+  assert.equal(summariseEvents(state.lastTurn.events).longestStreak, state.streak);
+  assert.equal(runRecord(state).longestStreak, 4);
+
+  // The mutation probe: remove the only event carrying the streak and the
+  // statistic goes with it. A second fold site would keep reporting 4.
+  const without = summariseEvents(state.lastTurn.events.filter((e) => e !== advance));
+  assert.equal(without.longestStreak, 0, 'longestStreak reads the stream and nothing else');
+
+  // And it tracks whatever the event says, not whatever the state says.
+  const rewritten = state.lastTurn.events.map((e) =>
+    e === advance ? { ...e, streak: 99 } : e,
+  );
+  assert.equal(summariseEvents(rewritten).longestStreak, 99);
+});
+
+test('AC-706e a game-over turn emits no ADVANCE and cannot lower longestStreak', () => {
+  const base = createRun({ seed: 4 });
+  const column = Array.from({ length: 14 }, (_, y) => animal('rat', 0, y));
+  const state = {
+    ...base,
+    streak: 7,
+    stats: { ...base.stats, longestStreak: 7 },
+    animals: column,
+    queue: [animal('rat', 0, 0)],
+  };
+
+  const over = reduce(state, { type: ACTIONS.PASS });
+  assert.equal(over.status, STATUS.GAME_OVER);
+  assert.equal(over.lastTurn.events.some((e) => e.type === 'ADVANCE'), false);
+  assert.equal(summariseEvents(over.lastTurn.events).longestStreak, 0, 'the turn contributes none');
+  assert.equal(over.stats.longestStreak, 7, 'so the run keeps the best it had');
+  assert.equal(runRecord(over).longestStreak, 7);
+});
+
+test('AC-706b/e no statistic is computed anywhere but summariseEvents', () => {
+  // Structural: every field of `stats` is the previous value folded with the
+  // corresponding field of the summary, and `stats` has no field the summary
+  // cannot supply. A statistic derived some other way would show up as a key
+  // here that summariseEvents does not produce.
+  const state = reduce(createRun({ seed: 11 }), { type: ACTIONS.PASS });
+  const summary = summariseEvents(state.lastTurn.events);
+  const statKeys = Object.keys(state.stats).sort();
+  const summaryKeys = Object.keys(summary);
+
+  for (const key of statKeys) {
+    const source = key === 'chainGuardTrips' ? 'guardTrips' : key;
+    assert.ok(summaryKeys.includes(source), `stats.${key} has no source in the event summary`);
+  }
+  assert.deepEqual(statKeys, [
+    'buffaloRetired',
+    'buffaloShrinks',
+    'chainGuardTrips',
+    'longestChain',
+    'longestStreak',
+    'perfectClears',
+    'rowsCleared',
+  ]);
 });

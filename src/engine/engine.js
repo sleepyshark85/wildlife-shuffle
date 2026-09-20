@@ -214,12 +214,62 @@ function resolveTurn(state, action) {
   const gameOver = offending.length > 0;
   events.push({ type: 'JUDGE', phase: PHASE.JUDGE, gameOver, offendingIds: offending });
 
+  // The streak rule needs two facts about this turn. They are read off the same
+  // stream by the same function; the authoritative fold happens below, once the
+  // ADVANCE event that carries the settled streak exists (AC-706e).
+  const outcome = summariseEvents(events);
+  const cleared = outcome.clearSteps > 0;
+  const perfectClear = outcome.perfectClears > 0;
+
+  // ---- PHASE 5 · ADVANCE ------------------------------------------------
+  // turn++ , settle the streak, generate Q(t+1) exactly once (AC-312).
+  //
+  // Streak precedence, first match wins (AC-609). The streak follows the board,
+  // not the input: a pass whose arrival completes a row is a clearing turn like
+  // any other, which is why there is no PASS case here.
+  //
+  // The raw counter keeps climbing past the x3.0 cap on purpose: the pill shows
+  // streakMult, the run record keeps the raw count (AC-607b/c). A Perfect Clear
+  // is also a clearing turn, so rule 1 raises the streak to at least the cap
+  // rather than knocking a longer streak back down to it.
+  let advance = null;
+  if (!gameOver) {
+    let streak;
+    if (perfectClear) streak = Math.max(state.streak + 1, STREAK_TURNS_AT_CAP);
+    else if (cleared) streak = state.streak + 1;
+    else streak = 0;
+
+    const turn = state.turn + 1;
+    const queued = generateBatch({
+      turn,
+      difficulty: state.difficulty,
+      rng: state.rng,
+      nextId: state.nextAnimalId,
+      idPrefix: state.idPrefix,
+      hasBuffaloOnBoard: Boolean(buffaloOnBoard(animals)),
+    });
+
+    events.push({
+      type: 'ADVANCE',
+      phase: PHASE.ADVANCE,
+      turn,
+      streak,
+      queue: queued.batch,
+    });
+
+    advance = {
+      turn,
+      streak,
+      rng: queued.rng,
+      nextAnimalId: queued.nextId,
+      queue: queued.batch,
+    };
+  }
+
   // ---- one source ---------------------------------------------------------
   // Score and every statistic are read back off the same events[] array
-  // (gameplay.md §7.3a, AC-706b). Nothing above this line counts anything.
+  // (gameplay.md §7.3a, AC-706b/e). Nothing above this line counts anything.
   const turnSummary = summariseEvents(events);
-  const cleared = turnSummary.clearSteps > 0;
-  const perfectClear = turnSummary.perfectClears > 0;
 
   const stats = {
     rowsCleared: state.stats.rowsCleared + turnSummary.rowsCleared,
@@ -227,7 +277,7 @@ function resolveTurn(state, action) {
     buffaloRetired: state.stats.buffaloRetired + turnSummary.buffaloRetired,
     buffaloShrinks: state.stats.buffaloShrinks + turnSummary.buffaloShrinks,
     perfectClears: state.stats.perfectClears + turnSummary.perfectClears,
-    longestStreak: state.stats.longestStreak,
+    longestStreak: Math.max(state.stats.longestStreak, turnSummary.longestStreak),
     // A tripped crash guard means the engine is broken; the run carries the flag.
     chainGuardTrips: state.stats.chainGuardTrips + turnSummary.guardTrips,
   };
@@ -257,49 +307,7 @@ function resolveTurn(state, action) {
     return { ...base, status: STATUS.GAME_OVER, queue: [] };
   }
 
-  // ---- PHASE 5 · ADVANCE ------------------------------------------------
-  // turn++ , settle the streak, generate Q(t+1) exactly once (AC-312).
-  //
-  // Streak precedence, first match wins (AC-609). The streak follows the board,
-  // not the input: a pass whose arrival completes a row is a clearing turn like
-  // any other, which is why there is no PASS case here.
-  //
-  // The raw counter keeps climbing past the x3.0 cap on purpose: the pill shows
-  // streakMult, the run record keeps the raw count (AC-607b/c). A Perfect Clear
-  // is also a clearing turn, so rule 1 raises the streak to at least the cap
-  // rather than knocking a longer streak back down to it.
-  let streak;
-  if (perfectClear) streak = Math.max(state.streak + 1, STREAK_TURNS_AT_CAP);
-  else if (cleared) streak = state.streak + 1;
-  else streak = 0;
-
-  const turn = state.turn + 1;
-  const queued = generateBatch({
-    turn,
-    difficulty: state.difficulty,
-    rng: state.rng,
-    nextId: state.nextAnimalId,
-    idPrefix: state.idPrefix,
-    hasBuffaloOnBoard: Boolean(buffaloOnBoard(animals)),
-  });
-
-  events.push({
-    type: 'ADVANCE',
-    phase: PHASE.ADVANCE,
-    turn,
-    streak,
-    queue: queued.batch,
-  });
-
-  return {
-    ...base,
-    turn,
-    streak,
-    stats: { ...stats, longestStreak: Math.max(stats.longestStreak, streak) },
-    rng: queued.rng,
-    nextAnimalId: queued.nextId,
-    queue: queued.batch,
-  };
+  return { ...base, ...advance };
 }
 
 /** The reducer. Pure: never mutates `state`, never touches anything outside it. */

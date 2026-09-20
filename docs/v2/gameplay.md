@@ -565,10 +565,11 @@ A buffalo is therefore worth 50+50+50+550 = **700** across its life, against the
 four rows would have paid as ordinary clears. That +300 is deliberate: §6.4 says the buffalo
 should be something the player wants to see, and this is the number that makes it true.
 
-**Perfect Clear:** if the board is completely empty after a resolution, +1000 and the streak
-multiplier jumps straight to its ×3.0 cap. The **raw counter rises to at least the cap index
-but never falls** — `max(streak + 1, 6)` — so a player already 13 clears deep goes to 14, not
-backwards to 6 (AC-609e). v1 detected an empty grid and quietly ran an extra turn
+**Perfect Clear:** if the board is completely empty after a resolution, +1000, and the streak
+**multiplier** jumps straight to its ×3.0 cap while the **raw counter** rises to at least the
+cap index but never falls — `max(streak + 1, 6)` — so a player already 13 clears deep goes to
+14, not backwards to 6 (AC-609e). Multiplier and counter are separate quantities here and the
+distinction matters only to `longestStreak`; AC-609 tabulates both. v1 detected an empty grid and quietly ran an extra turn
 (`src/data/gameStore.js:262-269`); v2 treats it as the best thing that can happen to you and
 says so.
 
@@ -605,11 +606,17 @@ next time any rule makes score and board state diverge:
 > **Every run statistic is derived from the same `events[]` array that the score is summed
 > from. No statistic is counted independently, anywhere.**
 
-`rowsCleared` is the sum of `n` across events; `longestChain` is the highest `step` in any
-event; `buffaloRetired` is the count of events carrying a retirement. Computed this way they
+`rowsCleared` is the sum of `n` across clear events; `longestChain` is the highest `step` in
+any clear event; `buffaloRetired` is the count of events carrying a retirement; and
+`longestStreak` is the highest `streak` across `ADVANCE` events. Computed this way they
 **cannot** disagree with the score — not because someone remembered to keep them in sync, but
 because there is only one source. A statistic incremented at a second site is a defect even
 while it happens to agree.
+
+`longestStreak` is the one that tests the rule, because a streak is a *turn*-level fact and no
+clear event carries it. The answer is to **put `streak` on the `ADVANCE` event** (AC-706e), not
+to carve out an exception: one exception is all it takes to need a sync rule again, and the
+sync rule is the thing that fails.
 
 This is the same principle as the engine/presentation split (`ui.md` §8.3 ¶3): one authority
 per fact, and everything else reads from it.
@@ -756,6 +763,7 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D23 | `streak` rides the `ADVANCE` event so `longestStreak` is event-derived like every other stat | Keeps AC-706b absolute. A carve-out for one field reintroduces the sync rule that AC-706b exists to eliminate (§7.3a). |
 | D22 | A Perfect Clear raises the streak counter to at least the cap index but never lowers it | Rule 1 is a floor on the multiplier, not an assignment to the counter; the best turn in the game must not be the one that sends a streak backwards (§7.2). |
 | D20 | The 8-step chain rail is removed as a scoring cutoff; `assert step <= 32` replaces it as a crash guard | `chainMult` is already flat at ×5 from step 5, so the rail bounded nothing — it silently confiscated 9,750 of 17,100 points on the committed fixture, and play reached it on seven constructed boards (§7.2). |
 | D21 | Every run statistic is derived from the score's own event stream | Stats and score cannot then disagree by construction, rather than by remembering to sync them (§7.3a). |

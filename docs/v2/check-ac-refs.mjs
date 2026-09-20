@@ -44,10 +44,18 @@ console.log(`dangling refs  : ${uniqDangling.length}`);
 uniqDangling.forEach(r => console.log(`  DANGLING   ${r.id.padEnd(10)} cited at ${r.at}`));
 
 // Numbering gaps, informational only — a gap is legal, a dangling reference is not.
-const nums = [...defs.keys()].filter(k => /^AC-\d+$/.test(k)).map(k => +k.slice(3)).sort((a, b) => a - b);
+// Bucket EVERY definition, sub-lettered ones included, so the counts sum to the total.
 const groups = {};
-for (const n of nums) { const g = Math.floor(n / 100) * 100; (groups[g] ??= []).push(n); }
-console.log('\ngroup sizes:', Object.entries(groups).map(([g, v]) => `${g}xx=${v.length}`).join('  '));
+for (const k of defs.keys()) {
+  const n = parseInt(k.slice(3), 10);
+  const g = Math.floor(n / 100);                     // 1 -> "1xx", 13 -> "13xx"
+  (groups[g] ??= []).push(k);
+}
+const counted = Object.values(groups).reduce((a, v) => a + v.length, 0);
+console.log('\ngroup sizes:', Object.entries(groups)
+  .sort((a, b) => a[0] - b[0])
+  .map(([g, v]) => `${g}xx=${v.length}`).join('  '), `(sums to ${counted})`);
+if (counted !== defs.size) { console.log(`  BUG: buckets sum to ${counted}, expected ${defs.size}`); process.exitCode = 1; }
 
 const bad = dupes.length + uniqDangling.length;
 console.log(bad ? `\nFAIL — ${bad} defect(s)` : '\nPASS — every cited AC is defined, none defined twice');

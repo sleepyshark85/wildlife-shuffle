@@ -9,7 +9,8 @@
  *
  * `rowsCleared` is the sum of `n` across events, `longestChain` the highest
  * `step` in any event, `buffaloRetired` the count of retirements carried by
- * those same events.
+ * those same events, and `longestStreak` the settled streak the ADVANCE event
+ * carries (AC-706e). There is no statistic that comes from anywhere else.
  */
 export function summariseEvents(events) {
   let score = 0;
@@ -19,6 +20,7 @@ export function summariseEvents(events) {
   let buffaloRetired = 0;
   let clearSteps = 0;
   let perfectClears = 0;
+  let longestStreak = 0;
   let guardTrips = 0;
 
   for (const event of events) {
@@ -34,6 +36,10 @@ export function summariseEvents(events) {
       case 'PERFECT_CLEAR':
         score += event.score;
         perfectClears += 1;
+        break;
+      case 'ADVANCE':
+        // The streak is a turn-level fact, so the turn's own event carries it.
+        longestStreak = Math.max(longestStreak, event.streak);
         break;
       case 'CHAIN_GUARD':
         guardTrips += 1;
@@ -51,6 +57,7 @@ export function summariseEvents(events) {
     buffaloRetired,
     clearSteps,
     perfectClears,
+    longestStreak,
     guardTrips,
   };
 }
