@@ -148,8 +148,9 @@ inside `moveSelectedAnimal` and never after the advance (`docs/v1-review.md` C4)
 walked past the top silently. One check, one place.
 
 **`resolveClears()` is a loop, not a recursive call into `setState`.** Each iteration is a
-"chain step". The loop is capped at 8 steps as a safety rail (a board of 15 rows cannot
-legitimately produce more).
+"chain step". The loop runs until no row is complete — it is **not** capped at a step count,
+because every step that resolves must also score (§7.2). Termination is guaranteed by the mass
+argument below, and `assert step <= 32` is a crash guard, not a cutoff.
 
 ```
 resolveClears(board):
@@ -159,8 +160,8 @@ resolveClears(board):
     filled = rows where all 10 columns are occupied
     if filled is empty: break
     step += 1
-    if step > 8: break                    // safety rail; log, do not crash
-    events.push(scoreStep(filled, step))  // see §7
+    assert step <= 32                     // crash guard, NOT a scoring cutoff — see below
+    events.push(scoreStep(filled, step))  // see §7; every step that resolves, scores
     for each row r in filled:
       remove every non-buffalo animal whose y == r
       for each buffalo with y == r:  size -= 1  (trailing edge)
@@ -168,6 +169,45 @@ resolveClears(board):
     board = applyGravity(board)
   return { board, events, steps: step }
 ```
+
+**The loop terminates without needing a counter.** Every cell of a completed row belongs to an
+animal sitting in that row, so clearing it removes `(10 − b)` cells outright and takes one
+more off the buffalo, where `b` is the buffalo's size if one is in the row and 0 otherwise:
+
+```
+mass removed per step = (10 − b) + 1 = 11 − b        →  minimum 7, when b = 4
+live board holds at most 14 rows (row 14 is the kill line)   →  140 cells
+an arrival adds at most 9                                    →  149 cells per turn
+```
+
+The naive division gives `149 / 7 = 21` steps, but **the true bound is tighter, and the reason
+is easy to miss**: only one buffalo may be on the board (§5.4) and it has only four segments,
+so **at most four steps in an entire run can ever be cheapened**. Every other step removes a
+full 10. That gives `4 × 7 + 121/10` → **15 steps per turn, worst case**. Mass never increases
+during a resolution, so the loop is bounded by construction and the counter proves nothing the
+mass argument does not already prove.
+
+**Steps are not events.** A *step* is one iteration of this loop. An *event* is what the
+presentation layer receives, and a single step may emit more than one — a clear plus a buffalo
+shrink plus a retirement. Worst case is therefore ~15 steps and **~19 events** per turn. Two
+independent derivations of this bound landed on 15 and 25 during Slice 1 review; they differ
+only in whether shrinks are counted separately and whether the one-buffalo limit is applied,
+and **neither figure is normative**. The only normative numbers are `assert step <= 32` (§4)
+and the 6-animated-unit ceiling (`ui.md` §8.2). Anything that consumes this stream must
+**assume no small number** — see AC-825b.
+
+`assert step <= 32` is a **crash guard against a bug**, not a gameplay parameter. Thirty-two
+is more than twice the mass bound, so tripping it means the engine is broken — gravity is not
+settling, or a clear is not removing.
+
+**The engine cannot report it directly.** §4's own purity rule forbids `console` in engine
+files, so on trip the engine emits a **`CHAIN_GUARD` event**, increments
+`stats.chainGuardTrips`, and stops the loop. Diagnostics leave the engine the way scores do —
+as data on the event stream — and the presentation layer throws on it in development and
+records it in release (AC-216, AC-1309). A run that trips the guard **does not write a high
+score** (AC-504e): the engine was in a state the rules do not describe, so its score is not
+trustworthy enough to keep. What the guard must never do is silently alter scoring or board
+state, which is exactly what the superseded 8-step rail did.
 
 **Buffalo shrinks from its trailing (right) edge:** `x` is unchanged, `size` decreases. This
 keeps the buffalo visually anchored so the player can see exactly which segment was taken.
@@ -200,25 +240,55 @@ is later a config change rather than a redesign.
 
 ```
 generateBatch(turn, difficulty, rng):
-  1. target = rng.int(band.low, band.high)          // cells to occupy this turn
-     clamp target to [1, 9]
-  2. if isBuffaloTurn(turn) and no buffalo on board:
-       batch = [Buffalo(size 4)]; target = max(target, 4); filled = 4
-     else
-       batch = []; filled = 0
-  3. while filled < target:
-       candidates = species whose size ≤ (target - filled)
-                    and ≤ the largest remaining free run in row 0
-       if candidates is empty: break
-       s = weighted draw from candidates (see 5.4)
-       batch.push(s); filled += s.size
-  4. shuffle(batch)
-  5. for each animal in batch:
-       valid = every x where all of the animal's cells are free in row 0
-       animal.x = rng.pick(valid)
-       mark those cells occupied
-  6. return batch          // total occupied columns ≤ 9, always
+  target = clamp(rng.int(band.low, band.high), 1, 9)   // cells to occupy this turn
+  free   = [ [0..9] ]                                  // free column runs in row 0
+  batch  = []
+  filled = 0
+
+  // Buffalo goes first, when scheduled, so it is guaranteed the room it needs.
+  if isBuffaloTurn(turn) and no buffalo is on the board:
+      target = max(target, 4)
+      place(Buffalo, size 4, x = rng.pick(validStarts(free, 4)))
+      filled = 4
+
+  while filled < target:
+      room       = length of the longest run in `free`
+      candidates = species whose size ≤ min(target − filled, room)
+      if candidates is empty: break                    // unreachable; see invariant 3
+      s = weighted draw from candidates (weights in §5.4)
+      place(s, x = rng.pick(validStarts(free, s.size)))
+      filled += s.size
+
+  return batch
 ```
+
+**Selection and placement interleave — they are one loop, not two passes.** Each species is
+chosen against the free runs that actually remain, then placed immediately, then the next is
+chosen against what is left.
+
+The approved draft had them as separate steps, which was wrong in two ways the developer
+found: step 3 filtered on "the largest remaining free run" at a point where nothing had been
+placed and no such quantity existed, and step 5 could then deadlock — sizes {1, 3, 5} sum to
+a legal target of 9, but placing the rat at `x=1` and the elk at `x=4` leaves no 5-wide run
+for the elephant, and no fallback was specified. Interleaving is what the step-3 wording
+implied all along, and it removes the failure rather than papering over it with a retry.
+
+**Three invariants, all guaranteed by construction rather than by checking afterwards:**
+
+1. **At most 9 columns.** `target ≤ 9`, and the loop never overshoots it. A batch that filled
+   all ten would clear row 0 on arrival with no player involvement, making the turn
+   meaningless.
+2. **`validStarts(free, size)` is never empty when it is called**, because a species only
+   becomes a candidate when `size ≤ room`, i.e. when some free run is already long enough to
+   hold it. No fallback path is needed and none should be written.
+3. **The loop always terminates with `filled == target` exactly.** Rat (size 1) carries a
+   non-zero weight at every difficulty, and `target ≤ 9` guarantees at least one free column
+   remains, so `candidates` is non-empty until the target is met. The `break` is a defensive
+   rail, not a reachable path — **a batch that ends short of its target is a defect.**
+
+Invariant 3 is a strengthening of the approved spec that the developer's change bought for
+free: the cell bands in §5.5 are now exact rather than approximate, which is what makes
+AC-306 and AC-307 testable as equalities.
 
 **Hard invariant: a batch may occupy at most 9 of 10 columns.** A batch that filled all ten
 would clear row 0 on arrival with no player involvement, which makes the turn meaningless.
@@ -265,16 +335,16 @@ did not do at all.
 | | **Meadow** (easy) | **Savanna** (default) | **Tundra** (hard) |
 |---|---|---|---|
 | Starting cell band | 2–4 | 3–5 | 4–6 |
-| Band ceiling | 4–6 | 6–8 | 7–9 |
+| Band ceiling | **5–7** | 6–8 | 7–9 |
 | Ramp | +1 to both ends every **12 turns**, until the ceiling | | |
 | Species weights | small-heavy | balanced | large-heavy |
-| Mean arrival | ~3.0 → 4.5 cells/turn | ~4.0 → 7.0 | ~5.0 → 8.0 |
+| Mean arrival | ~3.0 → **6.0** cells/turn | ~4.0 → 7.0 | ~5.0 → 8.0 |
 | Buffalo every | 12 turns | 10 turns | 8 turns |
 
 Ramp schedule, explicitly:
 
 ```
-Meadow    t1: 2–4   t13: 3–5   t25: 4–6 (ceiling)
+Meadow    t1: 2–4   t13: 3–5   t25: 4–6   t37: 5–7 (ceiling)
 Savanna   t1: 3–5   t13: 4–6   t25: 5–7   t37: 6–8 (ceiling)
 Tundra    t1: 4–6   t13: 5–7   t25: 6–8   t37: 7–9 (ceiling)
 ```
@@ -290,9 +360,26 @@ can sustain almost indefinitely; Tundra tops out at a pace nobody can.
 
 **Pacing arithmetic.** A row clear removes 10 cells. On Savanna at 4 cells/turn, a player who
 clears a row every 5 turns nets +2 cells/turn. Top-out needs roughly 90 cells of ragged
-skyline, so ≈45 turns at ~4 s/turn ≈ **3 minutes**. Meadow ≈ 6 minutes, Tundra ≈ 2 minutes.
-These are the numbers to playtest against; if real runs come in far off, move the bands
-first, the weights second, and the ramp interval last.
+skyline, so ≈45 turns at ~4 s/turn ≈ **3 minutes**.
+
+**Measured, after Slice 1** — 30 seeds × 3 difficulties, deterministic greedy bot with perfect
+information, so a human scores below these:
+
+| | Meadow | Savanna | Tundra |
+|---|---:|---:|---:|
+| Bot turns, as approved | 240 | 75.5 | 48.2 |
+| Acceptance range | **100–150** | **60–90** | **35–55** |
+
+Savanna and Tundra land in range and are **unchanged**. Meadow was a marathon: at a 4–6
+ceiling the bot could hold the board indefinitely and runs ended only through bad luck, which
+is not "easy", it is "unfinishable". Raising Meadow's ceiling to **5–7** puts its endgame
+just above the rate a careful player can sustain, so the run still ends — and it stays a full
+band below Savanna's 6–8, which is what keeps the difficulties distinct.
+
+The ceiling is the right lever because a run ends in its endgame; the starting band only sets
+how long the pleasant part lasts. **Re-measure with the same harness after the change**
+(AC-318). If Meadow still overshoots, drop the ramp interval from 12 turns to 9 before
+touching the bands again — the ramp reaches the player sooner than a band change does.
 
 ---
 
@@ -330,7 +417,9 @@ enabled.
 This does three things at once: it removes the soft-lock class of bug entirely, it makes "no
 legal move" an ordinary game state rather than a failure mode, and it is a real strategic
 choice — sometimes the correct play is to take the arrival without disturbing a packing you
-have already set up. Passing breaks the score streak (§7), so it is never free.
+have already set up. Passing is not free — it costs you your move, the scarcest resource in
+the game — but it does **not** by itself break the score streak. A passing turn whose arrival
+completes a row is a clearing turn like any other (§7.2).
 
 ### 6.4 Buffalo, finally made visible
 
@@ -372,7 +461,8 @@ Every term below is therefore paid on *clears*, never on turns elapsed.
 Score is awarded per **chain step** inside `resolveClears()`.
 
 ```
-stepScore = ( rowValue(n) + 50 × shrinks + 500 × retired )
+stepScore = ( rowValue(n) + 50 × shrinks + 500 × retired )   // a retiring completion is
+                                                            // BOTH: 50 + 500 = 550
             × chainMult(step)
             × streakMult
         (floored to an integer)
@@ -393,39 +483,143 @@ worth the risk.
 |---|---:|---:|---:|---:|---:|
 | ×  | 1 | 2 | 3 | 4 | 5 (cap) |
 
-**`streakMult` — consecutive *clearing turns*:**
+**Every step that resolves, scores. There is no depth past which clearing stops paying.**
+
+The superseded 8-step rail confiscated the score for steps 9 and beyond while still clearing
+their rows. That is now removed, against the developer's, the tester's and the coordinator's
+shared recommendation, because the reason all three gave — *"paying past the rail means
+extending `chainMult` past the very thing the rail exists to bound"* — does not survive
+contact with the table directly above. **`chainMult` is already flat at ×5 from step 5.**
+Paying step 11 at `chainMult(11)` pays it at ×5, which is precisely what step 5 pays. There
+was nothing left to bound: the multiplier caps itself, termination comes from the mass
+argument in §4, animation length is bounded separately by the 5-step animation cap and the
+1500 ms budget (`ui.md` §8.2), and total score is bounded by board mass.
+
+So the rail bounded nothing and cost this, measured on the committed 10-step fixture at
+streak 5:
 
 ```
-streakMult = min(3.0, 1.0 + 0.2 × (consecutiveClearingTurns − 1))
+paid       7,350
+earned    17,100        — 9,750 points silently confiscated, most of it one buffalo retirement
 ```
 
-A *clearing turn* is any turn in which at least one clear step occurred, in Phase 2 or Phase
-3. A turn with no clear resets the streak to 0. **Passing always resets it.** Displayed as a
-pill in the HUD whenever it exceeds ×1.0.
+Over half the score of the best play in the game, and the missing half is mostly the single
+loudest scoring event in it. A player who builds an eleven-step cascade has done something
+extraordinary; the correct response is to pay them, not to decline at step nine.
+
+**And it was reachable.** The tester constructed seven independent boards at depths 9–11. A
+rail that play can reach is not a safety rail — it is a gameplay parameter, and this one was
+never designed as such. `assert step <= 32` (§4) keeps the engine from hanging, which was the
+rail's only legitimate job.
+
+**`streakMult` — consecutive *clearing turns*.** A lookup table, not a formula:
+
+| consecutive clearing turns | 1 | 2 | 3 | 4 | 5 | 6+ |
+|---|---:|---:|---:|---:|---:|---:|
+| × | 1.0 | 1.3 | 1.6 | 2.0 | 2.5 | 3.0 (cap) |
+
+**The streak is incremented first, then applied — the multiplier shown is the one the clear
+just earned, not the one the next clear will earn.** The approved draft's formula was
+ambiguous about this and the linear `0.2` step made it worse: applied the other way round,
+the first *two* clearing turns both paid ×1.0, so the mechanic did nothing at all until the
+third consecutive clear. A multiplier meant to reward consistency has to pay out on the
+second clear, which is the moment the player discovers it exists.
+
+The table also replaces the `0.2` step, which reached the ×3.0 cap only at eleven consecutive
+clearing turns — unreachable in a 40–70 turn run, so the top of the mechanic was dead. Six
+consecutive clearing turns is a genuine achievement and an achievable one.
+
+Displayed as a pill in the HUD whenever it exceeds ×1.0, appearing in the same moment as the
+score it multiplied, so cause and effect land together.
+
+**Streak precedence — evaluated in this order at the end of every turn, first match wins:**
+
+| # | Condition | Effect on the streak |
+|---|---|---|
+| 1 | The board is empty (Perfect Clear) | Set straight to the ×3.0 cap |
+| 2 | At least one clear step occurred, in Phase 2 **or** Phase 3 | Increment by 1 |
+| 3 | Otherwise | Reset to 0 |
+
+**The streak follows the board, not the input.** A passing turn whose *arrival* completes a
+row is a clearing turn, exactly like any other. The approved draft said "passing always
+resets it", which contradicted rule 2 for every pass that cleared — not only the
+pass-into-Perfect-Clear case, which is merely the loudest instance of a conflict that was
+already there.
+
+The rationale for the original carve-out was that passing should never be free. It isn't:
+passing costs you your move, which is the scarcest resource in the game, and a player who
+passes repeatedly buries themselves within a few turns. Punishing a pass that the player
+*correctly* judged would let the incoming herd complete a row is punishing good play.
 
 **Buffalo terms:** each shrink is +50 and counts toward the chain depth, but a buffalo row
-does *not* count toward `n` in `rowValue` — it did not clear. Retirement is +500.
+does *not* count toward `n` in `rowValue` — it did not clear.
 
-**Perfect Clear:** if the board is completely empty after a resolution, +1000 and the streak
-is set straight to its ×3.0 cap. v1 detected an empty grid and quietly ran an extra turn
+**The completion that retires a buffalo pays both terms: 50 + 500 = 550** (before
+multipliers). Taking the last segment is still taking a segment, so it still earns the shrink;
+retirement is a bonus *on top*, not a replacement. The alternative — excluding the final
+shrink — would need a carve-out ("shrinks that reduce the size to 0 do not count as shrinks")
+that serves no design purpose and that every reader would have to remember. One uniform rule:
+**every buffalo row completion pays 50; the fourth pays 500 more.**
+
+A buffalo is therefore worth 50+50+50+550 = **700** across its life, against the 400 those
+four rows would have paid as ordinary clears. That +300 is deliberate: §6.4 says the buffalo
+should be something the player wants to see, and this is the number that makes it true.
+
+**Perfect Clear:** if the board is completely empty after a resolution, +1000, and the streak
+**multiplier** jumps straight to its ×3.0 cap while the **raw counter** rises to at least the
+cap index but never falls — `max(streak + 1, 6)` — so a player already 13 clears deep goes to
+14, not backwards to 6 (AC-609e). Multiplier and counter are separate quantities here and the
+distinction matters only to `longestStreak`; AC-609 tabulates both. v1 detected an empty grid and quietly ran an extra turn
 (`src/data/gameStore.js:262-269`); v2 treats it as the best thing that can happen to you and
 says so.
 
 ### 7.3 Worked example
 
-Turn 22 on Savanna. The player is on a 4-turn clearing streak (`streakMult = 1.6`). Their
-slide completes two rows at once; the collapse drops a stack that completes a third row
-containing the buffalo.
+Turn 22 on Savanna. The player cleared on each of the previous three turns, so this clear is
+their **4th consecutive clearing turn — `streakMult = 2.0`** (incremented first, then
+applied). Their slide completes two rows at once; the collapse drops a stack that completes a
+third row containing the buffalo.
 
 ```
-step 1: rowValue(2) = 300 ; chainMult 1 ; streak 1.6   →  300 × 1 × 1.6  =  480
-step 2: rowValue(0) = 0, one buffalo shrink = 50 ; chainMult 2 ; streak 1.6
-                                                        →   50 × 2 × 1.6  =  160
-                                                                    total =  640
+step 1: rowValue(2) = 300 ; chainMult 1 ; streak 2.0   →  300 × 1 × 2.0  =  600
+step 2: rowValue(0) = 0, one buffalo shrink = 50 ; chainMult 2 ; streak 2.0
+                                                        →   50 × 2 × 2.0  =  200
+                                                                    total =  800
 ```
 
-The HUD ticks 640 upward over 400 ms; `+480` floats off the first pair of rows, `+160` and
-`BUFFALO −1` off the third.
+The HUD ticks 800 upward over 400 ms; `+600` floats off the first pair of rows, `+200` and
+`BUFFALO −1` off the third, and the pill reads ×2.0 as it happens.
+
+Had that third row retired the buffalo instead of merely shrinking it, step 2 would have paid
+`(50 + 500) × 2 × 2.0 = 2200`.
+
+### 7.3a Stats and score are derived from the same event stream
+
+The swept-rows defect surfaced as three Game Over stats disagreeing with the score above them
+— `rowsCleared` 6 against 5 paid, `longestChain` 8 against a true depth of 10,
+`buffaloRetired` 1 against a paid 0. Removing the scoring cutoff resolves all three, because
+there is no longer a category of step that resolves without paying.
+
+But the *shape* of that bug is worth closing permanently, because it will otherwise recur the
+next time any rule makes score and board state diverge:
+
+> **Every run statistic is derived from the same `events[]` array that the score is summed
+> from. No statistic is counted independently, anywhere.**
+
+`rowsCleared` is the sum of `n` across clear events; `longestChain` is the highest `step` in
+any clear event; `buffaloRetired` is the count of events carrying a retirement; and
+`longestStreak` is the highest `streak` across `ADVANCE` events. Computed this way they
+**cannot** disagree with the score — not because someone remembered to keep them in sync, but
+because there is only one source. A statistic incremented at a second site is a defect even
+while it happens to agree.
+
+`longestStreak` is the one that tests the rule, because a streak is a *turn*-level fact and no
+clear event carries it. The answer is to **put `streak` on the `ADVANCE` event** (AC-706e), not
+to carve out an exception: one exception is all it takes to need a sync rule again, and the
+sync rule is the thing that fails.
+
+This is the same principle as the engine/presentation split (`ui.md` §8.3 ¶3): one authority
+per fact, and everything else reads from it.
 
 ### 7.4 What is deliberately not scored
 
@@ -439,9 +633,22 @@ The HUD ticks 640 upward over 400 ms; `+480` floats off the first pair of rows, 
 
 ## 8. Run lifecycle and game over
 
-**Run start.** Board is seeded with **two arrival batches applied in sequence** (generate,
-place at row 0, gravity; repeat) so the player opens on a board with something to work with
-rather than an empty grid. `turn = 1`, `score = 0`, streak 0, `Q(1)` shown in the tray.
+**Run start.** The board is seeded with **two arrival batches applied in sequence** (generate,
+place at row 0, gravity, resolve clears; repeat) so the player opens on a board with something
+to work with rather than an empty grid. Three rules the approved draft left unstated:
+
+- **Both seeding batches use turn 1's band** for the chosen difficulty. They are the opening
+  position, not turns, so the ramp has not started.
+- **Neither may contain a buffalo.** §5.4 already excludes turn 0, and a buffalo the player
+  never saw arrive — sitting on the board before their first move — is an obstacle with no
+  explanation.
+- **Seeding resolves clears but scores nothing.** If the two batches happen to complete a row
+  it clears normally, because opening on a completed row that would vanish on the first
+  resolution anyway is just confusing. But the run opens at **score 0** (AC-601) with the
+  streak at 0 and no clearing turn recorded: the player has not played yet, so they have not
+  earned anything.
+
+Then `turn = 1`, `score = 0`, streak 0, `Q(1)` shown in the tray.
 
 **Game over — the only condition:** at Phase 4, any animal occupies `y ≥ 14`.
 
@@ -471,6 +678,10 @@ Reasons to reopen the app. AsyncStorage is already a dependency and currently en
 **Persisted records**
 - Best score, best chain, longest run (turns), most rows in one run — **per difficulty**.
 - Lifetime: games played, total turns, total rows cleared, buffalo retired, perfect clears.
+- **`longestStreak` records the raw count of consecutive clearing turns, not the multiplier.**
+  ×3.0 tops out and stops being interesting; "14 clears in a row" keeps meaning something.
+  The raw counter keeps counting past the cap for this reason — but it is never displayed
+  during a run (`ui.md` §5.5).
 - Daily streak: consecutive calendar days (device local time) with at least one *completed*
   run. Shown on Home as `🔥 4 day streak`. Breaks after a missed day; a "streak freeze" is
   explicitly out of scope.
@@ -552,5 +763,14 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D23 | `streak` rides the `ADVANCE` event so `longestStreak` is event-derived like every other stat | Keeps AC-706b absolute. A carve-out for one field reintroduces the sync rule that AC-706b exists to eliminate (§7.3a). |
+| D22 | A Perfect Clear raises the streak counter to at least the cap index but never lowers it | Rule 1 is a floor on the multiplier, not an assignment to the counter; the best turn in the game must not be the one that sends a streak backwards (§7.2). |
+| D20 | The 8-step chain rail is removed as a scoring cutoff; `assert step <= 32` replaces it as a crash guard | `chainMult` is already flat at ×5 from step 5, so the rail bounded nothing — it silently confiscated 9,750 of 17,100 points on the committed fixture, and play reached it on seven constructed boards (§7.2). |
+| D21 | Every run statistic is derived from the score's own event stream | Stats and score cannot then disagree by construction, rather than by remembering to sync them (§7.3a). |
+| D15 | Buffalo retirement pays 550 (50 shrink + 500 bonus) | One uniform rule beats a carve-out; makes a buffalo worth +300 over four ordinary clears, which is what makes it wanted (§7.2). |
+| D16 | Streak increments before it is applied, and uses a shaped table not a linear step | The multiplier must pay out on the *second* clear, and the ×3.0 cap must be reachable inside a 40–70 turn run (§7.2). |
+| D17 | The streak follows the board, not the input — a pass that clears is a clearing turn | Removes the AC-609/613 conflict at its root rather than ordering it; punishing a correctly-judged pass punishes good play (§7.2). |
+| D18 | Spawn selection and placement interleave | Separate passes deadlock on {1,3,5}; interleaving also makes the cell bands exact (§5.2). |
+| D19 | Meadow ceiling raised 4–6 → 5–7 | Measured 240 bot-turns against a 100–150 target; at a 4–6 ceiling the board was indefinitely holdable (§5.5). |
 | D14 | All animation is a UI-thread Reanimated worklet; the drag is a gesture-handler pan | v1 drove animation through `setState` on `setTimeout`, which cannot hold 60 fps and is why its drag chases the thumb — `ui.md` §8.3. |
 | D13 | Seeded PRNG per run, seed recorded | Reproducible bug reports now; Daily Challenge becomes a config change later. |
