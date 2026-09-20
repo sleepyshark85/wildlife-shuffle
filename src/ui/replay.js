@@ -21,6 +21,23 @@ import { MOTION } from './theme.js';
 import { turnTimeline } from './timeline.js';
 
 /**
+ * Which columns of `row` are held by a body that was already on the board.
+ *
+ * Not "which columns are full" — by the time this row is examined the engine
+ * has already landed the arrival, so every column of a completing row is full.
+ * The question the wash asks is which of them the player is still watching
+ * arrive, because that gap is what AC-824d lights at 0.14.
+ */
+function occupancyOf(board, row, arrived, width = BOARD.width) {
+  const cells = new Array(width).fill(false);
+  for (const animal of board.values()) {
+    if (animal.y !== row || arrived.has(animal.id)) continue;
+    for (let c = animal.x; c < animal.x + animal.size && c < width; c += 1) cells[c] = true;
+  }
+  return cells;
+}
+
+/**
  * Keys with the same start time collapse to the last one written, and a key
  * that lands where the animal already was is dropped.
  *
@@ -89,6 +106,9 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
     return found;
   };
 
+  /** The ids the tray put on the board this turn: the gap is what they fill. */
+  const arrived = new Set();
+
   const settleUnits = timeline.units.filter((u) => u.phase === 'SETTLE');
   const arrivalUnits = timeline.units.filter((u) => u.phase === 'ARRIVAL');
   let settleStep = 0;
@@ -134,6 +154,7 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
         }
         for (const placed of event.placed) {
           board.set(placed.id, { ...placed, y: 0 });
+          arrived.add(placed.id);
           const record = entry(placed.id, 0);
           // AC-809: it travels from the tray strip, because it is the animal the
           // tray promised. The board coordinate it ends at is written below by
@@ -172,7 +193,13 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
             at: timeline.arrivalAt,
             dur: arrivalMs,
             handoverAt: unit.flashAt,
-            rows: event.clearedRows.slice(),
+            // AC-824d: two values, so each cell has to say which it is. A cell
+            // held by a body that was already on the board is "occupied"; the
+            // rest is the gap the tray's batch is landing in.
+            rows: event.clearedRows.map((row) => ({
+              row,
+              occupied: occupancyOf(board, row, arrived),
+            })),
           };
         }
 

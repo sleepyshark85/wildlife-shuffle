@@ -205,12 +205,25 @@ export const MOTION_SIZE = Object.freeze({
   flashPeak: 0.92,
   flashRowPeak: 0.22,
   /**
-   * AC-824d, PROVISIONAL: the row an ARRIVAL clear is about to complete is
-   * washed at this while the push-up plays, so the flash lands somewhere the
-   * player is already looking. The engine resolved the turn before the first
-   * frame, so this is true information shown early, not a guess.
+   * AC-824d, PROVISIONAL: the row an ARRIVAL clear is about to complete washes
+   * in across the push-up, so the flash lands somewhere the player is already
+   * looking. The engine resolved the turn before the first frame played, so
+   * this is true information shown early, not a guess.
+   *
+   * TWO values, chosen rather than composited. A row about to complete is by
+   * definition nearly full, so a uniform band renders as a lit gap whatever
+   * its nominal alpha — and the gap IS the better cue, because it is where the
+   * arriving animals are about to land. Asking for it deliberately means the
+   * gap can be brighter than a 0.10 composite gave while the occupied cells
+   * still read as part of one row rather than as floating cells.
+   *
+   * AC-824d2, and it is a judgement rule rather than a tuning range: `filled`
+   * is the lever for row-level presence and `gap` for gap presence. Raising
+   * both together makes the empty part shout, which is the failure that turns
+   * a focus into a smear.
    */
-  anticipate: 0.1,
+  anticipateGap: 0.14,
+  anticipateFilled: 0.05,
   floatRise: 46,
   shakeAmplitude: 4,
   illegalShake: 6,

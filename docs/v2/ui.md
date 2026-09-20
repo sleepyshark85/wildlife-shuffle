@@ -736,15 +736,38 @@ the truth (§6). Both cost more than they buy.
 
 **What can help, at zero structural cost: anticipation.** The engine resolves the entire turn
 before the first frame plays (§8.3 ¶3), so the presentation layer *knows at t = 0* which row
-the arrival is about to complete. A **row wash at 0.10 on that row, fading in across the
-260 ms push-up**, draws the eye to the row before the flash lands on it. It is not a spoiler
-and it is not a guess — it is the same category as the honest preview: true information,
-shown early. The flash then arrives somewhere the player is already looking, which is the
-difference between being told and noticing.
+the arrival is about to complete. Washing that row while the arrival pushes up draws the eye
+there before the flash lands on it. It is not a spoiler and not a guess — it is the same
+category as the honest preview: true information, shown early. The flash then arrives
+somewhere the player is already looking, which is the difference between being told and
+noticing.
 
-**Provisional, like §8.2a.** I have not seen this, and it is the kind of cue that can easily
-read as noise. Ship it behind the same review: if the anticipation wash reads as a smear
-rather than a focus, drop it and accept the 570 ms, which is correct if unglamorous.
+**What it actually lights is the gap — and that is better than what I specified.** My draft
+said "a row wash at 0.10 on that row", which assumed the row was a uniform band. It is not: a
+row about to be completed is **by definition nearly full**, so it is mostly animal bodies. The
+developer built it and watched it — 0.10 white reads clearly over the board ground and much
+more weakly over a body, so what the player sees lit is the row's **remaining gap**, which is
+exactly the columns the arriving animals are about to land in.
+
+That is the better cue, and this spec now asks for it deliberately rather than getting it by
+accident of compositing. It points at *where the action is* rather than at the row in general,
+and it ties visually to the tray: the gap lights, and then the previewed animals drop into it.
+
+| cells of the completing row | wash |
+|---|---|
+| **unoccupied** — the gap the arrival fills | **0.14** |
+| occupied — bodies already in the row | **0.05**, enough to read as one row rather than floating cells |
+
+Fading in across the 260 ms push-up.
+
+**The lever, if it needs adjusting on device.** For more *row-level* presence raise the
+**occupied** alpha; for more *gap* presence raise the unoccupied one. Do not raise both
+together — a uniform increase makes the empty part shout, which is the failure mode that
+turns a focus into a smear.
+
+**Provisional, like §8.2a.** The developer's caution stands: on a full board at arm's length
+this may be too quiet to register at all. If it reads as a smear or as nothing, drop it and
+accept the 570 ms, which is correct if unglamorous.
 
 ### 8.3 UI-thread implementation contract
 
@@ -887,8 +910,16 @@ surface as one:
 | **Sheets & overlays** — Pause, Game Over, Settings, Records, How to Play | **full Dynamic Type** to `AccessibilityExtraExtraExtraLarge`, scrolling where needed | These are reading surfaces. They are modal, they do not compete with the board, and there is no reason to exempt them. |
 | **HUD** | fixed height; scales *within* it by trading labels for values | Glanceable status, and the one surface whose height the board's fit depends on. |
 
-**`allowFontScaling={false}` is correct on the HUD and wrong everywhere else.** It must be
-removed from every sheet and overlay.
+**Three treatments, not two.** `allowFontScaling={false}` is correct on the HUD **and on the
+board** — the board's glyphs are sized from the cell, not the type scale. But the ladder also
+has fixed-height chrome that is neither: the action bar and the tray label row must scale
+*somewhat* without clipping. They take a **`maxFontSizeMultiplier`** — 1.5 on the action bar,
+1.3 on the tray labels — and everything else scales without limit.
+
+**A cap is not an exemption.** Capped text still responds to the player's setting; it just
+stops before it clips. An earlier draft of AC-910c said the flag belonged "only on HUD text",
+which read literally would have stripped the board and clipped the Pass button — it had no
+vocabulary for the middle case.
 
 **How the HUD scales without growing.** Its 10 pt uppercase labels are the part that fails an
 accessibility text size, and they are also the expendable part — a large number under a tiny

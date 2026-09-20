@@ -381,7 +381,7 @@ test('AC-824d an ARRIVAL clear washes the row it is about to complete', () => {
   assert.ok(step, 'the fixture must clear during ARRIVAL');
 
   assert.ok(plan.anticipate, 'an ARRIVAL clear must be anticipated');
-  assert.deepEqual(plan.anticipate.rows, step.clearedRows);
+  assert.deepEqual(plan.anticipate.rows.map((r) => r.row), step.clearedRows);
   // It fades in across the push-up — the 260 ms the player is otherwise
   // waiting through with nothing to look at (ui.md §8.2b).
   assert.equal(plan.anticipate.dur, MOTION.arrival);
@@ -389,6 +389,43 @@ test('AC-824d an ARRIVAL clear washes the row it is about to complete', () => {
   const firstFlash = Math.min(...plan.departures.map((d) => d.flashAt));
   assert.equal(plan.anticipate.handoverAt, firstFlash);
   assert.ok(plan.anticipate.at + plan.anticipate.dur <= firstFlash);
+});
+
+test('AC-824d the wash knows which cells are the gap and which are bodies', () => {
+  // Columns 0-7 are already standing; the tray's fox lands on 8 and 9 and
+  // completes the row. So exactly two cells are "the gap the arrival fills",
+  // and they are the two the fox is about to occupy.
+  const queue = [animal('fox', 8, 0)];
+  const { plan } = turnOn([...rowExcept(0, [8, 9])], queue);
+
+  const [row] = plan.anticipate.rows;
+  assert.equal(row.occupied.length, BOARD.width);
+  assert.deepEqual(
+    row.occupied,
+    [true, true, true, true, true, true, true, true, false, false],
+  );
+
+  // The question is NOT "which columns are full" — by the time the plan is
+  // built the engine has landed the arrival and every column is full. Getting
+  // that wrong would light the whole row uniformly, which is the exact cue
+  // AC-824d was amended away from.
+  assert.ok(row.occupied.some((c) => !c), 'a completing row always has a gap to light');
+});
+
+test('AC-824d/AC-824d2 the wash is TWO values, and the gap is the brighter', () => {
+  // If these ever collapse to one, the cue collapses with them: a uniform band
+  // over a nearly-full row is a lit gap whatever its alpha, and AC-824d2 makes
+  // raising them together a judgement error rather than a tuning step.
+  assert.notEqual(MOTION_SIZE.anticipateGap, MOTION_SIZE.anticipateFilled);
+  assert.ok(
+    MOTION_SIZE.anticipateGap > MOTION_SIZE.anticipateFilled,
+    'the gap the arrival fills is the primary read',
+  );
+  // The occupied cells still have to be visible, or the gap stops belonging to
+  // a row and reads as a floating cell.
+  assert.ok(MOTION_SIZE.anticipateFilled > 0);
+  // Both stay well under the flash they hand over to (AC-813e: 0.22 on a row).
+  assert.ok(MOTION_SIZE.anticipateGap < MOTION_SIZE.flashRowPeak);
 });
 
 test('AC-824d a SETTLE clear is not anticipated: it has nothing to wait for', () => {

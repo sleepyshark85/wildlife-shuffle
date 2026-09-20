@@ -60,47 +60,83 @@ function useFlash(at, peak, reduced) {
 }
 
 /**
+ * One run of same-kind cells in the anticipated row. Its own component because
+ * each run needs its own `useAnimatedStyle`, and a hook cannot live in a loop.
+ */
+const WashRun = memo(function WashRun({ wash, peak, left, width, top, height, testID }) {
+  const style = useAnimatedStyle(() => ({ opacity: wash.value * peak }));
+  return (
+    <Animated.View
+      testID={testID}
+      style={[
+        styles.inert,
+        { position: 'absolute', left, top, width, height, backgroundColor: COLORS.flash },
+        style,
+      ]}
+    />
+  );
+});
+
+/** Contiguous runs of equal `occupied` value, as [{from, to, occupied}]. */
+function runsOf(occupied) {
+  const runs = [];
+  for (let i = 0; i < occupied.length; i += 1) {
+    const last = runs[runs.length - 1];
+    if (last && last.occupied === occupied[i]) last.to = i + 1;
+    else runs.push({ from: i, to: i + 1, occupied: occupied[i] });
+  }
+  return runs;
+}
+
+/**
  * AC-824d, PROVISIONAL: anticipation.
  *
  * On an ARRIVAL clear nothing is announced for 570 ms — snap, settle and the
  * push-up all happen first, and no amount of tuning the flash changes that
  * (ui.md §8.2b). But the engine resolved the whole turn before the first frame
  * played, so the presentation layer already KNOWS which row the arrival is
- * about to complete. Washing it at 0.10 while the push-up plays puts the
- * player's eye on the row before the flash lands on it. True information shown
- * early, in the same category as the honest tray preview — not a guess.
+ * about to complete. Washing it in across the push-up puts the player's eye on
+ * the row before the flash lands on it. True information shown early, in the
+ * same category as the honest tray preview — not a guess.
+ *
+ * TWO values, not one. A row about to complete is nearly full, so a uniform
+ * band renders as a lit gap whatever its nominal alpha. That is the better cue
+ * — the gap is where the arriving animals are about to land — so it is asked
+ * for deliberately: 0.14 on the cells the arrival fills, 0.05 on the bodies
+ * already there, which keeps the gap reading as part of a row rather than as a
+ * floating cell. AC-824d2: those two are separate levers and raising them
+ * together is the failure that turns a focus into a smear.
  *
  * It hands over to the flash rather than adding to it: the wash fades out over
  * the flash's own attack, so the peak stays AC-813e's 0.22 rather than
- * stacking to 0.32.
+ * stacking.
  */
-const AnticipationRow = memo(function AnticipationRow({ row, plan, cell, boardW, reduced }) {
+const AnticipationRow = memo(function AnticipationRow({ row, plan, cell, reduced }) {
   const wash = useSharedValue(0);
   useEffect(() => {
     const holdFor = Math.max(0, plan.handoverAt - (plan.at + plan.dur));
     wash.value = sequence(
-      delay(plan.at, withTiming(MOTION_SIZE.anticipate, timing(plan.dur, EASE.inOut, reduced))),
+      delay(plan.at, withTiming(1, timing(plan.dur, EASE.inOut, reduced))),
       delay(holdFor, withTiming(0, timing(MOTION.flashAttack, EASE.out, reduced))),
     );
   }, [plan.at, plan.dur, plan.handoverAt, reduced, wash]);
 
-  const style = useAnimatedStyle(() => ({ opacity: wash.value }));
+  const top = rowTop(row.row, cell);
   return (
-    <Animated.View
-      testID={`anticipate-${row}`}
-      style={[
-        styles.inert,
-        {
-          position: 'absolute',
-          left: 0,
-          top: rowTop(row, cell),
-          width: boardW,
-          height: cell,
-          backgroundColor: COLORS.flash,
-        },
-        style,
-      ]}
-    />
+    <>
+      {runsOf(row.occupied).map((run) => (
+        <WashRun
+          key={run.from}
+          testID={`anticipate-${row.row}-${run.occupied ? 'filled' : 'gap'}`}
+          wash={wash}
+          peak={run.occupied ? MOTION_SIZE.anticipateFilled : MOTION_SIZE.anticipateGap}
+          left={run.from * cell}
+          width={(run.to - run.from) * cell}
+          top={top}
+          height={cell}
+        />
+      ))}
+    </>
   );
 });
 
@@ -310,11 +346,10 @@ function ClearLayerImpl({ plan, cell, boardW, reduced, highContrast }) {
       {plan.anticipate
         ? plan.anticipate.rows.map((row) => (
           <AnticipationRow
-            key={`anticipate-${row}`}
+            key={`anticipate-${row.row}`}
             row={row}
             plan={plan.anticipate}
             cell={cell}
-            boardW={boardW}
             reduced={reduced}
           />
         ))

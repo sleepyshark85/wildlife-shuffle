@@ -801,12 +801,17 @@ perceptible.)*
 follows from AC-823's interval (collapse 0–110 ms, fall 110–310 ms, 260 ms interval →
 (260−110)/200). *(§8.2's prose said 60%; it had been stale since before §8.2a.)*
 
-**AC-824d — ANTICIPATION, PROVISIONAL.** Given an ARRIVAL-phase clear, Then the row the
-arrival is about to complete carries a **0.10 row wash fading in across the 260 ms push-up**,
-so the flash lands where the player is already looking. The engine has resolved the turn
-before the first frame plays, so this is true information shown early, not a guess. **Review
-it on device with AC-824c**: if it reads as a smear rather than a focus, drop it and accept
-the 570 ms, which is correct if unglamorous — see `ui.md` §8.2b.
+**AC-824d — ANTICIPATION, PROVISIONAL.** *(amended — the approved "0.10 row wash" assumed a
+uniform band; a row about to complete is nearly full, so what renders is a lit **gap**. That
+is the better cue and is now the specified intent rather than a side effect.)* Given an
+ARRIVAL-phase clear, Then the row the arrival is about to complete washes in across the 260 ms
+push-up at **0.14 on its unoccupied cells** — the gap the arrival fills — and **0.05 on its
+occupied cells**, so the gap is the primary read and still belongs to a row.
+
+**AC-824d2** Given the anticipation wash needs adjusting on device, Then the **occupied** alpha
+is the lever for row-level presence and the unoccupied alpha for gap presence. Raising both
+together is a defect in judgement, not a tuning step: a uniform increase makes the empty part
+shout, which is the failure mode that turns a focus into a smear.
 
 **AC-824e — DERIVED, NOT RESTATED.** Given `node docs/v2/budget.mjs` is run, Then it exits 0
 and its printed table **matches the figures in `ui.md` §8.2 exactly**. The absolute worst case
@@ -835,6 +840,8 @@ before being locked**, together with everything else that cannot be settled off-
 | Commit gap (AC-824f) | measure `commitTime − fingerUpTime` on a release build. |
 | Screen shake (AC-811) | never occurred in ~250 bot turns; the trigger is proved at the plan layer but nobody has watched it render. |
 | A rendered 2-step cascade | real but rare — max depth 2 across 111 clearing turns. |
+| Anticipation wash (AC-824d) | gap cue, or too quiet to register on a full board at arm's length? Lever in AC-824d2. |
+| **The whole Dynamic Type group** (AC-910b–g) | **unverifiable off-device.** `react-native-web` hard-codes `fontScale: 1` (`Dimensions/index.js:17`) and ignores both `allowFontScaling` and `maxFontSizeMultiplier`, so Tier 2 can only source-audit plus unit-test `hudScale(fontScale, compact)`. Needs an iOS device. |
 
 
 They are a considered response to one sentence of owner feedback given while watching a build
@@ -961,9 +968,30 @@ truncated.
 **sheet and overlay** text — Pause, Game Over, Settings, Records, How to Play — scales fully,
 scrolling where needed.
 
-**AC-910c** Given the source tree, Then `allowFontScaling={false}` appears **only** on HUD
-text. Its presence on any sheet or overlay `<Text>` is a defect. *(Slice 2 applied it
-app-wide to make the fixed chrome heights hold.)*
+**AC-910c** *(amended — the approved wording said "only on HUD text", which taken literally
+also stripped the board, contradicting AC-910, and stripped the action bar and tray labels,
+producing the clipping AC-910 forbids)*. Given the source tree, Then text scaling follows a
+**three-way** split:
+
+| Surface | Treatment |
+|---|---|
+| **HUD and board** | `allowFontScaling={false}` — the board is spatial, the HUD trades labels for values (AC-910d) |
+| **Fixed-height chrome** — action bar, tray label row | `maxFontSizeMultiplier` **1.5** and **1.3** |
+| **Everything else** — sheets, overlays | scales without limit (AC-910b) |
+
+**A cap is not an exemption.** Capped text still scales with the player's setting; it stops
+before it clips. That is a different thing from refusing to scale, and the approved AC had no
+vocabulary for it. *(At AccessibilityXXXL a 16 pt Pass label is ~50 pt inside a 44 pt button;
+capped at 1.5× it is 24 pt and fits.)*
+
+**AC-910g** Given the hygiene audit, Then it encodes this three-way split, so a tester greps
+the audit rather than parsing prose.
+
+**AC-910h** Given Tier 2 (web) verification, Then AC-910b–g are **not observable there at
+all**: `react-native-web` hard-codes `fontScale: 1` (`Dimensions/index.js:17`) and ignores both
+`allowFontScaling` and `maxFontSizeMultiplier`. Tier 2 may verify them only by source audit
+plus a pure-function test of `hudScale(fontScale, compact)`; behavioural verification requires
+an iOS device and belongs to the AC-824c review.
 
 **AC-910d** Given Dynamic Type at `xxLarge` or above, Then the HUD **keeps its fixed height**
 and instead drops its 10 pt uppercase labels and grows its values into the freed space: the
