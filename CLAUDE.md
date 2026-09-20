@@ -17,11 +17,14 @@ plays end to end — pick a habitat, drag an animal, resolve a turn, reach Game 
 of it, and — in *Resuming this project in a fresh session* — exactly what to run and read if
 you are picking this up with no conversation history.
 
-Shipped: the rules engine, the state layer and the board, on Expo SDK 57.
-In flight: Slice 3 (motion, visual states, accessibility) on branch
-`slice-3-motion-and-visual-states`, built and committed, awaiting independent verification
-and five design rulings.
-Not started: meta progression and persistence, sound and haptics, App Store readiness.
+Shipped: the rules engine, the state layer and the board, and the motion table, visual
+states and accessibility — Slices 1–3, on Expo SDK 57. `npm test` is 194 passing.
+Not started: Slice 4 (meta progression and persistence, including session resume), Slice 5
+(sound and haptics), Slice 6 (App Store readiness).
+
+**Owed to the owner: a device review.** The clear timings and the anticipation wash are
+marked provisional in AC-824c, which carries the full list of what only a phone can settle —
+including Dynamic Type, which `react-native-web` cannot observe at all.
 
 **Always `git fetch` and compare against `origin/<branch>` before reviewing anything.** A
 session-start snapshot is a snapshot, not the truth (`docs/development-process.md` §6.4).
