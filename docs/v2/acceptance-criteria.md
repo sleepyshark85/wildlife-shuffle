@@ -38,9 +38,10 @@ Then the board is exactly 10 columns by 15 rows.
 **AC-102** Given the Game screen on iPhone 15 (393 × 852 pt), Then the cell size is 36 pt and
 the board measures 360 × 540 pt.
 
-**AC-103** Given any of iPhone SE 3, 13 mini, 15, 15 Plus, 16 Pro Max, When the Game screen is
-shown, Then the entire board, HUD, tray and action bar are visible simultaneously with **no
-scrolling and no clipping of any element**. *(v1 D2: 15×25 did not fit at all.)*
+**AC-103** *(amended — a device list cannot cover hardware that has not shipped; see AC-119)*
+Given **any** supported viewport, When the Game screen is shown, Then the entire board, HUD,
+tray and action bar are visible simultaneously with **no scrolling and no clipping of any
+element**. *(v1 D2: 15×25 did not fit at all.)*
 
 **AC-104** Given the Game screen, Then the HUD's top edge sits at or below the top safe-area
 inset, and no content is obscured by the Dynamic Island. *(v1 D7.)*
@@ -55,8 +56,10 @@ put the board off-centre inside its own frame.)*
 **AC-107** Given the codebase, Then cell size is computed in exactly **one** place and passed
 to all consumers as a prop; no other component derives it. *(v1 D1.)*
 
-**AC-108** Given the Game screen on iPhone SE 3, Then the cell size is 30 pt and no cell size
-below 28 pt or above 44 pt is produced on any supported device.
+**AC-108** *(amended — the approved floor was an overflow, not a safety net)* Given any
+viewport, Then the cell size is produced by the four-stage ladder in `ui.md` §3.2 and the
+board **never exceeds the screen in either axis**. The approved single-clamp formula raised a
+too-small cell back to 28 and then overflowed silently; that behaviour is a defect.
 
 **AC-109** Given the Game screen, Then rows 11–13 render with the danger-band ground
 `#2A1D24`, and row 14 renders with the kill-line hazard stripe treatment.
@@ -65,6 +68,99 @@ below 28 pt or above 44 pt is produced on any supported device.
 (orientation is locked to portrait).
 
 **AC-111** Given any screen, Then no horizontal scrolling is possible anywhere in the app.
+
+### Layout ladder *(Finding 1)*
+
+**AC-112** Given a viewport where a 30 pt cell fits with the full 177 pt chrome, Then stage
+**0 — comfortable** is used: HUD 52, action bar 48, tray 45.
+
+**AC-113** Given a viewport where stage 0 would yield a cell below 30 pt, Then stage
+**1 — compact** is used: chrome drops to 144 pt (HUD 44, action bar 44, tray 36) and the cell
+is recomputed. **Chrome yields before the board does.**
+
+**AC-114** Given compact chrome, Then every touch target is still at least 44 × 44 pt — the
+Pass button fills the 44 pt action bar.
+
+**AC-115** Given a viewport where stage 1 would still yield a cell below 30 pt, Then stage
+**2 — minimum** is used and the cell may fall as low as **24 pt**, but no lower.
+
+**AC-116** Given a viewport where even a 24 pt cell with compact chrome will not fit, Then
+stage **3 — unsupported**: the app shows a clear message and **does not render a clipped or
+overflowing board**. *(Reachable only below 504 pt of height, or 597 pt with 59/34 insets, or
+272 pt of width — no iPhone has ever shipped such a viewport at any zoom level.)*
+
+**AC-117** Given Display Zoom is enabled or the largest accessibility text size is set, and
+the logical viewport shrinks as a result, Then the ladder engages and the board still fits.
+*(e.g. a 393 × 852 device at Display Zoom reports ~320 × 693 and must render at stage 2.)*
+
+**AC-118** Given any viewport, Then cell size is derived fresh from the current dimensions and
+is **never cached in component state or a module global**. *(v1 A3 held grid dimensions in
+mutable module state written during render.)*
+
+**AC-119 — THE SWEEP.** Given the sizing function is run across the continuous space — widths
+272–900 and heights 480–1200 in 2 pt steps, against inset profiles 0/0, 20/0, 44/34, 59/34,
+62/34 and 70/40 (682,290 combinations) — Then **zero** combinations overflow: for every
+non-stage-3 result, `cell × 15 + chrome + insetTop + insetBottom ≤ screenH` and
+`cell × 10 ≤ screenW − 32`. This is the standing layout test and it **replaces** any fixed
+device list, so that hardware which has not yet shipped is covered by construction. Re-run it
+after any change to chrome heights, cell bounds or the breakpoint.
+
+### Wide viewports and the iPhone Duo *(Finding 2)*
+
+**AC-120** Given a viewport 600 pt wide or wider, Then stage **W — wide** is used: the HUD and
+action bar move into a right-hand rail, vertical chrome drops to 77 pt, and the cell ceiling
+rises to 48 pt.
+
+**AC-121** Given stage W, Then the rail is at least 96 pt wide and contains the score, streak
+pill, buffalo chip, pause control, Pass button and turn state — the same components as the
+narrow layout, rearranged, with no element added or removed.
+
+**AC-122** Given stage W, Then no more than 20% of the screen width is inert gutter. *(The
+approved layout left 43% on a wide foldable — a phone app handed a bigger canvas and doing
+nothing with it.)*
+
+**AC-123** Given the iPhone Duo in its **folded** state, Then the board renders with no
+overflow and no clipping.
+
+**AC-124** Given the iPhone Duo in its **unfolded** state, Then the board renders in stage W
+with no overflow and no clipping.
+
+**AC-125** Given any stage including unfolded, Then orientation remains locked to portrait.
+
+**AC-126** Given the Duo's real point dimensions differ from the estimates in `ui.md` §3.2,
+Then **no code change is required** — the ladder is dimension-driven, and AC-119 is what
+guarantees it. A hard-coded Duo dimension anywhere in the source is a defect.
+
+### Runtime viewport change *(Finding 2)*
+
+The device changes size **while the game is running**. This is the same class of requirement
+as AC-834: the layout is presentation, and presentation must never be load-bearing.
+
+**AC-127** Given a run is in progress, When the device folds or unfolds, Then the board
+re-lays out to the new stage and **the game state is unchanged** — same animals, same
+positions, same score, same streak, same turn, same queued batch.
+
+**AC-128** Given a fold or unfold, Then the re-layout completes without dropping a frame and
+without a visible flash of an unstyled or mis-sized board.
+
+**AC-129 — MID-DRAG RESIZE.** Given the player is mid-drag, When the device folds or unfolds,
+Then the drag is **cancelled, not committed**: the animal returns to its origin column, no
+turn is consumed, and no move is applied. *(The columns under the finger change meaning when
+the cell size changes, so committing would apply a move the player did not choose.)*
+
+**AC-130** Given the player is mid-drag and the device resizes, Then the gesture's shared
+values are reset cleanly and a new drag can begin immediately on the new layout.
+
+**AC-131** Given a cascade is animating, When the device folds or unfolds, Then the
+resolution still completes and the resulting board state is identical to the same turn
+resolved without the resize.
+
+**AC-132** Given the device resizes during the input lock, Then the lock still ends within its
+budget (AC-822) and buffered input is still honoured.
+
+**AC-133** Given the device is folded or unfolded while the app is backgrounded, When the app
+returns to the foreground, Then the board re-lays out to the current viewport with the run
+intact.
 
 ---
 
@@ -122,6 +218,15 @@ share an `id`. *(v1 A5: `resetAnimalsCounter()` rewound a module-global counter.
 component. *(v1 B1: `GamePreview.js` returned `null` at line 7 before calling
 `useWindowDimensions()` at line 9.)*
 
+**AC-216** Given the engine detects a condition it cannot describe — the AC-504b chain guard
+being the only one currently defined — Then it **emits an event and returns**. The engine never
+calls `console`, never throws, and never performs I/O. Diagnostics leave the engine the same
+way scores do: as data on the event stream. *(This is what makes AC-201's purity ban
+compatible with a guard that has to tell somebody.)*
+
+**AC-217** Given a `CHAIN_GUARD` event is emitted, Then it carries enough context to diagnose
+the fault without a debugger: the step count reached, the run seed, and the turn number.
+
 ---
 
 ## AC-3xx · Spawning & the preview contract
@@ -142,20 +247,30 @@ tolerance.
 **AC-305** Given a batch is generated, Then every animal is fully within bounds:
 `0 ≤ x` and `x + size ≤ 10`.
 
-**AC-306** Given difficulty Savanna and turn 1, Then the batch occupies between 3 and 5 cells
-inclusive. Given turn 13, between 4 and 6. Given turn 25, between 5 and 7. Given turn 37 or
-later, between 6 and 8.
+**AC-306** *(amended — now an equality)* Given difficulty Savanna, Then the batch occupies
+**exactly** the turn's rolled target, and that target lies in 3–5 at turn 1, 4–6 from turn 13,
+5–7 from turn 25, and 6–8 from turn 37. *(Guaranteed by §5.2 invariant 3; a batch short of its
+target is a defect, not a tolerance.)*
 
-**AC-307** Given difficulty Meadow and turn 1, Then the batch occupies 2–4 cells; its band
-never exceeds 4–6. Given Tundra and turn 1, 4–6 cells; its band never exceeds 7–9.
+**AC-307** *(amended)* Given difficulty Meadow, Then the target lies in 2–4 at turn 1, 3–5 from
+turn 13, 4–6 from turn 25 and **5–7 from turn 37**, which is its ceiling. Given Tundra, 4–6 at
+turn 1, rising to a 7–9 ceiling. In both cases the batch occupies exactly the target.
+
+**AC-307b** Given any batch at any difficulty and turn, Then the number of columns it occupies
+equals the rolled target exactly — never fewer, never more.
 
 **AC-308** Given Meadow, Savanna and Tundra are each played for 50 turns, Then the three runs
 produce measurably different mean cells-per-turn. *(v1 C1: Normal and Hard were identical
 because `Math.ceil(1.5) === Math.ceil(2)`.)*
 
-**AC-309** Given 500 batches are generated at any difficulty, Then the number of distinct
-column counts observed proves the 1-column spawn buffer is gone — specifically, at least one
-batch occupies 9 columns. *(v1 C3: the buffer capped every batch at 8 of 10.)*
+**AC-309** *(amended — the old wording demanded a 9-column batch "at any difficulty", which is
+unachievable by design: only Tundra's band reaches a high of 9, and only from turn 37.)*
+Given 500 batches generated at **Tundra, turn 37 or later**, Then at least one occupies 9
+columns. *(v1 C3: the 1-column buffer capped every batch at 8 of 10 and averaged 6.0.)*
+
+**AC-309b** Given 500 batches generated at any difficulty and turn, Then no batch occupies 10
+columns, and the distribution of occupied-column counts matches the rolled targets exactly
+— which is the general proof that the buffer is gone.
 
 **AC-310** Given difficulty Savanna, Then a buffalo is queued on turns 10, 20, 30 … and on no
 other turn.
@@ -167,14 +282,49 @@ board is clear of buffalo.
 **AC-312** Given the turn advances, Then the next batch is generated **exactly once**.
 *(v1 C6: `generateAnimalsForTurn(turn + 1, …)` was called from two places for the same turn.)*
 
-**AC-313** Given a run begins, Then two arrival batches have already been applied and the
-board is non-empty, `turn` is 1, and the tray shows the batch for turn 1.
+**AC-313** *(amended)* Given a run begins, Then two arrival batches have already been applied
+and the board is non-empty, `turn` is 1, and the tray shows the batch for turn 1.
+
+**AC-313b** Given a run begins, Then both seeding batches were generated using **turn 1's
+band** for the chosen difficulty.
+
+**AC-313c** Given a run begins, Then **neither seeding batch contains a buffalo**, regardless
+of difficulty.
+
+**AC-313d** Given the two seeding batches happen to complete a row, Then that row clears
+normally, **but the run still opens at score 0**, with streak 0 and no clearing turn recorded.
 
 **AC-314** Given the same run seed, When the run is replayed with the same player inputs,
 Then every batch generated is identical.
 
 **AC-315** Given the tray, Then it renders the batch as animal bodies in species colours at
-their real columns, and displays the batch's total cell count. *(v1 rendered flat green
+their real columns, and displays the batch's total cell count.
+
+**AC-316 — INTERLEAVED GENERATION.** Given a batch is generated, Then each species is chosen
+against the free column runs that actually remain at that moment and is placed immediately
+before the next is chosen. Selection and placement are one loop, not two passes.
+
+**AC-317** Given a rolled target of 9 that would be satisfied by sizes {1, 3, 5}, Then
+generation never deadlocks and never produces a short batch. *(The approved two-pass algorithm
+did: rat at `x=1` then elk at `x=4` leaves no 5-wide run for the elephant, and no fallback was
+specified.)*
+
+**AC-317b** Given the source tree, Then the batch generator contains **no retry loop, no
+backtracking and no placement-failure fallback** — `validStarts` is provably non-empty
+whenever it is called, because a species only becomes a candidate once a free run long enough
+to hold it exists (`gameplay.md` §5.2 invariant 2). A fallback path in this function is a sign
+the invariant was broken, not a safety net.
+
+**AC-318 — PACING.** Given 30 seeds per difficulty played by the deterministic greedy bot with
+perfect information, Then median turns-per-run fall in these ranges:
+
+| | Meadow | Savanna | Tundra |
+|---|---:|---:|---:|
+| Acceptance range | 100–150 | 60–90 | 35–55 |
+
+*(Measured against the approved bands: Meadow 240 — out of range, which is why its ceiling
+moved to 5–7; Savanna 75.5 and Tundra 48.2 — both in range and unchanged.)* Re-run this after
+any band, weight or ramp change. *(v1 rendered flat green
 occupancy squares that said nothing about what was coming.)*
 
 ---
@@ -247,8 +397,31 @@ settles to its lowest non-colliding position.
 **AC-503** Given clearing one row causes another row to become complete, Then that row also
 clears in a subsequent chain step, and the process repeats until no row is complete.
 
-**AC-504** Given a resolution, Then the chain loop terminates after at most 8 steps and
-cannot loop indefinitely.
+**AC-504** *(amended — the 8-step rail is removed as a scoring cutoff)* Given a resolution,
+Then the chain loop runs until no row is complete, however many steps that takes, and
+**terminates by construction**: every step removes at least one completed row, so board mass
+strictly decreases by at least one cell per step from a maximum of 150.
+
+**AC-504b** *(amended — the engine cannot log; AC-201 forbids it and a test enforces it)*
+Given a resolution, Then `assert step <= 32` holds. This is a **crash guard against an engine
+bug**, not a gameplay parameter: 32 is more than twice the mass bound, so tripping it means
+gravity is not settling or a clear is not removing. On trip the engine **emits a `CHAIN_GUARD`
+event, increments `stats.chainGuardTrips`, and stops the loop** — it does not call `console`,
+does not throw, and does not silently alter scoring. Reporting is a presentation obligation
+(AC-216, AC-1309).
+
+**AC-504e** Given a run in which `stats.chainGuardTrips > 0`, Then that run's score is **not
+written to the high-score table**. The guard means the engine was in a state the rules do not
+describe, so its score is not trustworthy enough to persist as a record.
+
+**AC-504c — EVERY STEP THAT RESOLVES, SCORES.** Given a cascade of any depth, Then every step
+that clears a row awards its score. There is no depth past which clearing stops paying.
+*(The superseded 8-step rail cleared steps 9+ without paying them: on the committed 10-step
+fixture at streak 5 it paid 7,350 of 17,100 and silently swallowed a buffalo retirement.)*
+
+**AC-504d** Given the committed 10-step fixture resolved at streak 5, Then the score awarded
+is **17,100**, `stats.rowsCleared` is 6, `stats.longestChain` is 10, and `stats.buffaloRetired`
+is 1 — with the +500 retirement visible in the score.
 
 **AC-505** Given two rows complete in the same step, Then both clear in that single step (not
 sequentially).
@@ -298,27 +471,87 @@ by exactly 1400 (`1000 + 400 × 1`).
 **AC-605** Given a chain reaches step 2, 3, 4 and 5, Then that step's score is multiplied by
 2, 3, 4 and 5 respectively. Given step 6 or later, the multiplier remains 5.
 
-**AC-606** Given the player has cleared on `n` consecutive turns, Then the streak multiplier
-equals `min(3.0, 1.0 + 0.2 × (n − 1))`.
+**AC-606** *(amended — replaces the linear formula, and fixes the off-by-one)* Given a clear
+occurs, Then the streak is **incremented first and then applied**, so the multiplier shown and
+used is the one this clear earned. The value is a lookup, not a formula:
+
+| consecutive clearing turns | 1 | 2 | 3 | 4 | 5 | 6+ |
+|---|---:|---:|---:|---:|---:|---:|
+| × | 1.0 | 1.3 | 1.6 | 2.0 | 2.5 | 3.0 |
+
+**AC-606b** Given three consecutive turns that each clear exactly one row at chain depth 1,
+Then the score increases by 100, 130 and 160 — total **390**. *(Under the approved draft's
+reading this was 100 + 100 + 120 = 320, because the mechanic paid nothing until the third
+clear.)*
+
+**AC-606c** Given six consecutive clearing turns, Then the multiplier reaches ×3.0 and does
+not rise further.
+
+**AC-607b** Given the HUD, Then the streak pill renders `streakMult` and **never** the raw
+`state.streak` counter, which keeps counting past the ×3.0 cap by design so `longestStreak`
+can record it. *(Observed at 7 and 8 after eight consecutive clears; rendered raw it would
+read `streak 23 · ×3.0`.)*
+
+**AC-607c** Given a run ends, Then `longestStreak` records the **raw count** of consecutive
+clearing turns, not the multiplier — ×3.0 tops out, "14 in a row" does not.
 
 **AC-607** Given the streak multiplier exceeds 1.0, Then it is displayed in the HUD as a pill
-(e.g. `×2.4`).
+(e.g. `×2.0`). Reachable values are exactly 1.3, 1.6, 2.0, 2.5 and 3.0.
 
 **AC-608** Given a turn passes with no clear in either phase, Then the streak resets to 0 and
 the pill disappears.
 
-**AC-609** Given the player taps Pass, Then the streak resets to 0.
+**AC-609 — STREAK PRECEDENCE** *(amended — replaces "a pass resets the streak", which
+contradicted AC-606 for every pass that cleared, of which the AC-613 Perfect Clear case was
+only the loudest instance)*. Given the end of any turn, Then the streak is updated by the
+first matching rule:
+
+| # | Condition | Effect on the raw counter |
+|---|---|---|
+| 1 | The board is empty (Perfect Clear) | `streak = max(streak + 1, STREAK_TURNS_AT_CAP)` |
+| 2 | At least one clear step occurred, in Phase 2 **or** Phase 3 | `streak = streak + 1` |
+| 3 | Otherwise | `streak = 0` |
+
+**Rule 1 is a floor on the multiplier, not an assignment to the counter.** *(The approved
+wording said "Set to the ×3.0 cap", which read literally as `streak = 6` and would have moved
+a player on a raw streak of 13 **backwards** to 6 — destroying exactly what AC-607c preserves.
+Rule 1 was written before AC-607c separated the counter from the multiplier; afterwards
+"the cap" meant two different things and rule 1 kept pointing at the wrong one.)*
+
+**AC-609b** Given the player taps Pass and the resulting arrival completes a row, Then that
+turn **increments** the streak — the streak follows the board, not the input method.
+
+**AC-609c** Given the player taps Pass and no row clears, Then the streak resets to 0 by rule
+3 — the same outcome as any other non-clearing turn, and for the same reason.
+
+**AC-609d** Given the player taps Pass and the resulting arrival empties the board, Then rule
+1 wins: the multiplier is ×3.0, the counter rises per AC-609e, and the Perfect Clear bonus is
+awarded.
+
+**AC-609e** Given a Perfect Clear, Then the raw streak counter **never decreases**. From a
+streak of 1 it jumps to 6; from 13 it goes to 14, not back to 6. A Perfect Clear is a clearing
+turn — the best one — and must not be the single event in the game that sends a streak
+backwards.
+
+**AC-609f** Given any turn, Then the raw streak counter is monotonic across every clearing
+turn: it strictly increases under rules 1 and 2, and **only rule 3 ever lowers it**.
 
 **AC-610** Given a buffalo shrinks, Then the score increases by 50 (before multipliers) and
 that step counts toward chain depth.
 
-**AC-611** Given a buffalo is retired, Then the score increases by 500 (before multipliers).
+**AC-611** *(amended — the approved wording read as 500 flat; it is both terms)* Given the row
+completion that retires a buffalo, Then the score increases by **550** before multipliers —
+50 for the shrink plus 500 for the retirement. Taking the last segment is still taking a
+segment.
+
+**AC-611b** Given a buffalo is carried from size 4 to retirement with every completion at
+chain depth 1 and streak ×1.0, Then it has paid exactly **700** in total (50 + 50 + 50 + 550).
 
 **AC-612** Given a buffalo row resolves, Then that row does **not** count toward `n` in the
 simultaneous-rows table.
 
 **AC-613** Given a Perfect Clear, Then the score increases by 1000 and the streak multiplier
-is set to 3.0.
+is set to 3.0. Precedence against every other streak rule is AC-609.
 
 **AC-614** Given any number of turns elapse with no clears, Then the score does not change.
 Turns are never worth points.
@@ -329,8 +562,12 @@ floating `+N` rises from the affected row.
 **AC-616** Given the score is displayed anywhere, Then it uses tabular figures and does not
 reflow as it ticks.
 
-**AC-617** Given the worked example in `gameplay.md` §7.3 is reproduced, Then the score
-increases by exactly 640.
+**AC-617** *(amended for the new streak table)* Given the worked example in `gameplay.md`
+§7.3 is reproduced — a 4th consecutive clearing turn, two rows in step 1, one buffalo shrink
+in step 2 — Then the score increases by exactly **800** (600 + 200).
+
+**AC-617b** Given that same example except that step 2 *retires* the buffalo rather than
+shrinking it, Then step 2 pays `(50 + 500) × 2 × 2.0 =` **2200**.
 
 ---
 
@@ -355,6 +592,20 @@ sheet slides up over 280 ms starting at t=120 ms, so the two overlap. See AC-816
 **AC-706** Given the Game Over sheet, Then it displays the final score, the best score for
 that difficulty, and four run stats: turns survived, rows cleared, longest chain, buffalo
 retired.
+
+**AC-706b — ONE SOURCE.** Given any run, Then every statistic on the Game Over sheet is
+derived from **the same `events[]` array the score is summed from**: `rowsCleared` is the sum
+of `n` across events, `longestChain` is the highest `step` in any event, `buffaloRetired` is
+the count of events carrying a retirement. **A statistic incremented at a second site is a
+defect even while it happens to agree with the score.**
+
+**AC-706c** Given any run, Then no Game Over statistic can report an event the score was not
+paid for, and none can under-report one that was. *(The defect this closes: `buffaloRetired`
+reading 1 with no +500 anywhere in the score — retirement is the loudest scoring event in the
+game and §6.4 promises a full-board celebration for it.)*
+
+**AC-706d** Given `longestChain`, Then it reports the true cascade depth. *(It reported 8 for
+a 10-step cascade under the superseded rail.)*
 
 **AC-707** Given the final score exceeds the stored best for that difficulty, Then a
 `NEW BEST` badge is shown with the previous best.
@@ -455,10 +706,18 @@ follows `max(150, 250 − 20 × (k − 1))` ms before any time-scaling.
 **uniformly** time-scaled to fit — every step remains individually visible, the sequence keeps
 its shape, and no step is skipped. The scale applied is never below 0.55×.
 
-**AC-825** Given a cascade of 6 or more steps, Then at most 5 steps are animated separately
-and the remainder are replayed as one combined final step, **and the score awarded is
-identical to a fully-animated replay of the same cascade** — the presentation cap must not
-change a single point.
+**AC-825** *(amended — the cap is per turn, not per resolution)* Given a turn producing 6 or
+more cascade steps **across both the SETTLE and ARRIVAL phases combined**, Then at most 5 are
+animated separately and the remainder replay as one combined final step — at most **6 animated
+units per turn** — **and the score awarded is identical to a fully-animated replay** of the
+same cascade. The presentation cap must not change a single point. *(Per-phase capping would
+allow 12 units and break the AC-822 budget: 3290 ms uncompressed needs 0.46×, below the 0.55×
+floor.)*
+
+**AC-825b** Given the cascade pipeline, Then it makes **no assumption about the number of
+`CLEAR_STEP` events a turn can deliver**. The count is bounded by board mass (≈15 worst case,
+3 observed across 45,504 fuzzed turns), not by a step counter, and both phases feed the same
+turn. What the pipeline may rely on is AC-825's 6-animated-unit ceiling.
 
 **AC-826** Given input is locked, Then the lock ends at the end of the *structural* timeline
 and does **not** wait for announcement animations. Floating `+N` labels, the score count-up,
@@ -638,6 +897,10 @@ arrive unchanged.
 **AC-1210** Given the App Store listing, Then five screenshots exist for both the 6.9" and
 6.5" display sizes, matching the shot list in `ui.md` §11.3.
 
+**AC-1210b** Given the App Store listing, Then the iPhone Duo set includes at least one folded
+and one unfolded shot, the unfolded one showing the stage-W rail layout, captured from the
+Xcode 27.1 simulator rather than from the estimated dimensions in `ui.md` §3.2.
+
 **AC-1211** Given `app.json`, Then `userInterfaceStyle` is `"dark"` and the app renders
 identically regardless of the OS appearance setting.
 
@@ -673,3 +936,16 @@ variables or unreachable code.
 
 **AC-1308** Given any run, Then the run's PRNG seed is recorded in the run record so the run
 can be reproduced from a bug report.
+
+**AC-1309** Given a `CHAIN_GUARD` event reaches the presentation layer, Then in development
+builds it **throws**, surfacing immediately as a redbox; and in release builds it is recorded
+in the run record and the run is flagged, without interrupting the player. The engine emits it
+(AC-216); **this AC is what makes someone responsible for it being seen.** A guard nobody
+reads is not a guard.
+
+**AC-1310 — THE DOCUMENTS LINT.** Given `node docs/v2/check-ac-refs.mjs` is run, Then it exits
+0: **every acceptance criterion cited anywhere in `docs/v2/` is defined, and none is defined
+twice.** A referenced-but-undefined AC is silently unverifiable — the developer builds to it
+and the tester verifies it by number, and neither discovers it is missing. *(This AC exists
+because AC-609e and AC-609f were cited from two documents for a full review cycle before they
+were written.)* Re-run it after any edit to `docs/v2/`.
