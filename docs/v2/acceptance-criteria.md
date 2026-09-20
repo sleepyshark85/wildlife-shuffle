@@ -625,6 +625,11 @@ derived from **the same `events[]` array the score is summed from**:
 | `buffaloRetired` | count of events carrying a retirement |
 | `longestStreak` | highest `streak` across **`ADVANCE` events** |
 
+**AC-1011b** Given the Records screen, Then it shows the **last ten runs** — difficulty, date,
+score, turns — alongside the lifetime aggregates. *(Ported from v1's `StatsPanel.js`;
+aggregates do not replace it, because a list of your recent runs is what shows whether you are
+improving today.)*
+
 **A statistic incremented at a second site is a defect even while it happens to agree with the
 score.**
 
@@ -848,7 +853,51 @@ accent focus ring at 2 pt offset.
 **AC-1001** Given a run ends, Then the run record is written to AsyncStorage exactly once.
 
 **AC-1002** Given the app is running, Then no storage write occurs during a turn or from the
-render path.
+render path. *(v1 serialised the whole board to AsyncStorage on a 1 Hz `setInterval` at
+`GameScreen.js:53-72`, with `[store]` as its dependency array so the interval was rebuilt on
+every render.)*
+
+### Session resume *(ported from v1 — Layer A)*
+
+**AC-1012 — NO REGRESSION.** Given a run is in progress, When the app is backgrounded and
+later relaunched from cold, Then the run resumes at exactly the state it was left in: same
+board, same score, same streak, same turn, same queued batch. *(v1 shipped this; v2 without it
+would be a regression against behaviour players already have.)*
+
+**AC-1013** Given a run is in progress, Then the resume record is written **only** on
+`AppState` transition to `inactive` or `background` — never per turn, never on a timer, never
+from the render path. AC-1002 is unamended by this feature.
+
+**AC-1014** Given the resume record, Then it stores a **replay** — `{ schemaVersion,
+engineVersion, seed, difficulty, moves[], digest }` — and **not a board snapshot**. Resume
+re-runs the engine from turn 1 applying each move.
+
+**AC-1015** Given any resume record, however corrupt or tampered with, Then the board it
+produces is **reachable by the rules**, because the engine produced it. A save file must not
+be able to create a state the engine could not reach on its own.
+
+**AC-1016** Given a resume record whose `engineVersion` does not match the running build, Then
+it is **discarded, not replayed**. *(A replay only reconstructs a run under the rules that
+produced it; a tuning change to bands, weights or scoring would silently rebuild a different
+run. Losing a run to an app update is acceptable; silently resuming the wrong one is not.)*
+
+**AC-1017** Given a replay completes, Then the reconstructed board's `digest` is compared with
+the stored one and the resume is discarded on mismatch.
+
+**AC-1018** Given a saved run exists at launch, Then Home leads with **Resume**, showing that
+run's score and turn, and offers **New Run** second.
+
+**AC-1019** Given a saved run exists, When the player starts a new run, Then they are asked to
+confirm first, because it discards the saved run.
+
+**AC-1020** Given a run ends, Then the resume record is cleared and the run record is written
+(AC-1001).
+
+**AC-1021** Given a resumed run, Then it behaves as an ordinary run in every respect — it
+writes its run record, it can set a high score, and it counts toward the daily streak.
+
+**AC-1022** Given a resume record for a difficulty or board configuration the build no longer
+supports, Then it is discarded cleanly and the app launches normally.
 
 **AC-1003** Given the app is force-quit and relaunched, Then best score, all stats and all
 unlocks are restored. *(v1: AsyncStorage was a dependency and was never used; settings reset
