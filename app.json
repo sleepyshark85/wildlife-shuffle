@@ -7,24 +7,24 @@
       "**/*"
     ],
     "ios": {
-      "supportsTabletMode": true,
       "bundleIdentifier": "com.sleepyshark.animalrun",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "supportsTablet": false
     },
     "android": {
       "package": "com.sleepyshark.animalrun"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
     },
     "owner": "sleepyshark.85",
     "extra": {
       "eas": {
         "projectId": "e9ff7692-80d8-4bac-80f3-3b3ade4be252"
       }
-    }
+    },
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0D141B"
   }
 }
