@@ -33,8 +33,9 @@ Each turn follows this sequence:
 1. Grid advancement - all rows shift upward by 1 (every animal's y increases by 1)
    - **Animation timing**: Completes immediately, then 300ms delay before next step
 2. New animals added at Row 0 (bottom) based on spawning rules
-   - With collision checking against existing animals at y=0 to prevent overlapping
-   - Only valid non-overlapping animals are added
+   - **Spawn Row Collision Detection**: New animals are checked against existing animals at y=0
+   - If a new animal would overlap with an existing animal at y=0, that animal is filtered out and not added
+   - Only non-overlapping animals from the generated batch are added to the grid
 3. Gravity applied - animals fall to lowest non-colliding positions
 4. Row clearing with chain clearing support - completely filled rows are checked and processed:
    - Rows without buffalo: completely removed, empty rows added at top
@@ -62,7 +63,8 @@ Each turn follows this sequence:
   - **Only one buffalo can spawn per batch** (even if multiple animals spawn that turn)
   - If a buffalo would be generated and one was already added to the batch, regenerate to get a different animal
 - **Bounds Checking**: Animals cannot spawn outside the grid bounds (accounting for their size)
-- **Collision Prevention**: Multiple animals in same batch cannot overlap with each other
+- **Batch Collision Prevention**: Multiple animals in same batch cannot overlap with each other at generation time
+- **Spawn Row Collision Filtering**: If a generated animal would overlap with an existing animal at y=0, it is filtered out and not added to the grid
 
 ### Movement Mechanics
 - **Drag and Drop**: Players click and hold on an animal, then drag left/right and release
@@ -256,7 +258,7 @@ See **Turn Structure** under Game Mechanics for the step-by-step sequence of eac
 
 **Gameplay Enhancements**
 - ✅ Sequential turn effects: Grid advancement, animal spawning, and gravity now happen with 300ms delays between steps for better visual feedback
-- ✅ Buffalo overlapping prevention: New animals check for collisions with existing animals at spawn row (y=0) before being added
+- ✅ Collision-based filtering: Generated animals are checked against existing animals at y=0; overlapping animals are filtered out rather than repositioned
 - ✅ Chain clearing system: Row clearing loops until no more rows can be cleared after gravity is applied
   - Prevents missed rows when clearing causes cascading fills
   - Each chain iteration shows clearing animation (1200ms)
