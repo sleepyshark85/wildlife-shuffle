@@ -25,6 +25,9 @@
     },
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0D141B"
+    "backgroundColor": "#0D141B",
+    "plugins": [
+      "expo-status-bar"
+    ]
   }
 }
