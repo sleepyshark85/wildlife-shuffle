@@ -458,8 +458,11 @@ remaining segments filled and its spent segments dimmed.
 once. *(v1 C7: the turn path flashed at 500 ms then `executeChainClear` re-flashed for
 1000 ms — the same rows flashed twice.)*
 
-**AC-512** *(amended)* Given a clear step, Then its flash runs 140 ms concurrently with its
-110 ms collapse, and its animals settle over 200 ms. Cascade step intervals and the overall
+**AC-512** *(amended twice — see `ui.md` §8.2a)* Given a clear step, Then its flash runs
+**320 ms** (60 ms attack, 260 ms decay), its collapse runs **110 ms**, and its animals settle
+over 200 ms. The **first** step of a resolution additionally plays an **80 ms leading beat**
+before the collapse begins; steps 2+ of the same cascade begin their collapse concurrently
+with their flash. Cascade step intervals and the overall
 budget are AC-820..825.
 
 **AC-513** Given the board becomes completely empty after a resolution, Then a Perfect Clear
@@ -706,9 +709,22 @@ Given 1 or 2 rows, it does not.
 **AC-812** Given a buffalo shrinks, Then a segment visibly cracks off and falls, the body
 springs to its new width, and a `BUFFALO −1` label rises.
 
-**AC-813** *(amended — the lock budget is now AC-820..822)* Given a clear step, Then the
-flash overlays the collapse concurrently rather than preceding it, and the same rows never
-flash twice.
+**AC-813** *(amended — see `ui.md` §8.2a)* Given the **first** clear step of a resolution,
+Then an 80 ms leading beat plays before the collapse begins — the row is announced, then goes.
+Given any **subsequent** step of the same cascade, Then its collapse begins concurrently with
+its flash. In no case do the same rows flash twice.
+
+**AC-813b** Given any clear step, Then its flash lasts **320 ms** with a **60 ms attack and a
+260 ms decay** — deliberately asymmetric, because the fast attack is what announces and the
+slow decay is what stops it reading as abrupt. It is a single flash, not a pulse train.
+
+**AC-813c** Given any clear step, Then the flash **does not gate input**: it may still be
+playing when the next turn's input opens (AC-826). Its length costs the AC-822 budget nothing.
+
+**AC-813d** Given a clear step, Then the cleared animals scale to **0.85** and drift **6 pt
+downward** as they go, within the unchanged 110 ms structural collapse, with the opacity fade
+continuing **140 ms past** it as an announcement. Things that leave should look like they went
+somewhere.
 
 **AC-814** Given the app is running, Then every duration and easing observed matches the
 table in `ui.md` §8 to within 30 ms.
@@ -731,22 +747,39 @@ a new drag may begin on the next frame, while the shake is still playing.
 ### Input-lock budget *(Revision 2)*
 
 **AC-820** Given a turn in which no row clears, Then input reopens no later than **570 ms**
-after finger-up.
+after finger-up. *(Unchanged by §8.2a — no clear, no lead beat.)*
 
-**AC-821** Given a turn in which exactly one clear step occurs, Then input reopens no later
-than **880 ms** after finger-up.
+**AC-821** *(amended — §8.2a added the 80 ms lead beat)* Given a turn in which exactly one
+clear step occurs, Then input reopens no later than **960 ms** after finger-up.
 
 **AC-822 — THE BUDGET.** Given **any** turn, including the deepest cascade the engine can
 produce, Then input reopens no later than **1500 ms** after finger-up. This is a hard
 guarantee, not a target. *(The approved draft accepted ~3.2 s.)*
 
-**AC-823** Given a cascade of 2 or more steps, Then step *n+1*'s flash and collapse begin
-while step *n*'s animals are still falling, and the interval between consecutive step starts
-follows `max(150, 250 − 20 × (k − 1))` ms before any time-scaling.
+**AC-823** *(amended — §8.2a)* Given a cascade of 2 or more steps, Then step *n+1*'s flash and
+collapse begin while step *n*'s animals are still falling, and the interval between
+consecutive step starts follows `max(200, 260 − 15 × (k − 1))` ms before any time-scaling.
+*(Was `max(150, 250 − 20 × (k − 1))`. The chain still gathers pace, but gently: the old curve
+was dramatically correct and legibly wrong, overlapping later steps so heavily they stopped
+reading as discrete events.)*
 
-**AC-824** Given a resolution timeline whose natural length exceeds 1500 ms, Then it is
-**uniformly** time-scaled to fit — every step remains individually visible, the sequence keeps
-its shape, and no step is skipped. The scale applied is never below 0.55×.
+**AC-824** *(unchanged in rule; its worked numbers moved with §8.2a)* Given a resolution
+timeline whose natural length exceeds 1500 ms, Then it is **uniformly** time-scaled to fit —
+every step remains individually visible, the sequence keeps its shape, and no step is skipped.
+The scale applied is never below 0.55×; the absolute worst case needs **0.71×**.
+
+**AC-824b** Given the realistic worst case — a 3-step cascade split 2/1, the deepest ever
+observed — Then its natural length is 1610 ms and it compresses by **0.93×**. *(Before §8.2a
+this case was 1440 ms and needed no compression. That property was traded deliberately for a
+visibly better clear on every turn: "never compresses in practice" was an observation, the
+1500 ms guarantee is the promise, and a 7% speed-up on the rarest turn in the game is not
+perceptible.)*
+
+**AC-824c — PROVISIONAL.** Given the §8.2a clear timings (flash 320 ms, lead beat 80 ms,
+interval 260→200 ms), Then they are **reviewed against a real build before being locked**.
+They are a considered response to one sentence of owner feedback given while watching a build
+that had *no* clear animation at all, so they are the first of these numbers anyone has
+actually seen move. Watch them and adjust; do not defend them.
 
 **AC-825** *(amended — the cap is per turn, not per resolution)* Given a turn producing 6 or
 more cascade steps **across both the SETTLE and ARRIVAL phases combined**, Then at most 5 are
