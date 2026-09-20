@@ -1,51 +1,59 @@
-// One animal, and the drag.
+// One animal: the drag, and the replay of everything the engine did to it.
 //
-// This is the component the whole slice is about. v1's drag felt dead because
-// PanResponder -> setState -> re-render means the piece CHASES your thumb by a
-// frame or more instead of tracking it (docs/v1-review.md D3, ui.md §8.3 ¶2).
+// v1's drag felt dead because PanResponder -> setState -> re-render means the
+// piece CHASES your thumb by a frame or more instead of tracking it
+// (docs/v1-review.md D3, ui.md §8.3 ¶2). Here the gesture is a Gesture.Pan()
+// writing to Reanimated shared values on the UI thread. React learns the result
+// on release only, through one runOnJS call carrying the final column (AC-830,
+// AC-831). The legal/illegal ghost is computed in the gesture worklet from an
+// occupancy snapshot taken at gesture start (AC-832).
 //
-// Here the gesture is a Gesture.Pan() writing to Reanimated shared values. It
-// runs on the UI thread. React learns the result on release only, through one
-// runOnJS call carrying the final column (AC-830, AC-831). The legal/illegal
-// ghost is computed in the gesture worklet from an occupancy snapshot taken at
-// gesture start (AC-832) — computed in React it would lag the body by a render
-// and the feedback would actively lie mid-drag.
+// The motion half is the same principle from the other side. `motion` is this
+// animal's slice of the turn plan (src/ui/replay.js) — a list of already-decided
+// positions with already-decided start times. It is fed to withSequence /
+// withDelay / withTiming once, on the commit that applied the turn, and then the
+// UI thread owns it (AC-828, AC-833). No frame of it is load-bearing: the board
+// is `state.animals` and was correct before the first frame played (AC-834).
 
 import React, { memo, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  Easing,
+  interpolateColor,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
 import { BOARD, SPECIES } from '../../engine/constants.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
-import { COLORS, MOTION, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE } from '../theme.js';
-
-const SNAP_EASING = Easing.bezier(0.22, 1, 0.36, 1);
-const FALL_EASING = Easing.bezier(0.55, 0, 1, 0.45);
+import { EASE, delay, sequence, spring, timing } from '../motion.js';
+import {
+  COLORS, MOTION, MOTION_SIZE, NUMERAL, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, brighten,
+} from '../theme.js';
 
 /**
- * Grab lift: 90 ms, `spring(.34, 1.4, .64, 1)` (ui.md §8, AC-818).
+ * Grab lift: 90 ms, `spring(.34, 1.4, .64, 1)` (ui.md §8, AC-818). See
+ * motion.js `spring()` for why the middle terms are not carried across.
  *
- * That notation is not Reanimated's, and its middle terms are not in
- * Reanimated's units — a stiffness of 1.4 would not move. Reanimated's
- * duration-based spring is the faithful mapping: it takes the spec's 90 ms
- * directly as the perceptual duration, and `dampingRatio` 0.64 is the spec's
- * third term, which is the damping-ratio slot in that form. So the normative
- * number is the number in the code, rather than a hand-tuned mass/stiffness
- * pair that merely looks about right.
+ * These are module constants because the gesture worklet closes over them, and
+ * a worklet may only capture values that are stable — rebuilding the gesture to
+ * change an easing would drop a drag already in flight. None of them is longer
+ * than the 120 ms Reduce Motion ceiling, so none of them needs a reduced twin.
  */
-const GRAB_SPRING = { duration: MOTION.grab, dampingRatio: 0.64 };
+const grabConfig = spring(MOTION.grab, 0.64, false);
+const snapConfig = timing(MOTION.snap, EASE.out, false);
+const shakeIn = timing(MOTION.illegal / 6, EASE.illegal, false);
+const shakeMid = timing(MOTION.illegal / 3, EASE.illegal, false);
+/** AC-907: Reduce Motion replaces the shake with a static 400 ms red rim. */
+const REJECT_RIM_REDUCED = 400;
+/** The rim is a state, not a movement: it switches, it does not travel. */
+const rimOn = timing(1, EASE.out, false);
 
 /** ui.md §5.2 cue 2: the body counts out its own footprint in `size` panels. */
-function Panels({ size, cell, buffalo }) {
+function Panels({ size, cell, buffalo, highContrast }) {
   const seams = [];
   for (let i = 1; i < size; i += 1) {
     seams.push(
@@ -56,8 +64,12 @@ function Panels({ size, cell, buffalo }) {
           left: i * cell,
           top: 4,
           bottom: 4,
-          width: 1,
-          backgroundColor: buffalo ? SEAM_BUFFALO : SEAM,
+          width: highContrast ? 1.5 : 1,
+          backgroundColor: highContrast
+            ? 'rgba(255,255,255,.55)'
+            : buffalo
+              ? SEAM_BUFFALO
+              : SEAM,
         }}
       />,
     );
@@ -65,11 +77,14 @@ function Panels({ size, cell, buffalo }) {
   return <>{seams}</>;
 }
 
-function AnimalViewImpl({ animal, cell, range, drag, onCommit, onIllegal }) {
+function AnimalViewImpl({
+  animal, cell, range, drag, motion, reduced, sizeNumerals, highContrast, onCommit, onIllegal,
+}) {
   const { id, type, x, y, size } = animal;
   const style = SPECIES_STYLE[type] || SPECIES_STYLE.rat;
   const buffalo = type === SPECIES.buffalo.type;
   const width = size * cell;
+  const edgeLit = useMemo(() => brighten(style.edge, MOTION_SIZE.edgeBrighten), [style.edge]);
 
   // ---- shared values: the only things that move -------------------------
   const tx = useSharedValue(x * cell);
@@ -78,6 +93,12 @@ function AnimalViewImpl({ animal, cell, range, drag, onCommit, onIllegal }) {
   const homeCol = useSharedValue(x);
   const grab = useSharedValue(0);
   const shake = useSharedValue(0);
+  const squash = useSharedValue(0);
+  const reject = useSharedValue(0);
+  const bodyW = useSharedValue(width);
+  // AC-809: an arriving animal is in flight over the tray until it lands; the
+  // board's copy of it is invisible until the flight hands over (ArrivalFlight).
+  const alpha = useSharedValue(motion && motion.arrival ? 0 : 1);
 
   // The snapshot, mirrored onto the UI thread. The worklet takes its own copy
   // at gesture start, so nothing can move the goalposts mid-drag.
@@ -113,9 +134,59 @@ function AnimalViewImpl({ animal, cell, range, drag, onCommit, onIllegal }) {
   useEffect(() => {
     homeX.value = x * cell;
     homeCol.value = x;
-    tx.value = withTiming(x * cell, { duration: MOTION.snap, easing: SNAP_EASING });
-    ty.value = withTiming((ROWS - 1 - y) * cell, { duration: MOTION.fall, easing: FALL_EASING });
-  }, [x, y, cell, range, homeX, homeCol, tx, ty]);
+    tx.value = withTiming(x * cell, timing(MOTION.snap, EASE.out, reduced));
+
+    const keys = motion ? motion.keys : null;
+    if (!keys || keys.length === 0) {
+      ty.value = withTiming((ROWS - 1 - y) * cell, timing(MOTION.fall, EASE.fall, reduced));
+    } else {
+      // One sequence, built once, handed to the UI thread. The gaps are
+      // `withDelay`, never a chained timer (AC-828): a step that is scheduled
+      // 260 ms after the one before it waits on the UI thread's own clock.
+      const steps = [];
+      let cursor = 0;
+      for (const key of keys) {
+        const dur = reduced ? Math.min(key.dur, MOTION.reduced) : key.dur;
+        const gap = Math.max(0, key.at - cursor);
+        const ease = key.kind === 'fall' ? EASE.fall : EASE.out;
+        steps.push(delay(gap, withTiming((ROWS - 1 - key.y) * cell, timing(dur, ease, reduced))));
+        cursor = key.at + dur;
+      }
+      ty.value = steps.length === 1 ? steps[0] : sequence(...steps);
+
+      // AC-807: it has weight, and it has stopped. Announcement only — this is
+      // allowed to still be playing when the next turn's input opens.
+      if (motion.landAt !== null && !reduced) {
+        squash.value = delay(
+          motion.landAt,
+          sequence(
+            withTiming(1, timing(MOTION.squash * 0.3, EASE.out, reduced)),
+            withSpring(0, spring(MOTION.squash * 0.7, 0.5, reduced)),
+          ),
+        );
+      }
+      if (motion.arrival) {
+        // The flight owns the animal until it lands; then this one takes over
+        // at the identical coordinate, so the handover has no visible seam.
+        alpha.value = delay(motion.arrival.at + motion.arrival.dur, withTiming(1, timing(1, EASE.out, reduced)));
+      }
+    }
+
+    // AC-508/AC-812: the body springs to its new width. The panel count is
+    // already the new one; the segment that left is drawn by the shard layer.
+    const resize = motion ? motion.size : null;
+    if (resize) {
+      bodyW.value = delay(
+        resize.at,
+        withSpring(resize.to * cell, spring(MOTION.buffaloShrink, 0.62, reduced)),
+      );
+    } else {
+      bodyW.value = width;
+    }
+  }, [
+    x, y, cell, width, range, motion, reduced,
+    homeX, homeCol, tx, ty, squash, bodyW, alpha,
+  ]);
 
   useEffect(() => {
     rangeMin.value = range ? range.minX : 0;
@@ -145,7 +216,7 @@ function AnimalViewImpl({ animal, cell, range, drag, onCommit, onIllegal }) {
           sLeft.value = blockLeft.value;
           sRight.value = blockRight.value;
 
-          grab.value = withSpring(1, GRAB_SPRING);
+          grab.value = withSpring(1, grabConfig);
           drag.ghostSize.value = size;
           drag.ghostY.value = ty.value;
           drag.ghostX.value = homeCol.value;
@@ -180,14 +251,14 @@ function AnimalViewImpl({ animal, cell, range, drag, onCommit, onIllegal }) {
           'worklet';
           if (armed.value !== 1) return;
           armed.value = 0;
-          grab.value = withSpring(0, GRAB_SPRING);
+          grab.value = withSpring(0, grabConfig);
           drag.ghostVisible.value = 0;
           drag.blockedId.value = '';
 
           // AC-129/AC-130: the board or the layout moved under the finger, so
           // the drag is cancelled, not committed. No turn is consumed.
           if (startEpoch.value !== drag.epoch.value) {
-            tx.value = withTiming(homeX.value, { duration: MOTION.snap, easing: SNAP_EASING });
+            tx.value = withTiming(homeX.value, snapConfig);
             return;
           }
 
@@ -196,46 +267,75 @@ function AnimalViewImpl({ animal, cell, range, drag, onCommit, onIllegal }) {
           if (col > COLS - size) col = COLS - size;
 
           if (col === homeCol.value) {
-            tx.value = withTiming(homeX.value, { duration: MOTION.snap, easing: SNAP_EASING });
+            tx.value = withTiming(homeX.value, snapConfig);
             return;
           }
           if (col >= sMin.value && col <= sMax.value) {
-            tx.value = withTiming(col * cell, { duration: MOTION.snap, easing: SNAP_EASING });
+            tx.value = withTiming(col * cell, snapConfig);
             runOnJS(onCommit)(id, col); // the one runOnJS (AC-831)
             return;
           }
-          // AC-406: 3 x 6 pt shake, 260 ms. Pure announcement — it locks nothing.
-          tx.value = withTiming(homeX.value, { duration: MOTION.snap, easing: SNAP_EASING });
-          shake.value = withSequence(
-            withTiming(-6, { duration: 43 }),
-            withTiming(6, { duration: 87 }),
-            withTiming(-6, { duration: 87 }),
-            withTiming(0, { duration: 43 }),
+          // AC-406/AC-819: 3 x 6 pt shake, 260 ms. Pure announcement — it locks
+          // nothing, so the next drag can begin on the following frame.
+          tx.value = withTiming(homeX.value, snapConfig);
+          // AC-907: Reduce Motion replaces the shake with a static red rim,
+          // held for 400 ms instead of the shake's 260.
+          reject.value = sequence(
+            withTiming(1, rimOn),
+            delay(reduced ? REJECT_RIM_REDUCED : MOTION.illegal, withTiming(0, rimOn)),
           );
+          if (!reduced) {
+            shake.value = sequence(
+              withTiming(-MOTION_SIZE.illegalShake, shakeIn),
+              withTiming(MOTION_SIZE.illegalShake, shakeMid),
+              withTiming(-MOTION_SIZE.illegalShake, shakeMid),
+              withTiming(0, shakeIn),
+            );
+          }
           runOnJS(onIllegal)(id);
         }),
     [
-      cell, size, id, onCommit, onIllegal, drag, armed, startPx, startEpoch,
+      cell, size, id, reduced, onCommit, onIllegal, drag, armed, startPx, startEpoch,
       sMin, sMax, sLeft, sRight, rangeMin, rangeMax, blockLeft, blockRight,
-      grab, shake, tx, ty, homeX, homeCol,
+      grab, shake, reject, tx, ty, homeX, homeCol,
     ],
   );
 
   // ---- animated styles: all read on the UI thread ------------------------
   const bodyStyle = useAnimatedStyle(() => {
-    const blocked = drag.blockedId.value === id; // AC-407, without a render
+    // AC-407 mid-drag, ui.md §5.4 on release — both without a render.
+    const blocked = drag.blockedId.value === id || reject.value > 0.5;
+    const rim = highContrast ? 2.5 : buffalo ? 2 : 1.5;
     return {
+      width: bodyW.value,
+      opacity: alpha.value,
       transform: [
         { translateX: tx.value + shake.value },
-        { translateY: ty.value - 2 * grab.value },
-        { scale: 1 + 0.04 * grab.value },
+        { translateY: ty.value - MOTION_SIZE.grabLift * grab.value },
+        { scaleX: 1 + (MOTION_SIZE.grabScale - 1) * grab.value },
+        {
+          scaleY:
+            (1 + (MOTION_SIZE.grabScale - 1) * grab.value) *
+            (1 - (1 - MOTION_SIZE.squashScaleY) * squash.value),
+        },
       ],
       zIndex: grab.value > 0.01 ? 20 : 1,
-      borderWidth: blocked ? 2 : buffalo ? 2 : 1.5,
-      borderColor: blocked ? COLORS.illegal : style.edge,
-      shadowOpacity: 0.45 * grab.value,
+      borderWidth: blocked ? 2 : rim,
+      borderColor: blocked
+        ? COLORS.illegal
+        : highContrast
+          ? '#FFFFFF'
+          : interpolateColor(grab.value, [0, 1], [style.edge, edgeLit]),
     };
   });
+
+  // AC-805. The shadow is its own layer with an animated opacity rather than an
+  // animated `shadowOpacity`, because react-native-web has deprecated the
+  // `shadow*` props and does not fold an animated `shadowOpacity` into the
+  // `boxShadow` it actually renders — so on web the specified shadow resolved
+  // to `rgba(0,0,0,0) 0px 0px 0px`, i.e. nothing. `boxShadow` is the one form
+  // RN 0.86 and react-native-web 0.21 both honour.
+  const shadowStyle = useAnimatedStyle(() => ({ opacity: grab.value }));
 
   const danger = y >= BOARD.dangerBandLow;
   const glyph = Math.round(cell * 0.53);
@@ -259,21 +359,29 @@ function AnimalViewImpl({ animal, cell, range, drag, onCommit, onIllegal }) {
             backgroundColor: style.fill,
             alignItems: 'center',
             justifyContent: 'center',
-            shadowColor: '#000',
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 6 },
           },
+          // ui.md §5.3: the buffalo glows faintly from within, and is the only
+          // piece on the board that does.
+          buffalo && styles.buffaloGlow,
           danger && styles.danger,
           bodyStyle,
         ]}
       >
-        <Panels size={size} cell={cell} buffalo={buffalo} />
+        <Animated.View style={[styles.shadow, { borderRadius: RADIUS.animal }, shadowStyle]} />
+        <Panels size={size} cell={cell} buffalo={buffalo} highContrast={highContrast} />
         <Text
           allowFontScaling={false}
           style={{ fontSize: glyph, lineHeight: glyph * 1.2, color: style.glyph }}
         >
           {(SPECIES[type] || SPECIES.rat).emoji}
         </Text>
+        {sizeNumerals ? (
+          // ui.md §10, AC-905 / AC-905b: the optional fifth size cue, on its
+          // own chip so its contrast does not depend on the fill beneath it.
+          <View style={styles.numeralChip}>
+            <Text allowFontScaling={false} style={styles.numeral}>{size}</Text>
+          </View>
+        ) : null}
       </Animated.View>
     </GestureDetector>
   );
@@ -289,6 +397,34 @@ function label(type, size, y, x) {
 const styles = StyleSheet.create({
   // ui.md §5.4: anything in rows 11-13 wears the kill line at 40%.
   danger: { outlineWidth: 1, outlineColor: 'rgba(224,82,96,.4)', outlineStyle: 'solid' },
+  buffaloGlow: { boxShadow: 'inset 0px 0px 12px rgba(232,180,74,0.14)' },
+  shadow: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    boxShadow: '0px 6px 16px rgba(0,0,0,0.45)',
+  },
+  numeralChip: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    minWidth: 13,
+    paddingHorizontal: 2,
+    borderRadius: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: NUMERAL.chip,
+  },
+  numeral: {
+    fontSize: NUMERAL.size,
+    lineHeight: NUMERAL.size + 3,
+    fontWeight: NUMERAL.weight,
+    color: NUMERAL.ink,
+    fontVariant: ['tabular-nums'],
+  },
 });
 
 export const AnimalView = memo(AnimalViewImpl);

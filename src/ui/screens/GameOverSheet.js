@@ -13,21 +13,21 @@ import { Sheet } from './Sheet.js';
 function Stat({ caption, value }) {
   return (
     <View style={styles.stat}>
-      <Text allowFontScaling={false} style={TYPE.title}>{value}</Text>
-      <Text allowFontScaling={false} style={TYPE.label}>{caption}</Text>
+      <Text style={TYPE.title}>{value}</Text>
+      <Text style={TYPE.label}>{caption}</Text>
     </View>
   );
 }
 
-export function GameOverSheet({ record, difficulty, flagged, onAgain, onQuit }) {
+export function GameOverSheet({ record, difficulty, flagged, reduced, onAgain, onQuit }) {
   const habitat = (DIFFICULTIES[difficulty] || DIFFICULTIES.savanna).label;
   return (
-    <Sheet testID="game-over" title={`Run over · ${habitat}`}>
-      <Text allowFontScaling={false} style={TYPE.display}>{formatScore(record.score)}</Text>
+    <Sheet testID="game-over" reduced={reduced} title={`Run over · ${habitat}`}>
+      <Text style={TYPE.display}>{formatScore(record.score)}</Text>
       {flagged ? (
         // AC-504e / AC-1309: the engine was in a state the rules do not
         // describe, so the score is not trustworthy enough to keep.
-        <Text allowFontScaling={false} style={styles.flagged}>
+        <Text style={styles.flagged}>
           This run hit an engine fault and will not be recorded.
         </Text>
       ) : null}

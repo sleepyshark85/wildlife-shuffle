@@ -3,6 +3,11 @@
 // At compact chrome the bar is 44 pt and the Pass button fills it, so every
 // touch target survives the ladder (AC-114).
 //
+// ui.md §10 / AC-910c: the bar's height is part of the ladder's chrome budget,
+// so its text scales up to CHROME_FONT_CAP rather than without limit. A cap is
+// not an exemption — the text still grows, it just stops before it clips, which
+// is what AC-910 ("no text anywhere is clipped or truncated") asks for.
+//
 // The bar is laid out at `height + HAIRLINE`, not at `height`. React Native is
 // border-box: a 44 pt box with a 1 pt top rule has a 43 pt content box, and the
 // 44 pt button then overhangs it by a point and the page picks up a point of
@@ -15,7 +20,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { actionBarHeight, passButtonHeight } from '../layout.js';
 import { COLORS, COPY, SPACE, TYPE } from '../theme.js';
-import { Button } from './Controls.js';
+import { Button, CHROME_FONT_CAP } from './Controls.js';
 
 function statusCopy({ blocked, resolving, gameOver }) {
   if (gameOver) return 'RUN OVER';
@@ -35,13 +40,14 @@ export const ActionBar = memo(function ActionBar({
       testID="pass"
       onPress={onPass}
       muted={muted}
+      maxFontScale={CHROME_FONT_CAP}
       style={column ? styles.wideButton : { height: passButtonHeight(chrome) }}
     />
   );
   const status = (
     <Text
       testID="turn-state"
-      allowFontScaling={false}
+      maxFontSizeMultiplier={CHROME_FONT_CAP}
       accessibilityLiveRegion="polite"
       style={[TYPE.label, blocked && styles.blocked]}
     >

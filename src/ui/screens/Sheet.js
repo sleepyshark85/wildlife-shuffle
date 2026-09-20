@@ -9,46 +9,58 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  Easing,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 
+import { EASE, delay, timing } from '../motion.js';
 import { COLORS, MOTION, RADIUS, SPACE, TYPE } from '../theme.js';
 
-const SHEET_EASING = Easing.bezier(0.22, 1, 0.36, 1);
+const SHEET_RISE = 280;
 
-export function Sheet({ title, subtitle, children, testID }) {
+/**
+ * `visible === false` plays the 220 ms exit and then calls `onClosed`. The
+ * callback rides Reanimated's own completion callback through one `runOnJS`,
+ * so the sheet's dismissal is still not a timer (AC-828) — nothing in this app
+ * waits on `setTimeout` except the input lock and the BLOCKED label.
+ */
+export function Sheet({ title, subtitle, children, reduced, visible = true, onClosed, testID }) {
   const dim = useSharedValue(0);
   const rise = useSharedValue(1);
 
   useEffect(() => {
-    dim.value = withTiming(1, { duration: MOTION.dim, easing: SHEET_EASING });
-    rise.value = withDelay(
-      MOTION.sheetDelay,
-      withTiming(0, { duration: MOTION.sheet, easing: SHEET_EASING }),
-    );
-  }, [dim, rise]);
+    if (visible) {
+      dim.value = withTiming(1, timing(MOTION.dim, EASE.out, reduced));
+      rise.value = delay(
+        reduced ? 0 : MOTION.sheetDelay,
+        withTiming(0, timing(MOTION.sheet, EASE.out, reduced)),
+      );
+      return;
+    }
+    const done = onClosed;
+    dim.value = withTiming(0, timing(MOTION.sheetOut, EASE.out, reduced));
+    rise.value = withTiming(1, timing(MOTION.sheetOut, EASE.out, reduced), (finished) => {
+      'worklet';
+      if (finished && done) runOnJS(done)();
+    });
+  }, [dim, rise, reduced, visible, onClosed]);
 
   const dimStyle = useAnimatedStyle(() => ({ opacity: dim.value }));
   const sheetStyle = useAnimatedStyle(() => ({
     opacity: 1 - rise.value * 0.6,
-    transform: [{ translateY: rise.value * 280 }],
+    transform: [{ translateY: rise.value * SHEET_RISE }],
   }));
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Animated.View
-        pointerEvents="auto"
-        style={[StyleSheet.absoluteFill, styles.scrim, dimStyle]}
-      />
+    <View style={[StyleSheet.absoluteFill, styles.passthrough]}>
+      <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, dimStyle]} />
       <Animated.View testID={testID} style={[styles.sheet, sheetStyle]}>
         <View style={styles.grabber} />
-        <Text allowFontScaling={false} style={TYPE.title}>{title}</Text>
+        <Text style={TYPE.title}>{title}</Text>
         {subtitle ? (
-          <Text allowFontScaling={false} style={TYPE.body}>{subtitle}</Text>
+          <Text style={TYPE.body}>{subtitle}</Text>
         ) : null}
         {children}
       </Animated.View>
@@ -57,7 +69,9 @@ export function Sheet({ title, subtitle, children, testID }) {
 }
 
 const styles = StyleSheet.create({
-  scrim: { backgroundColor: COLORS.scrim },
+  // The sheet and the scrim take touches; the gap above them does not.
+  passthrough: { pointerEvents: 'box-none' },
+  scrim: { backgroundColor: COLORS.scrim, pointerEvents: 'auto' },
   sheet: {
     position: 'absolute',
     left: 0,

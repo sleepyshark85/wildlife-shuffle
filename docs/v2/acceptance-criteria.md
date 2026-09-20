@@ -452,6 +452,11 @@ panel count equals the new size.
 **AC-509** Given a buffalo is on the board, Then the HUD buffalo chip is visible and shows its
 remaining segments filled and its spent segments dimmed.
 
+**AC-509b** Given a buffalo shrinks, Then the chip's segment fades on the **same 260 ms
+timeline as the body's shrink**, not on the React commit. *(Slice 3 measured the chip reading
+"1 of 4" beside a two-cell-wide body for a quarter second — the HUD contradicting the board
+about the one fact the chip exists to report.)*
+
 **AC-510** Given a buffalo is retired, Then the HUD chip disappears.
 
 **AC-511** Given a clear step occurs, Then its flash-and-collapse animation plays exactly
@@ -581,8 +586,17 @@ is set to 3.0. Precedence against every other streak rule is AC-609.
 **AC-614** Given any number of turns elapse with no clears, Then the score does not change.
 Turns are never worth points.
 
-**AC-615** Given the score changes, Then the HUD counts up to the new value over 400 ms and a
-floating `+N` rises from the affected row.
+**AC-615** *(amended — see `ui.md` §8.2a)* Given the score changes, Then the HUD count-up and
+the floating `+N` both **start at the turn's first clear unit's `collapseAt`** — never at the
+React commit. The order the player sees is flash → collapse → score.
+
+**AC-615b** Given an ARRIVAL-phase clear, Then the score does **not** reach its final value
+before the flash begins. *(Slice 3 measured the count-up finishing at 400 ms while the flash
+started at 570 ms — the HUD answering before the board asked.)*
+
+**AC-615c** Given a cascade, Then there is **one** count-up for the turn, of duration
+`max(400, lastClearUnit.collapseAt − firstClearUnit.collapseAt + 400)`, targeting the turn's
+final score — one accumulating sweep, not a counter that restarts on every step.
 
 **AC-616** Given the score is displayed anywhere, Then it uses tabular figures and does not
 reflow as it ticks.
@@ -714,6 +728,14 @@ Then an 80 ms leading beat plays before the collapse begins — the row is annou
 Given any **subsequent** step of the same cascade, Then its collapse begins concurrently with
 its flash. In no case do the same rows flash twice.
 
+**AC-813e** Given any clear step, Then the flash peaks at **0.92** on the animal body and
+**0.22** on the row's background cells, reached at the end of the attack.
+
+**AC-813f** Given any clear step, Then the flash is an **additive overlay, never a fill swap**:
+the body keeps its species colour and panel seams underneath throughout, and they resurface
+through the decay. *(A fill swap would destroy §5.2's size cues rather than briefly
+overwhelming them.)*
+
 **AC-813b** Given any clear step, Then its flash lasts **320 ms** with a **60 ms attack and a
 260 ms decay** — deliberately asymmetric, because the fast attack is what announces and the
 slow decay is what stops it reading as abrupt. It is a single flash, not a pulse train.
@@ -775,8 +797,53 @@ visibly better clear on every turn: "never compresses in practice" was an observ
 1500 ms guarantee is the promise, and a 7% speed-up on the rarest turn in the game is not
 perceptible.)*
 
-**AC-824c — PROVISIONAL.** Given the §8.2a clear timings (flash 320 ms, lead beat 80 ms,
-interval 260→200 ms), Then they are **reviewed against a real build before being locked**.
+**AC-823b** Given a cascade, Then step *n+1* begins at **75%** through step *n*'s fall, which
+follows from AC-823's interval (collapse 0–110 ms, fall 110–310 ms, 260 ms interval →
+(260−110)/200). *(§8.2's prose said 60%; it had been stale since before §8.2a.)*
+
+**AC-824d — ANTICIPATION, PROVISIONAL.** *(amended — the approved "0.10 row wash" assumed a
+uniform band; a row about to complete is nearly full, so what renders is a lit **gap**. That
+is the better cue and is now the specified intent rather than a side effect.)* Given an
+ARRIVAL-phase clear, Then the row the arrival is about to complete washes in across the 260 ms
+push-up at **0.14 on its unoccupied cells** — the gap the arrival fills — and **0.05 on its
+occupied cells**, so the gap is the primary read and still belongs to a row.
+
+**AC-824d2** Given the anticipation wash needs adjusting on device, Then the **occupied** alpha
+is the lever for row-level presence and the unoccupied alpha for gap presence. Raising both
+together is a defect in judgement, not a tuning step: a uniform increase makes the empty part
+shout, which is the failure mode that turns a focus into a smear.
+
+**AC-824e — DERIVED, NOT RESTATED.** Given `node docs/v2/budget.mjs` is run, Then it exits 0
+and its printed table **matches the figures in `ui.md` §8.2 exactly**. The absolute worst case
+is a **3/3 split of 6 animated units = 2360 ms → 0.636×**, and every one of the 882 legal
+`(settle, arrival)` splits stays above the 0.55× floor. *(A figure in §8.2 has gone stale
+behind its own ACs three times — 0.78×, 0.71×, and "60% through the fall" — every time because
+prose restated an arithmetic result. It is now computed.)*
+
+**AC-824f — THE CLOCK STARTS AT FINGER-UP.** Given AC-820, AC-821 and AC-822, Then their
+budgets are measured from **finger-up**, not from the React commit, and the presentation layer
+subtracts `commitTime − fingerUpTime` from the budget before scaling the timeline. *(Slice 3
+measured that gap at a median of 61 ms, p90 94, max 114 in a dev web bundle, which put a real
+single-clear turn at ~1021 ms against AC-821's 960. A release iOS build will be far smaller
+but not zero.)* Where the measured gap is under one frame (≈16 ms) the correction may be
+skipped. **The gap must be measured on device** as part of the AC-824c review.
+
+**AC-824c — PROVISIONAL / THE DEVICE REVIEW LIST.** Given the §8.2a clear timings (flash
+320 ms, lead beat 80 ms, interval 260→200 ms), Then they are **reviewed against a real build
+before being locked**, together with everything else that cannot be settled off-device:
+
+| | what to look for |
+|---|---|
+| §8.2a clear timings | does the clear still read as abrupt? |
+| Flash peak 0.92 (AC-813e) | does a **multi-row** clear read as one event, or as a white band? If it flattens, lower the body peak before touching the duration. |
+| Anticipation wash (AC-824d) | focus, or smear? If smear, drop it and accept the 570 ms. |
+| Commit gap (AC-824f) | measure `commitTime − fingerUpTime` on a release build. |
+| Screen shake (AC-811) | never occurred in ~250 bot turns; the trigger is proved at the plan layer but nobody has watched it render. |
+| A rendered 2-step cascade | real but rare — max depth 2 across 111 clearing turns. |
+| Anticipation wash (AC-824d) | gap cue, or too quiet to register on a full board at arm's length? Lever in AC-824d2. |
+| **The whole Dynamic Type group** (AC-910b–g) | **unverifiable off-device.** `react-native-web` hard-codes `fontScale: 1` (`Dimensions/index.js:17`) and ignores both `allowFontScaling` and `maxFontSizeMultiplier`, so Tier 2 can only source-audit plus unit-test `hudScale(fontScale, compact)`. Needs an iOS device. |
+
+
 They are a considered response to one sentence of owner feedback given while watching a build
 that had *no* clear animation at all, so they are the first of these numbers anyone has
 actually seen move. Watch them and adjust; do not defend them.
@@ -857,10 +924,23 @@ via a polite live region.
 **AC-904** Given VoiceOver is active, Then every button exposes a role and an accessible name,
 and no control is reachable only by an emoji glyph.
 
-**AC-905** Given the Size Numerals toggle is on, Then every animal displays its size digit.
+**AC-905** *(amended — the approved spec said "10 pt / 600 mono" and nothing about colour, so
+the numeral inherited the species glyph style and three of five species failed AC-909: fox
+4.46, elk 3.92, elephant 3.47)* Given the Size Numerals toggle is on, Then every animal
+displays its size digit at 10 pt / 600 mono in `ink` **`#EFF4F8`** at **full opacity**, on a
+**solid `#0D141B` chip** — radius 3, 2 pt horizontal padding, inset 3 pt from the bottom-right
+corner.
+
+**AC-905b** Given the size numeral on **any** species, Then its contrast is **16.7:1**, fixed
+by the chip rather than dependent on the fill beneath it. An accessibility aid that itself
+fails contrast is worse than no aid.
 
 **AC-906** Given the High Contrast toggle is on, Then animal borders are 2.5 pt white and
 seams are 1.5 pt white at 55%.
+
+**AC-906b** Given the three accessibility toggles, Then persistence is **Layer A (Slice 4)**;
+until AsyncStorage lands under AC-10xx they are session-scoped, which is a deliberate deferral
+rather than an omission.
 
 **AC-907** Given OS Reduce Motion is enabled, Then every transform animation becomes a
 ≤120 ms cross-fade, the illegal-move shake becomes a static 400 ms red rim, the danger pulse
@@ -869,12 +949,63 @@ becomes a static wash, and screen shake is disabled.
 **AC-908** Given a deuteranopia or protanopia simulation, Then every animal's size remains
 determinable from width and panel count alone.
 
+**AC-908b** Given Brettel/Viénot simulation over the §4.3 palette, Then the worst pairs are
+recorded accurately: **deuteranopia** closest pair **fox/elk** at RGB distance 53;
+**protanopia** fox/elk at distance **20** (`#9b9b48` vs `#9e9e5c`). Both are acceptable — fox
+and elk are adjacent in size and therefore adjacent on the lightness ramp, so the collision is
+the ramp working as designed. **Do not separate fox and elk in hue to fix it**: that breaks
+the size→lightness mapping to rescue a species distinction the game does not use.
+
 **AC-909** Given every text/background pair in the app, Then contrast is at least 4.5:1,
 except `ink-dim` which is used only at 10 pt / 600 uppercase and always paired with an
 `ink`-weight value.
 
-**AC-910** Given Dynamic Type is set to AccessibilityLarge, Then all HUD, sheet and overlay
-text scales and no text is clipped or truncated. The board does not scale.
+**AC-910** *(amended — the approved wording was unsatisfiable; see `ui.md` §10)* Given Dynamic
+Type is set to any size, Then the **board never scales**, and no text anywhere is clipped or
+truncated.
+
+**AC-910b** Given Dynamic Type at any size up to `AccessibilityExtraExtraExtraLarge`, Then all
+**sheet and overlay** text — Pause, Game Over, Settings, Records, How to Play — scales fully,
+scrolling where needed.
+
+**AC-910c** *(amended — the approved wording said "only on HUD text", which taken literally
+also stripped the board, contradicting AC-910, and stripped the action bar and tray labels,
+producing the clipping AC-910 forbids)*. Given the source tree, Then text scaling follows a
+**three-way** split:
+
+| Surface | Treatment |
+|---|---|
+| **HUD and board** | `allowFontScaling={false}` — the board is spatial, the HUD trades labels for values (AC-910d) |
+| **Fixed-height chrome** — action bar, tray label row | `maxFontSizeMultiplier` **1.5** and **1.3** |
+| **Everything else** — sheets, overlays | scales without limit (AC-910b) |
+
+**A cap is not an exemption.** Capped text still scales with the player's setting; it stops
+before it clips. That is a different thing from refusing to scale, and the approved AC had no
+vocabulary for it. *(At AccessibilityXXXL a 16 pt Pass label is ~50 pt inside a 44 pt button;
+capped at 1.5× it is 24 pt and fits.)*
+
+**AC-910g** Given the hygiene audit, Then it encodes this three-way split, so a tester greps
+the audit rather than parsing prose.
+
+**AC-910h** Given Tier 2 (web) verification, Then AC-910b–g are **not observable there at
+all**: `react-native-web` hard-codes `fontScale: 1` (`Dimensions/index.js:17`) and ignores both
+`allowFontScaling` and `maxFontSizeMultiplier`. Tier 2 may verify them only by source audit
+plus a pure-function test of `hudScale(fontScale, compact)`; behavioural verification requires
+an iOS device and belongs to the AC-824c review.
+
+**AC-910d** Given Dynamic Type at `xxLarge` or above, Then the HUD **keeps its fixed height**
+and instead drops its 10 pt uppercase labels and grows its values into the freed space: the
+score goes to 40 pt in a 52 pt HUD and 34 pt in a 44 pt compact HUD, with the streak pill and
+buffalo chip scaling to match.
+
+**AC-910e** Given any Dynamic Type size, Then the HUD's height is unchanged and the board's
+cell size is unaffected. *(The ladder's chrome budget is what guarantees the board fits;
+letting the HUD grow would spend board rows on chrome for the players least able to afford
+losing them.)*
+
+**AC-910f** Given VoiceOver at any Dynamic Type size, Then every HUD value is still announced
+with its name, because the names live on `accessibilityLabel` rather than on the visible
+labels that AC-910d hides.
 
 **AC-911** Given keyboard or switch-control focus, Then every interactive control shows a 2 pt
 accent focus ring at 2 pt offset.

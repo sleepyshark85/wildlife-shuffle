@@ -32,8 +32,49 @@ import {
 } from '../engine/engine.js';
 import { STATUS } from '../engine/constants.js';
 import { inspectChainGuard } from './chainGuard.js';
-import { turnTimeline } from './timeline.js';
+import { buildReplay } from './replay.js';
+import { lockDelay } from './timeline.js';
 import { MOTION } from './theme.js';
+
+/**
+ * A monotonic millisecond clock. `performance.now()` rather than `Date.now()`
+ * because this measures a duration, and because a harness that freezes the
+ * wall clock to make seeds reproducible must not also silently freeze the
+ * budget correction into a no-op.
+ */
+function now() {
+  return typeof performance !== 'undefined' && performance.now
+    ? performance.now()
+    : Date.now();
+}
+
+/** A commit gap this long is a debugger, not a device. Do not learn from it. */
+const MAX_LEARNED_GAP_MS = 300;
+
+/**
+ * The engine's `reduce()` IS the reducer — unchanged, and still the only thing
+ * that decides what the board becomes. This wrapper adds one derived field and
+ * decides nothing: the replay plan for the turn that just resolved (ui.md §8.3
+ * ¶3, AC-833/AC-834).
+ *
+ * It has to happen here, and not in a `useMemo` further down, for one reason:
+ * building the plan needs the board as it stood BEFORE the turn, and a cascade
+ * has already deleted the animals whose departure has to be drawn. This is the
+ * only place both boards exist at once. It is pure, so React 19 StrictMode's
+ * double-invocation remains a no-op (AC-203).
+ */
+export function runReducer(state, action) {
+  const next = reduce(state, action);
+  if (next !== state && next.lastTurn && next.lastTurn !== state.lastTurn) {
+    // `action.reservedMs` is AC-824f's correction, carried on the action so
+    // the impurity stays in the event handler where the seeds already live.
+    return {
+      ...next,
+      plan: buildReplay(state.animals, next.lastTurn, action.reservedMs || 0),
+    };
+  }
+  return next;
+}
 
 /** A run seed. Called from event handlers only, never during render. */
 export function newSeed() {
@@ -41,7 +82,7 @@ export function newSeed() {
 }
 
 export function useGameRun({ seed, difficulty }) {
-  const [state, dispatch] = useReducer(reduce, { seed, difficulty }, createRun);
+  const [state, dispatch] = useReducer(runReducer, { seed, difficulty }, createRun);
 
   const [resolving, setResolving] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -50,6 +91,13 @@ export function useGameRun({ seed, difficulty }) {
 
   const lockedRef = useRef(false);
   const stateRef = useRef(state);
+  /**
+   * AC-824f. `fingerUpRef` is when the player let go; `gapRef` is how long the
+   * last turn took to get from there to a committed board, which is what the
+   * next turn reserves out of its budget before scaling.
+   */
+  const fingerUpRef = useRef(null);
+  const gapRef = useRef(0);
   // Buffered input. Nothing in this game ever swallows a touch (AC-414/827).
   const bufferedRef = useRef(null);
 
@@ -77,16 +125,27 @@ export function useGameRun({ seed, difficulty }) {
 
     lockedRef.current = true;
     setResolving(true);
-    const { lockMs } = turnTimeline(turn.events, turn.action);
+
+    // AC-824f: the budget is measured from finger-up, so the time the engine
+    // and React have already spent comes out of the lock. `reservedMs` was
+    // taken out of the ceiling when the plan was scaled; the rest is charged
+    // here, which makes the guarantee exact rather than approximately right.
+    const elapsed = fingerUpRef.current === null ? 0 : now() - fingerUpRef.current;
+    if (elapsed > 0) gapRef.current = Math.min(elapsed, MAX_LEARNED_GAP_MS);
+    const wait = lockDelay(state.plan.lockMs, state.plan.reservedMs, elapsed);
+
     const timer = setTimeout(() => {
       lockedRef.current = false;
       setResolving(false);
       const buffered = bufferedRef.current;
       bufferedRef.current = null;
-      if (buffered && stateRef.current.status === STATUS.READY) dispatch(buffered);
-    }, lockMs);
+      if (buffered && stateRef.current.status === STATUS.READY) {
+        fingerUpRef.current = now();
+        dispatch({ ...buffered, reservedMs: gapRef.current });
+      }
+    }, wait);
     return () => clearTimeout(timer);
-  }, [state.lastTurn, state.seed]);
+  }, [state.lastTurn, state.seed, state.plan]);
 
   // ---- the BLOCKED announcement ----------------------------------------
   useEffect(() => {
@@ -102,8 +161,14 @@ export function useGameRun({ seed, difficulty }) {
     // AC-413: a drag that lands during a resolution is ignored, not queued —
     // the board it was aimed at no longer exists. Taps are what get buffered.
     if (!isOpen()) return;
+    // AC-824f starts the clock here. This runs from the gesture's own
+    // runOnJS, so it is one scheduling hop after the finger actually lifted —
+    // a sub-frame difference, well inside the AC's own 16 ms tolerance, and
+    // measuring it in the worklet instead would put a clock call on the UI
+    // thread for no gain.
+    fingerUpRef.current = now();
     lockedRef.current = true; // synchronous: closes the two-finger window
-    dispatch({ type: ACTIONS.MOVE, id, x });
+    dispatch({ type: ACTIONS.MOVE, id, x, reservedMs: gapRef.current });
   }, []);
 
   const markBlocked = useCallback(() => {
@@ -117,13 +182,15 @@ export function useGameRun({ seed, difficulty }) {
       bufferedRef.current = { type: ACTIONS.PASS }; // AC-414, AC-827
       return;
     }
+    fingerUpRef.current = now();
     lockedRef.current = true;
-    dispatch({ type: ACTIONS.PASS });
+    dispatch({ type: ACTIONS.PASS, reservedMs: gapRef.current });
   }, []);
 
   const restart = useCallback((nextDifficulty) => {
     bufferedRef.current = null;
     lockedRef.current = false;
+    fingerUpRef.current = null;
     setBlocked(false);
     setGuardRecord(null);
     dispatch({ type: ACTIONS.RESTART, seed: newSeed(), difficulty: nextDifficulty });
@@ -133,6 +200,7 @@ export function useGameRun({ seed, difficulty }) {
   const view = useMemo(
     () => ({
       animals: state.animals,
+      plan: state.plan || null,
       queue: state.queue,
       queueCells: queueCells(state),
       score: state.score,

@@ -35,7 +35,7 @@ function HazardStripes({ width, height, pitch, color, thickness }) {
   return <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>{bars}</View>;
 }
 
-function BoardCellsImpl({ cell }) {
+function BoardCellsImpl({ cell, highContrast }) {
   const boardW = cell * COLS;
   const cells = useMemo(() => {
     const out = [];
@@ -54,19 +54,29 @@ function BoardCellsImpl({ cell }) {
               height: cell,
               backgroundColor: kill ? COLORS.bg : danger ? COLORS.dangerBand : COLORS.cell,
               borderWidth: StyleSheet.hairlineWidth,
-              borderColor: danger || kill ? COLORS.dangerCellLine : COLORS.cellLine,
+              borderColor: danger || kill
+                ? COLORS.dangerCellLine
+                : highContrast
+                  ? COLORS.cellLineHigh
+                  : COLORS.cellLine,
             }}
           />,
         );
       }
     }
     return out;
-  }, [cell]);
+  }, [cell, highContrast]);
 
   return (
     <View
-      pointerEvents="none"
-      style={{ position: 'absolute', left: 0, top: 0, width: boardW, height: cell * ROWS }}
+      style={{
+        pointerEvents: 'none',
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: boardW,
+        height: cell * ROWS,
+      }}
     >
       {cells}
       {/* Row 14 is a hazard, never a playable row (ui.md §7, AC-109). */}

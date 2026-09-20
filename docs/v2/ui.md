@@ -345,7 +345,18 @@ The point of §5 is this list. Any one of these can be missed; all four cannot.
    (emoji render differently across OS versions) and nothing may depend on it alone.
 
 Optional fifth: **Size numerals**, an accessibility toggle (§10) that prints the size digit
-bottom-right of each body at 10 pt / 600 mono.
+bottom-right of each body. **Normative, because leaving it to the glyph style is what broke
+it:** 10 pt / 600 mono, `ink` **`#EFF4F8`** at **full opacity**, on a **solid `#0D141B` chip**
+— radius 3, 2 pt horizontal padding, inset 3 pt from the bottom-right corner.
+
+The chip is the point. Inheriting the species glyph colour made the numeral's contrast depend
+on which animal it sat on, and three of five failed: fox 4.46, elk 3.92, elephant 3.47 against
+a 4.5:1 floor. A solid chip fixes the pair at **ink on app ground = 16.7:1 on every species,
+by construction** (and the chip itself separates from every fill, minimum 2.5:1 against
+buffalo) — the same move as everything else here, making a thing impossible to get
+wrong rather than requiring five separate correct choices. An accessibility aid that itself
+fails contrast is worse than no aid, because the player has asked for help and been given
+something harder to read.
 
 ### 5.3 Buffalo
 
@@ -359,6 +370,10 @@ shrink visibly removes one. Additional treatment:
 - **HUD chip.** Whenever a buffalo is on the board, a chip sits in the HUD: the glyph plus
   four 5 × 12 pt bars, filled for remaining segments and at 22% opacity for spent ones. The
   player should never have to hunt the board to find out how much buffalo is left.
+- **The chip and the body extinguish together.** The chip's segment fades over the same 260 ms
+  as the body's shrink, on the same timeline — not on the React commit. Updating on commit
+  leaves the chip reading "1 of 4" beside a two-cell-wide body for a quarter of a second,
+  which is the HUD contradicting the board about the one fact the chip exists to report.
 
 ### 5.4 Animal states
 
@@ -447,13 +462,13 @@ its own time while they carry on playing. See §8.1.
 | Illegal move | 260 ms | `cubic-bezier(.36,.07,.19,.97)` | no | 3 × 6 pt shake + 2 pt red rim + `notificationError` haptic |
 | Gravity fall | 200 ms | `cubic-bezier(.55,0,1,.45)` | **yes** | Accelerating — it *fell* |
 | Land squash | 140 ms | `spring(.34,1.56,.64,1)` | no | It has weight and has stopped |
-| Clear flash | **320 ms** | 60 attack, 260 decay | no | *These* rows are the ones going |
+| Clear flash | **320 ms** | 60 attack, 260 decay | no | peak **0.92** body / **0.22** row wash |
 | Clear lead beat | **80 ms** | — | **yes** | first step of a resolution only — announce, then go |
 | Clear collapse | 110 ms | `cubic-bezier(.4,0,1,.4)` | **yes** | scale 0.85 + drift 6 pt down; fade runs 140 ms past |
 | Cascade step interval | **260 ms → 200 ms** | see §8.2 | **yes** | A chain reaction, gathering pace gently |
 | Buffalo shrink | 260 ms | 120 crack + 260 respring | **yes** | The row did **not** clear |
 | Arrival push-up | 260 ms | `cubic-bezier(.22,1,.36,1)` | **yes** | The tray told the truth |
-| Score count-up | 400 ms | ease-out cubic | no | The size of what happened |
+| Score count-up | ≥ 400 ms, starts at first `collapseAt` | ease-out cubic | no | The size of what happened |
 | Floating `+N` | 900 ms | rise 46 pt, ease-out | no | Where the points came from |
 | Screen shake | 180 ms | 4 pt, decaying | no | Three or more rows at once |
 | Danger pulse | 1200 ms loop | ease-in-out | no | You are three rows from dead |
@@ -524,6 +539,36 @@ free.
 | Fall | 200 ms | **200 ms** | structural — unchanged |
 | Cascade interval | `max(150, 250−20(k−1))` | `max(200, 260−15(k−1))` | structural |
 
+**The score never announces before the board does.** `MOTION.scoreCount` had a duration but no
+start time, so Slice 3 correctly left it on the React commit — and on an ARRIVAL-phase clear
+that put the final score in the HUD at 400 ms while the flash had not begun until 570 ms. The
+HUD was telling the player the answer before the board asked the question.
+
+**The count-up starts at the turn's first clear unit's `collapseAt`**, which the replay plan
+already carries. That is the moment the row actually goes, one beat after the flash announced
+it, so the order is flash → collapse → score. The floating `+N` starts on the same timestamp,
+which also syncs it to the HUD.
+
+**One count-up per turn, not one per step.** Its duration is
+`max(400, lastClearUnit.collapseAt − firstClearUnit.collapseAt + 400)` and its target is the
+turn's final score, so a cascade reads as one accumulating sweep that lands just after the
+last row goes — rather than a counter that restarts and jitters on every step.
+
+**Flash opacity: peak 0.92 on the animal body, 0.22 on the row's background cells**, reached
+at the end of the 60 ms attack and decaying to 0 across the following 260 ms.
+
+**The flash is an additive overlay, never a fill swap.** The body underneath keeps its species
+colour and its panel seams the whole time; the flash only overwhelms them, and they surface
+again through the decay. This is what makes 0.92 safe — at the peak the row is effectively
+white for a moment, but nothing has been destroyed, and §5.2's size cues are back before the
+row finishes leaving. A fill swap would genuinely lose them, and must not be used.
+
+0.92 is the developer's value, chosen at the component and now promoted to spec. I am adopting
+it rather than shading it down on theory: they watched it and I did not, and the coordinator
+confirmed the frame reads as one white row against an untouched board, which is exactly the
+job. The thing to watch on a real device is whether a **multi-row** clear at 0.92 reads as one
+event or as a white band — if it flattens, lower the body peak before touching the duration.
+
 **Abruptness is an attack/decay problem, not only a duration problem.** A row that vanishes
 has an infinitely fast decay; a row that fades symmetrically reads as mushy. The flash is
 therefore deliberately asymmetric — **60 ms attack, 260 ms decay** — because the fast attack
@@ -543,6 +588,13 @@ overlap so heavily that they stopped reading as discrete events. With the deepes
 cascade at 3 steps the aggressive tightening barely engaged anyway, so it was buying drama
 nobody saw at a cost in legibility everybody did.
 
+**Measured after Slice 3: the 320 ms flash was free with room to spare.** It outlives the
+structural lock by **at most 10 ms**, and only when the turn's final animated unit is a
+cascade step 2 or later; in every other shape the collapse's own tail covers the whole 320 ms.
+So AC-813c's allowance — that the flash may still be playing when input reopens — is almost
+never exercised. That is a stronger version of the argument for tripling it than the one I
+made, which was only that the allowance existed.
+
 **This is one sentence from one viewing of a build with no animation in it.** It is not
 locked. The numbers above are a considered response to a real reaction, and they should be
 watched and adjusted on the next build rather than defended — that is the whole point of
@@ -550,8 +602,24 @@ having seen it move.
 
 ### 8.2 The input-lock budget
 
-> **Worst case, from finger-up to input reopening: 1500 ms. Typical clearing turn: 880 ms.
+> **Worst case, from finger-up to input reopening: 1500 ms. Typical clearing turn: 960 ms.
 > Turn with no clear: 570 ms.**
+
+**The clock starts at finger-up, not at the React commit.** That is a ruling, not a wording
+choice: the budget is a promise about what the player feels, and what the player feels starts
+when they let go. Between finger-up and the commit sits the reducer's synchronous work and a
+React render, which Slice 3 measured at a median of 61 ms in a dev web bundle — not
+representative of a release iOS build, but not zero there either.
+
+**So the implementation owes the difference.** `react-native-gesture-handler` gives the
+release timestamp on the gesture; the presentation layer subtracts
+`commitTime − fingerUpTime` from the budget *before* scaling the timeline, so the promise
+stays exact on a slow device and nothing changes on a fast one. If the measured gap is under
+one frame (≈16 ms) the correction is noise and may be skipped.
+
+I am not asking anyone to engineer further around this before it is measured on hardware —
+only that the ACs and the code agree about where zero is. On-device measurement of the gap
+joins the AC-824c review list.
 
 This replaces the ~3.2 s figure in the approved draft. A three-second lockout is the opposite
 of fluid however good the frames inside it are, and a long cascade is precisely the moment a
@@ -560,8 +628,11 @@ player most wants to keep acting.
 **Where the old 3.2 s went.** Three changes, in order of how much they bought:
 
 1. **Cascade steps pipeline instead of queueing.** Step *n+1*'s flash and collapse begin
-   while step *n*'s animals are still falling — at 60% through their fall, where the
-   destination is already unambiguous. The engine has already resolved the whole cascade, so
+   while step *n*'s animals are still falling — at **75%** through their fall, where the
+   destination is already unambiguous. *(The figure follows from AC-823's interval: a step's
+   collapse runs 0–110 ms and its fall 110–310 ms, so a 260 ms interval lands at
+   (260−110)/200 = 75%. It was 70% under the old curve and the text said 60%, so it had been
+   stale since before §8.2a.)* The engine has already resolved the whole cascade, so
    the presentation layer knows the entire timeline up front and can overlap it. This is not
    a shortcut: a chain reaction that visibly overlaps reads *more* like a chain reaction than
    a sequence of discrete slides, and the rising audio cue per step keeps the count legible.
@@ -604,30 +675,30 @@ presentation cap only, and it must not change a single point of score.
 A step costs `collapse 110 + fall 200 = 310 ms` structural. A resolution additionally pays the
 80 ms leading beat once, on its first step only (§8.1).
 
-```
-No clear         snap 110 + settle 200 + arrival 260                     =  570 ms
-Typical clear    570 + (lead 80 + step 310)                              =  960 ms
+**These figures are derived, not restated.** `node docs/v2/budget.mjs` computes them from the
+timing constants, exhaustively over every `(settle, arrival)` split the AC-825 cap permits,
+and prints exactly the table below. A number in this section has now gone stale behind its own
+ACs three times — 0.78×, then 0.71×, then the 60%-through-the-fall figure — every time because
+prose restated an arithmetic result. **AC-824e requires the script and this table to agree.**
 
-Realistic worst  3 steps split 2/1 — the deepest cascade ever observed:
-                   Phase-2  lead 80 + interval 260 + step 310            =   650
-                   Phase-3  lead 80 + step 310                           =   390
-                   snap 110 + settle 200 + arrival 260                   =   570
-                                                                   total = 1610 ms  → 0.93×
-
-Absolute worst   5 animated steps split 3/2, which costs more than 5 in
-                 one phase because each phase pays its own lead and its
-                 own final settle:
-                   Phase-2  80 + 260 + 245 + 310                         =   895
-                   Phase-3  80 + 260 + 310                               =   650
-                   snap 110 + settle 200 + arrival 260                   =   570
-                                                                   total = 2115 ms  → 0.71×
 ```
+case                                   split    raw      scale
+no clear                               0/0       570 ms  none
+typical: one clear step                1/0       960 ms  none
+realistic worst: 3 steps, 2/1          2/1      1610 ms  0.932x
+absolute worst: 6 units, 3/3           3/3      2360 ms  0.636x
+```
+
+The absolute worst is a **3/3 split of 6 animated units**, not the 5 units the previous text
+assumed: AC-825 caps a turn at 5 separately-animated steps **plus one combined**, which is 6,
+and splitting them evenly across the two phases costs most because each phase pays its own
+lead beat and its own final settle. Verified against all 882 legal combinations.
 
 **The guarantee.** The presentation layer lays the timeline out from the target timings
 above, then **uniformly time-scales it so it never exceeds 1500 ms**. Uniform scaling is the
 readability-preserving form of compression: every step stays distinct, the sequence keeps its
-shape, everything simply plays faster. Worst case needs 1500 / 1920 = **0.78×**, which is
-imperceptible. The scale floor is 0.55×, below which motion stops reading; the 5-step cap
+shape, everything simply plays faster. Worst case needs 1500 / 2360 = **0.636×**, still
+comfortably above the 0.55× floor. The scale floor is 0.55×, below which motion stops reading; the 5-step cap
 above is what guarantees the floor is never reached.
 
 **Measured, after Slice 1.** Across 90 bot runs the deepest cascade observed was **3 steps**,
@@ -636,7 +707,7 @@ therefore never reached in practice — it remains a guarantee against a board n
 yet, not everyday behaviour.
 
 **What §8.2a cost, stated plainly.** Before the clear was slowed, the realistic worst case was
-1440 ms and fitted *uncompressed*; it is now 1610 ms and compresses by **0.93×**. I traded that
+1440 ms and fitted *uncompressed*; it is now 1610 ms and compresses by **0.932×**. I traded that
 away deliberately. "Never compresses in practice" was an observation, not a promise; the
 1500 ms guarantee (AC-822) is the promise and it is untouched, the 0.55× floor is nowhere near
 (worst case 0.71×), and a 7% speed-up on the rarest turn in the game is not perceptible. A
@@ -646,6 +717,57 @@ cascade almost no one will see.
 Input reopens at the end of the *structural* timeline, which is the guaranteed ≤ 1500 ms —
 not when the last announcement animation finishes. A tap during the lock is **buffered and
 applied at the next READY phase**, never dropped. Nothing in this game ever swallows a touch.
+
+### 8.2b The 570 ms question — when the reward lands
+
+On an **ARRIVAL-phase clear** — the common shape, where the arriving batch completes the row —
+nothing is announced until **570 ms after finger-up**: snap 110 + settle 200 + push-up 260 all
+happen first, and only then does the clear take its own 390. This is the spec working exactly
+as designed, and **no amount of tuning the flash changes it.**
+
+**It is not a responsiveness defect, and the distinction matters.** Responsiveness is about
+the *move*, and the move answers in 110 ms — the piece snaps under the thumb immediately.
+What lands at 570 ms is the *reward*, and it lands when its cause does: the row is completed
+by the arriving animals, so it cannot be announced before they arrive. Every one of those
+570 ms is showing the player something true. Shortening the chain would mean either
+overlapping the settle with the arrival, which can reorder two animals' interactions and make
+gravity unreadable, or cutting the push-up, which is the animation that proves the tray told
+the truth (§6). Both cost more than they buy.
+
+**What can help, at zero structural cost: anticipation.** The engine resolves the entire turn
+before the first frame plays (§8.3 ¶3), so the presentation layer *knows at t = 0* which row
+the arrival is about to complete. Washing that row while the arrival pushes up draws the eye
+there before the flash lands on it. It is not a spoiler and not a guess — it is the same
+category as the honest preview: true information, shown early. The flash then arrives
+somewhere the player is already looking, which is the difference between being told and
+noticing.
+
+**What it actually lights is the gap — and that is better than what I specified.** My draft
+said "a row wash at 0.10 on that row", which assumed the row was a uniform band. It is not: a
+row about to be completed is **by definition nearly full**, so it is mostly animal bodies. The
+developer built it and watched it — 0.10 white reads clearly over the board ground and much
+more weakly over a body, so what the player sees lit is the row's **remaining gap**, which is
+exactly the columns the arriving animals are about to land in.
+
+That is the better cue, and this spec now asks for it deliberately rather than getting it by
+accident of compositing. It points at *where the action is* rather than at the row in general,
+and it ties visually to the tray: the gap lights, and then the previewed animals drop into it.
+
+| cells of the completing row | wash |
+|---|---|
+| **unoccupied** — the gap the arrival fills | **0.14** |
+| occupied — bodies already in the row | **0.05**, enough to read as one row rather than floating cells |
+
+Fading in across the 260 ms push-up.
+
+**The lever, if it needs adjusting on device.** For more *row-level* presence raise the
+**occupied** alpha; for more *gap* presence raise the unoccupied one. Do not raise both
+together — a uniform increase makes the empty part shout, which is the failure mode that
+turns a focus into a smear.
+
+**Provisional, like §8.2a.** The developer's caution stands: on a full board at arm's length
+this may be too quiet to register at all. If it reads as a smear or as nothing, drop it and
+accept the 570 ms, which is correct if unglamorous.
 
 ### 8.3 UI-thread implementation contract
 
@@ -749,10 +871,25 @@ The tray: `"Next arrival: rat at column 1, fox at columns 3 to 4, elk at columns
 The HUD score has `accessibilityLiveRegion="polite"` so a clear is announced.
 
 **Colour independence.** Size never depends on hue: width, panel count and optional numerals
-all carry it. A deuteranope loses the rat/fox distinction by colour and keeps it three other
-ways. Buffalo is identified by its gold rim and glow, not its redness.
+all carry it. Buffalo is identified by its gold rim and glow, not its redness.
 
-**Three toggles in Settings**, all persisted:
+Brettel/Viénot simulation over the §4.3 palette gives the real worst pairs, which are **not**
+the ones the approved draft named: under **deuteranopia** the closest pair is **fox/elk**
+(RGB distance 53), and under **protanopia fox and elk very nearly collide** — `#9b9b48` vs
+`#9e9e5c`, distance **20**. That is the worst case in the palette and the draft did not
+mention it.
+
+**It is acceptable, and the reason is structural rather than lucky.** Fox and elk are adjacent
+in size, so they are adjacent on the lightness ramp — the collision is the ramp working as
+designed, not a palette accident. What matters is carried achromatically: fox is 2 cells wide
+with 2 panels, elk is 3 with 3, and the lightness difference survives every simulation even
+when hue does not. Species *identity* blurs; **size never does**, which is what AC-908
+actually requires. Do not fix this by pulling fox and elk apart in hue — that would break the
+size→lightness mapping to rescue a distinction the game does not use.
+
+**Three toggles in Settings.** Persistence is **Layer A (Slice 4)** — they are session-scoped
+until AsyncStorage lands under AC-10xx, which `src/ui/settings.js` documents as a deliberate
+deferral rather than an omission:
 
 | Toggle | Effect |
 |---|---|
@@ -760,9 +897,42 @@ ways. Buffalo is identified by its gold rim and glow, not its redness.
 | **High contrast** | Animal borders go to 2.5 pt `#FFFFFF`; seams to 1.5 pt `rgba(255,255,255,.55)`; cell lines brighten to `#33475A` |
 | **Reduce motion** | Forces the Reduce Motion path regardless of the OS setting |
 
-**Dynamic Type.** HUD, sheets and all overlays scale up to the `AccessibilityLarge` step. The
-**board does not scale** — it is spatial, not textual, and scaling it would break the layout
-formula. The HUD reserves 2 lines of vertical headroom for the enlarged score.
+**Dynamic Type — three surfaces, three rules.** The approved AC-910 said "all HUD, sheet and
+overlay text scales", and Slice 3 could not satisfy it: the ladder's chrome heights are fixed
+(§3.2), so a scaled 30 pt score does not fit a 44 pt compact HUD, and Slice 2 had applied
+`allowFontScaling={false}` to every `<Text>` in the app to make the layout hold. Both cannot
+be true. The conflict is real and the resolution is to stop treating three different kinds of
+surface as one:
+
+| Surface | Rule | Why |
+|---|---|---|
+| **Board** | never scales | Spatial, not textual. Scaling it breaks the layout formula. |
+| **Sheets & overlays** — Pause, Game Over, Settings, Records, How to Play | **full Dynamic Type** to `AccessibilityExtraExtraExtraLarge`, scrolling where needed | These are reading surfaces. They are modal, they do not compete with the board, and there is no reason to exempt them. |
+| **HUD** | fixed height; scales *within* it by trading labels for values | Glanceable status, and the one surface whose height the board's fit depends on. |
+
+**Three treatments, not two.** `allowFontScaling={false}` is correct on the HUD **and on the
+board** — the board's glyphs are sized from the cell, not the type scale. But the ladder also
+has fixed-height chrome that is neither: the action bar and the tray label row must scale
+*somewhat* without clipping. They take a **`maxFontSizeMultiplier`** — 1.5 on the action bar,
+1.3 on the tray labels — and everything else scales without limit.
+
+**A cap is not an exemption.** Capped text still responds to the player's setting; it just
+stops before it clips. An earlier draft of AC-910c said the flag belonged "only on HUD text",
+which read literally would have stripped the board and clipped the Pass button — it had no
+vocabulary for the middle case.
+
+**How the HUD scales without growing.** Its 10 pt uppercase labels are the part that fails an
+accessibility text size, and they are also the expendable part — a large number under a tiny
+word that reads "SCORE" is not carrying much. So at Dynamic Type `xxLarge` and above the HUD
+**drops its labels and grows its values into the freed space**: the score goes 30 → 40 pt in a
+52 pt HUD, 30 → 34 pt in a 44 pt compact HUD, and the streak pill and buffalo chip scale to
+match. Same height, bigger number, no board cost. VoiceOver is unaffected either way — the
+labels live on `accessibilityLabel` (§10), not on the visible text.
+
+This is a real reduction against the approved AC and I am not going to pretend otherwise: a
+player at AccessibilityLarge gets a 40 pt score instead of a ~50 pt one. The alternative is
+letting the HUD grow, which spends board rows on chrome for the players least able to afford
+losing them.
 
 **Focus.** Every interactive control has a visible focus ring: 2 pt `accent`, 2 pt offset.
 
