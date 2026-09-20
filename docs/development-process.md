@@ -175,7 +175,23 @@ did not.
 **Rule:** `git fetch` and compare against `origin/<branch>` before reviewing anything. A
 session-start snapshot is a snapshot, not the truth.
 
-### 6.5 The stacked-branch merge
+### 6.5 The commit that was missing a file
+
+Slice 3 was committed with `git add -- src test docs/v2 docs/slices.md`, which is explicit
+staging done exactly as §7 requires. It omitted `App.js` — the only place `SettingsProvider`
+is mounted — because the file sits at the repository root and no pattern named it. At that
+commit every `useSettings()` consumer silently fell back to frozen defaults, disabling the
+Reduce Motion path and with it the whole reason the slice existed.
+
+The suite caught it, but only because someone ran the tests *at HEAD* rather than in the
+working tree: 175 of 176. "176 passing" was true of the tree and false of the commit.
+
+**Rule:** explicit staging is what stops unrelated work riding along, and it is also what drops
+a required file. Verifying the tree is correct is not the same as verifying the commit is
+complete. Before pushing a slice, run the suite against what was actually committed — a
+detached worktree at HEAD, or a `git stash` around the test run.
+
+### 6.6 The stacked-branch merge
 
 Slice 1's PR was based on Slice 0's branch. Both were merged within nine seconds — Slice 0
 into `main` first, then Slice 1 into the already-merged Slice 0 branch. Slice 1's code never
@@ -196,7 +212,9 @@ result is on `main` afterwards.
 - **Agents do not commit.** Only the orchestrator does.
 - **Commit messages** explain *why*, cite `path:line` for defects, and give real measured
   numbers rather than adjectives.
-- **After merging, verify the code is actually on `main`** (§6.5).
+- **Before pushing, run the suite against what was committed**, not the working tree — a
+  detached worktree at HEAD, or a `git stash` around the test run (§6.5).
+- **After merging, verify the code is actually on `main`** (§6.6).
 
 **Merge authority:** when the owner says *"go for it"*, that carries through to merging the
 PR. The orchestrator still opens the PR and reports what is in it; it does not wait for a
