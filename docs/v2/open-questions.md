@@ -133,3 +133,8 @@ Listed so you can overrule any of them. Rationale for each is in `gameplay.md` �
   draft's 3.2 s (`ui.md` §8.2), and all animation runs on the UI thread (`ui.md` §8.3).
 - The app is **dark-only** (`ui.md` §1).
 - **iPad is not supported** (`ui.md` §3.2).
+- **Session resume is ported from v1, not dropped** — stored as a seed plus a move list rather
+  than a board snapshot, written on backgrounding only (`gameplay.md` §9). This is listed here
+  because the v1 review's stale feature inventory nearly caused v2 to ship without it; the
+  design originally had no equivalent, which would have been a regression against behaviour
+  players already have.

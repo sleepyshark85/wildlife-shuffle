@@ -97,7 +97,8 @@ eight clears ago.
 
 v1 had *two* disagreeing formulas — `GameScreen.js:14` sized on width only, `GameGrid.js:27`
 on `min(width, height)` — so the board sat off-centre in its own frame
-(`docs/v1-review.md` D1). **There is exactly one sizing function in v2**, computed once in the
+(`docs/v1-review.md` D1 — in fact **three**: `GameScreen.js:41` on width only, `GameGrid.js:30`
+and `GamePreview.js:14` on `min(w,h)`). **There is exactly one sizing function in v2**, computed once in the
 Game screen and passed down as a prop. No component computes its own.
 
 The approved draft expressed it as a single clamped expression:
@@ -306,6 +307,12 @@ with an `ink`-weight value directly above it.
 animal is literally a heavier-looking block. Buffalo is deliberately **off the ramp**: it is
 not a bigger animal, it is a different *kind* of object — the only piece that refuses to
 clear — so the ox-blood fill and 2 pt gold rim mark it as special rather than as "size 4".
+
+v1 independently reached the same instinct: at `01c247e` buffalo renders `#e74c3c` while the
+other four species stay `#2255dd` (`docs/v1-review.md` D5, corrected). That is the right
+distinction and v2 keeps it. What it does not do is make **size** legible — four species
+sharing one blue block is still the whole mechanic made invisible, which is what the four
+redundant cues in §5.2 exist to fix.
 
 ---
 
@@ -761,6 +768,12 @@ animation work.
 `react-native-gesture-handler@2.31.1` is likewise installed and unused: `App.js:18` mounts
 `GestureHandlerRootView` and `GameGrid.js:30` then uses `PanResponder` anyway. §8.3 ¶2 makes
 the gesture handler load-bearing.
+
+**Dependency inventory, corrected.** `expo-haptics` is **already installed and in use**
+(`useSoundManager.js`), so haptics are a port. **`expo-audio` must be added** — `useSoundManager`
+plays no audio despite its name. `@react-native-async-storage/async-storage` is **in use**
+(`useLocalStorage.js`). Only `expo-sqlite` and `react-native-url-polyfill` are genuinely
+unused and should be removed.
 
 ---
 

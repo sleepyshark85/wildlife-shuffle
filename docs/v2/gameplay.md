@@ -672,8 +672,20 @@ button is disabled rather than hidden, so the layout never reflows.
 
 ## 9. Layer A — Meta progression
 
-Reasons to reopen the app. AsyncStorage is already a dependency and currently entirely unused
-(`docs/v1-review.md` E).
+Reasons to reopen the app.
+
+> **These are ports, not inventions.** The v1 review's feature inventory was written against a
+> stale commit (see its CORRECTION section). v1 **already has** a score, a persisted high
+> score, session history in `StatsPanel.js`, and haptics in `useSoundManager.js`, all built on
+> `useLocalStorage.js` over AsyncStorage. v2 rebuilds them against a fixed board and an honest
+> scoring model, which is still the right call — but the work is porting and improving
+> behaviour that players already have, not adding something new. Treat any v1 behaviour not
+> contradicted below as worth preserving.
+
+**Carried over from v1 deliberately:** *recent runs*. `StatsPanel.js` lists the last ten runs
+with difficulty, date, score and turns. Aggregate lifetime totals do not replace that — a
+list of your last ten runs is the thing that shows whether you are improving today. Records
+shows both.
 
 **Persisted records**
 - Best score, best chain, longest run (turns), most rows in one run — **per difficulty**.
@@ -700,7 +712,62 @@ Progress toward every unlock is visible on the Collection screen with an explici
 (`7 / 10 buffalo retired`) — a locked item that does not tell you how close you are is not a
 goal, it is a tease.
 
-**Storage.** One AsyncStorage key, `ws.save.v1`, holding one JSON object with a
+### Session resume — ported, as a replay
+
+**v1 persists the in-progress run and a mid-run game survives a relaunch.** Nothing in the v2
+design had an equivalent, which made v2 a **regression against shipped behaviour**: a player
+who backgrounds the app loses their run. On a phone, backgrounding is not an edge case — it is
+what happens every time someone reads a message. **Ported.**
+
+**What v1 does, and what not to copy.** `GameScreen.js:53-72` serialises the entire board to
+AsyncStorage on a **1 Hz `setInterval`**, with `[store]` as its dependency array, so the
+interval is town down and rebuilt on every render for the life of the run. The feature is
+right; the implementation is precisely what AC-1002 forbids.
+
+**v2 stores a replay, not a board:**
+
+```
+ws.resume.v1 = { schemaVersion, engineVersion, seed, difficulty, moves[], digest }
+              moves[] = [{ t: 'M', id, x } | { t: 'P' }, ...]     // one per turn
+```
+
+Resume re-runs the engine from turn 1, applying each move. Three reasons this beats a
+snapshot, and the first is the one that decides it:
+
+1. **A replay can only ever reconstruct a legal board**, because the engine produces it. A
+   snapshot can inject a board the rules cannot reach — from corruption, a truncated write, or
+   a tampered file — and the whole design rests on the engine only ever being in reachable
+   states. AC-504b's chain guard exists to catch exactly that; a save file that can create it
+   would be self-defeating.
+2. **It is tiny.** A move is a handful of bytes; a 70-turn run is well under a kilobyte.
+3. **It is already paid for.** The seeded PRNG (§5.2) was specified for reproducible bug
+   reports and a future Daily Challenge. Resume is a third use of the same property, and the
+   stored replay *is* the bug report.
+
+**Versioning is mandatory, not optional.** A replay reconstructs a run only under the rules
+that produced it, so a tuning change to bands, weights or scoring would silently rebuild a
+*different* run. On any `engineVersion` mismatch the resume is **discarded, not replayed**.
+The `digest` — a cheap hash of the reconstructed board — is checked after replay; a mismatch
+also discards. Losing a run to an app update is acceptable; silently resuming the wrong one is
+not.
+
+**When it is written:** on `AppState` transition to `inactive`/`background`, and nowhere else.
+That is neither during a turn nor in the render path, so AC-1002 stands unamended. Moves are
+appended in memory as they happen and serialised once, on the way out.
+
+**The trade-off, stated plainly.** A hard crash mid-run loses the run, where v1's 1 Hz timer
+would have lost at most a second. I am taking that: backgrounding is constant and crashing is
+rare, and the alternative is writing to disk forever during play to insure against something
+that should not happen. If crash-loss shows up in real use, the fix is to also write on the
+turn boundary after a long gap — not to reinstate a 1 Hz timer.
+
+**Resume UX.** With a saved run present, Home leads with **Resume** (showing its score and
+turn) and offers **New Run** second. Starting a new run discards the saved one and asks first,
+because it is destructive. The resume is cleared when a run ends. A resumed run is an ordinary
+run in every other respect, including writing its record and its high score.
+
+**Storage.** Two AsyncStorage keys — `ws.save.v1` for records and settings, `ws.resume.v1` for
+the in-progress replay — each holding one JSON object with a
 `schemaVersion` field. Written on game over and on settings change only — **never per turn
 and never in the render path.** Reads happen once at app launch. A corrupt or unreadable blob
 falls back to defaults silently; it must never block launch.
@@ -721,8 +788,10 @@ Full motion, sound and haptic specs live in `ui.md` §8–§9. The gameplay-rele
 - **All animation runs on the UI thread as Reanimated worklets**, and the drag is a
   gesture-handler pan writing to a shared value. Nothing is driven by `setState` or
   `setTimeout`. This is a hard contract, not a preference — `ui.md` §8.3.
-- Haptics require adding `expo-haptics`; sound requires `expo-audio` (SDK 56's replacement
-  for `expo-av`). Neither is currently a dependency.
+- **`expo-haptics` is already a dependency and already in use** (`useSoundManager.js`), so
+  haptics are a port and an expansion, not new work. **`expo-audio` must still be added** —
+  despite its name `useSoundManager` plays no audio whatsoever, only haptics. `expo-sqlite`
+  and `react-native-url-polyfill` remain genuinely unused and should be removed.
 
 ---
 
@@ -763,6 +832,8 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D24 | Session resume is ported from v1, stored as a seed + move list rather than a board snapshot | v2 without it is a regression against shipped behaviour. A replay can only reconstruct a legal board; a snapshot can inject an unreachable one (§9). |
+| D25 | The resume is written on `AppState` background only, never per turn | Keeps AC-1002 intact. v1's 1 Hz `setInterval` write is the thing AC-1002 forbids (§9). |
 | D23 | `streak` rides the `ADVANCE` event so `longestStreak` is event-derived like every other stat | Keeps AC-706b absolute. A carve-out for one field reintroduces the sync rule that AC-706b exists to eliminate (§7.3a). |
 | D22 | A Perfect Clear raises the streak counter to at least the cap index but never lowers it | Rule 1 is a floor on the multiplier, not an assignment to the counter; the best turn in the game must not be the one that sends a streak backwards (§7.2). |
 | D20 | The 8-step chain rail is removed as a scoring cutoff; `assert step <= 32` replaces it as a crash guard | `chainMult` is already flat at ×5 from step 5, so the rail bounded nothing — it silently confiscated 9,750 of 17,100 points on the committed fixture, and play reached it on seven constructed boards (§7.2). |

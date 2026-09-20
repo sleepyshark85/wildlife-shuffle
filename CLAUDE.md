@@ -18,12 +18,19 @@ the owner has reviewed and approved the design.
 
 | Path | What it is |
 |---|---|
-| `docs/v1-review.md` | Engineering review of v1. The squad's shared input. |
-| `docs/v2/` | v2 design artifacts (designer's output). |
-| `spec.md` | v1 spec. Historical — it drifted from the code. Do not treat as truth. |
-| `src/data/gameLogic.js` | Pure-ish rules: spawn, gravity, row clear, move validation. |
-| `src/data/gameStore.js` | The React state layer. This is where v1's bugs live. |
-| `src/components/` | UI. `GameGrid` renders the board, `Animal` a single piece. |
+| `docs/development-process.md` | The team, the procedure, and the rules each incident produced. Read §6. |
+| `docs/v1-review.md` | Engineering review of v1. Carries a correction — it was written against a stale commit. |
+| `docs/v2/` | The approved v2 design: gameplay, UI, 249 acceptance criteria, open questions. |
+| `docs/v2/layout-sweep.mjs` | The continuous viewport sweep (AC-119). Must report 0 overflowing. |
+| `docs/v2/check-ac-refs.mjs` | The documents lint (AC-1310). Dangling or duplicate AC references fail it. |
+| `src/engine/` | The rules engine. Pure, seeded, no React, no timers. Slice 1. |
+| `src/ui/` | React state layer, presentation and layout. Slice 2. |
+| `test/` | `node --test`. Engine unit and property tests, layout sweep, presentation, hygiene greps. |
+| `tools/play.mjs` | Headless CLI: play a seeded run, or `--pacing` for the difficulty table. |
+| `spec.md`, `README.md`, `CONFIGURATION.md` | **v1 documentation. Historical — they describe code that no longer exists.** |
+
+v1's `src/components/`, `src/data/` and `src/hooks/` were deleted in Slice 2. Do not look for
+them; `docs/v1-review.md` records what they did and why they were replaced.
 
 ## The squad
 
