@@ -27,7 +27,7 @@ the owner has reviewed and approved the design.
 | `src/ui/` | React state layer, presentation and layout. Slice 2. |
 | `test/` | `node --test`. Engine unit and property tests, layout sweep, presentation, hygiene greps. |
 | `tools/play.mjs` | Headless CLI: play a seeded run, or `--pacing` for the difficulty table. |
-| `spec.md`, `README.md`, `CONFIGURATION.md` | **v1 documentation. Historical — they describe code that no longer exists.** |
+| `spec.md` | **v1's spec. Historical — it describes code that no longer exists.** |
 
 v1's `src/components/`, `src/data/` and `src/hooks/` were deleted in Slice 2. Do not look for
 them; `docs/v1-review.md` records what they did and why they were replaced.
