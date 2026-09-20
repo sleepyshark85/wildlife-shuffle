@@ -12,6 +12,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { COLORS } from './src/ui/theme.js';
+import { SettingsProvider } from './src/ui/settings.js';
 import { newSeed } from './src/ui/useGameRun.js';
 import { HomeScreen } from './src/ui/screens/HomeScreen.js';
 import { GameScreen } from './src/ui/screens/GameScreen.js';
@@ -24,17 +25,21 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
-        {run ? (
-          <GameScreen
-            key={run.id}
-            seed={run.seed}
-            difficulty={run.difficulty}
-            onQuit={() => setRun(null)}
-          />
-        ) : (
-          <HomeScreen onStart={(difficulty) => setRun({ id: newSeed(), seed: newSeed(), difficulty })} />
-        )}
+        <SettingsProvider>
+          <StatusBar style="light" />
+          {run ? (
+            <GameScreen
+              key={run.id}
+              seed={run.seed}
+              difficulty={run.difficulty}
+              onQuit={() => setRun(null)}
+            />
+          ) : (
+            <HomeScreen
+              onStart={(difficulty) => setRun({ id: newSeed(), seed: newSeed(), difficulty })}
+            />
+          )}
+        </SettingsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
