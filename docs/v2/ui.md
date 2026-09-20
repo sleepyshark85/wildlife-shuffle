@@ -55,7 +55,7 @@ row of three choices rather than a settings gate in front of the game.
 ┌─────────────────────────────────────────────┐  ← 393 pt
 │ ░░░░░░░░░░░░░ safe area top 59 ░░░░░░░░░░░░ │     (Dynamic Island lives here)
 ├─────────────────────────────────────────────┤
-│  SCORE                     ×2.4  🐃▌▌▌  ❙❙  │  52   HUD
+│  SCORE                     ×2.0  🐃▌▌▌  ❙❙  │  52   HUD
 │  12,480                                      │
 ├─────────────────────────────────────────────┤
 │                  ↕ flex                      │
@@ -87,34 +87,166 @@ The HUD pins under the top safe inset, the action bar pins above the bottom safe
 the **board + tray group is a flex child centred in whatever remains**. That rule is what
 makes the layout survive every device without per-device special cases.
 
-### 3.2 The cell-size formula
+**The streak pill renders `streakMult`, never the raw counter.** `state.streak` keeps counting
+past the ×3.0 cap — deliberately, so `longestStreak` can record "14 in a row"
+(`gameplay.md` §9) — but the HUD shows only the multiplier. Rendering the raw count beside it
+would read `streak 23 · ×3.0`, which invites the player to chase a number that stopped paying
+eight clears ago.
+
+### 3.2 The cell-size ladder
 
 v1 had *two* disagreeing formulas — `GameScreen.js:14` sized on width only, `GameGrid.js:27`
 on `min(width, height)` — so the board sat off-centre in its own frame
-(`docs/v1-review.md` D1). **There is exactly one formula in v2**, computed once in the Game
-screen and passed down as a prop. No component computes its own.
+(`docs/v1-review.md` D1). **There is exactly one sizing function in v2**, computed once in the
+Game screen and passed down as a prop. No component computes its own.
+
+The approved draft expressed it as a single clamped expression:
 
 ```js
-const chrome = 52 /*hud*/ + 48 /*action*/ + 45 /*tray*/ + 32 /*min gaps*/;
-const availH = screenH - insetTop - insetBottom - chrome;
-const cell   = clamp(Math.floor(Math.min((screenW - 32) / 10, availH / 15)), 28, 44);
+const cell = clamp(Math.floor(Math.min((screenW - 32) / 10, availH / 15)), 28, 44);   // WRONG
 ```
 
-| Device | pt | insets | cell | board | verdict |
-|---|---|---|---|---:|---|
-| iPhone SE (3rd gen) | 375 × 667 | 20 / 0 | **30** | 300 × 450 | fits, 37.5 gutters |
-| iPhone 13 mini | 375 × 812 | 50 / 34 | **30** | 300 × 450 | fits |
-| **iPhone 15 / 16 (target)** | 393 × 852 | 59 / 34 | **36** | 360 × 540 | fits, 16.5 gutters |
-| iPhone 15/16 Plus | 430 × 932 | 59 / 34 | **39** | 390 × 585 | fits |
-| iPhone 16 Pro Max | 440 × 956 | 62 / 34 | **40** | 400 × 600 | fits |
+**That floor was an overflow, not a safety net.** When available space demanded a cell below
+28, `clamp` raised it back to 28 and the board then exceeded the screen — silently, with no
+degradation path. The draft's defence ("no supported iPhone hits it") was true of the device
+list and false of the mechanism: Display Zoom and larger accessibility text both shrink the
+logical viewport on existing hardware, and the folded iPhone Duo lands within ~12 pt of the
+cliff on some inset estimates.
 
-Clamp floor 28 pt, ceiling 44 pt. The ceiling stops the board ballooning on large phones;
-the floor is the point below which the glyphs stop reading, and no supported iPhone hits it.
+**A floor that can exceed its container is a bug. The chrome yields before the board does.**
 
-**iPad is out of scope.** `app.json` currently has `"supportsTabletMode": true` — which is
-not a valid Expo key at all (the real one is `ios.supportsTablet`). Set
-`"supportsTablet": false`. Supporting iPad means designing a second layout and shooting a
-second screenshot set for a phone game.
+#### The ladder
+
+Four stages, evaluated in order, first one that fits wins:
+
+| Stage | Chrome budget | Cell range | When |
+|---|---:|---|---|
+| **W — Wide** | 77 (HUD + action bar move to a side rail) | 30–48 | Screen ≥ 600 pt wide |
+| **0 — Comfortable** | 177 (52 HUD + 48 action + 45 tray + 32 gaps) | 30–44 | The common case |
+| **1 — Compact** | 144 (44 + 44 + 36 + 20) | 30–44 | Stage 0 would drop below a 30 pt cell |
+| **2 — Minimum** | 144 | 24–44 | Stage 1 would still drop below 30 |
+| **3 — Unsupported** | — | — | Even a 24 pt cell will not fit |
+
+```js
+function boardLayout(screenW, screenH, insetTop, insetBottom) {
+  const fit = (chrome, lo, hi) => {
+    const availH = screenH - insetTop - insetBottom - chrome;
+    const raw = Math.floor(Math.min((screenW - 32) / 10, availH / 15));
+    return { cell: Math.min(raw, hi), ok: raw >= lo, chrome };
+  };
+  if (screenW >= 600) { const w = fit(77, 30, 48);  if (w.ok) return { stage: 'wide',    ...w }; }
+  const s0 = fit(177, 30, 44);  if (s0.ok) return { stage: 'comfortable', ...s0 };
+  const s1 = fit(144, 30, 44);  if (s1.ok) return { stage: 'compact',     ...s1 };
+  const s2 = fit(144, 24, 44);  if (s2.ok) return { stage: 'minimum',     ...s2 };
+  return { stage: 'unsupported', cell: null, chrome: 144 };
+}
+```
+
+**Why chrome yields first.** The board is the game; the HUD, tray and action bar are
+supporting elements (§1). Chrome is 177 pt of supporting furniture against 450–720 pt of
+board, so it is proportionally the more expendable. The ladder only engages on genuinely
+cramped viewports — 30 pt is the smallest cell that still reads comfortably at arm's length,
+and no current iPhone at default zoom falls below it.
+
+**Compact chrome** keeps every touch target at 44 pt: the action bar shrinks to 44 and the
+Pass button fills it; the HUD to 44, still holding the 30 pt score over its 10 pt label; the
+tray to 36 (10 label + 24 strip + 2 rule), with strip animals at 22 pt.
+
+**24 pt is a legibility floor, not a touch floor** — touch is already handled by `hitSlop`
+(§9). Below 24 the glyph (0.53 × cell ≈ 13 pt) and the 1 pt panel seams stop reading, which
+would make the size cues in §5.2 fail. **Stage 3 shows a clear message rather than a clipped
+board.** It is reachable only below 504 pt of height (597 pt with 59/34 insets) or 272 pt of
+width — dimensions no iPhone has ever shipped, at any zoom level.
+
+#### Verified by continuous sweep, not by a device list
+
+A fixed device table cannot cover hardware that has not shipped. The ladder is therefore
+verified across the continuous space by `docs/v2/layout-sweep.mjs` (`node layout-sweep.mjs`)
+— **682,290 combinations** — widths 272–900, heights
+480–1200, six inset profiles — with **zero overflows**. Unreleased devices are covered by
+construction, which is the property that matters. AC-119 makes this the standing test.
+
+| Device | pt | insets | stage | cell | board |
+|---|---|---|---|---:|---:|
+| iPhone SE (1st gen / 5s) | 320 × 568 | 0 / 0 | minimum | 28 | 280 × 420 |
+| iPhone SE 2 / SE 3 / 8 | 375 × 667 | 20 / 0 | comfortable | 31 | 310 × 465 |
+| iPhone 12 / 13 mini | 375 × 812 | 50 / 34 | comfortable | 34 | 340 × 510 |
+| **iPhone 14 / 15 / 16 (target)** | 393 × 852 | 59 / 34 | comfortable | **36** | 360 × 540 |
+| iPhone 17 / 18 Pro | 402 × 874 | 62 / 34 | comfortable | 37 | 370 × 555 |
+| iPhone 15 / 16 / 17 Plus | 430 × 932 | 59 / 34 | comfortable | 39 | 390 × 585 |
+| iPhone 16 / 17 / **18** Pro Max | 440 × 956 | 62 / 34 | comfortable | 40 | 400 × 600 |
+| **iPhone Duo, folded** | ~466 × 678 | est. | minimum | 29 | 290 × 435 |
+| **iPhone Duo, unfolded** | ~626 × 890 | est. | **wide** | 48 | 480 × 720 |
+| Display Zoom on a 393 × 852 | 320 × 693 | 59 / 34 | minimum | 28 | 280 × 420 |
+
+> **Sourcing caveat.** iPhone 18 and the iPhone Duo postdate my training data. The Duo's
+> existence and its 5.4″ / 7.6″ displays are well corroborated (Apple Newsroom, Bloomberg,
+> CNN, MacRumors, 9 Sept 2026), but **its point dimensions are not published by Apple** and
+> the figures circulating are back-calculated from the panel resolution — and they disagree
+> with each other (≈626 × 890 at a 3× scale factor vs 669 × 951 from App Store Connect, and
+> the folded estimate of ~466 × 678 is not consistent with either as a book-fold). The Duo
+> rows above are therefore **illustrative, not normative**. This is precisely why the ruling
+> is a ladder verified over a continuous space rather than a table of devices: **nothing in
+> this design depends on those numbers being right.** Confirm them against the Xcode 27.1
+> simulator before shooting screenshots.
+
+#### The wide layout — one breakpoint, not a second design
+
+At 600 pt and above, the HUD and action bar move out of the vertical stack and into a
+right-hand rail. This is the same components in a different arrangement — not a tablet
+redesign — and it *returns* 100 pt of vertical space to the board.
+
+```
+┌────────────────────────────────────────────────┐   iPhone Duo, unfolded
+│ ░░░░░░░░░░░ safe area top ░░░░░░░░░░░░░░░░░░░░ │   ~626 × 890 pt
+│                                                │
+│   ┌──────────────────────────┐   ┌──────────┐  │
+│   │                          │   │  SCORE   │  │
+│   │                          │   │  12,480  │  │
+│   │                          │   │          │  │
+│   │         BOARD            │   │   ×2.0   │  │
+│   │       10 × 15 @ 48       │   │  🐃▌▌▌   │  │
+│   │        480 × 720         │   │          │  │
+│   │                          │   │    ❙❙    │  │
+│   │                          │   ├──────────┤  │
+│   │  🐘🐘🐘🐘🐘 🦌🦌🦌 🦊🦊  │   │          │  │
+│   └──────────────────────────┘   │ [ Pass ] │  │
+│   NEXT ARRIVAL        6 CELLS    │          │  │
+│   ▐🐀▌ ▐🦊🦊▌  ▐🦌🦌🦌▌       │  YOUR MOVE │  │
+│   ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱    └──────────┘  │
+│        ← 480 →              16      ← 114 →    │
+│ ░░░░░░░░░ home indicator ░░░░░░░░░░░░░░░░░░░░░ │
+└────────────────────────────────────────────────┘
+```
+
+The rail is the remaining width after the board and gutters, minimum 96 pt. The board stays
+left-of-centre so it sits under the right thumb when the device is held two-handed.
+
+**Why not simply make the board bigger?** Because a 10-column board spanning 660 pt is a
+26 cm drag from edge to edge — the mechanic is thumb-dragging, and a board that outgrows the
+thumb gets worse, not better. The cell ceiling rises 44 → 48 for large screens and stops
+there deliberately. Filling the space with a rail uses it; stretching the board squanders it.
+
+#### Scope: the Duo is supported, the iPad is not
+
+**iPad remains out of scope** — `ios.supportsTablet: false`. `app.json` currently has
+`"supportsTabletMode": true`, which is not a valid Expo key at all and has been doing nothing.
+
+**The Duo is in scope and `supportsTablet: false` will not exclude it** — it is an iPhone. A
+foldable that opens into a 43%-empty screen is a phone app that was handed a bigger canvas
+and did nothing with it, which is exactly the impression the App Store review screenshots
+would carry.
+
+**Shipping order:** v2.0 ships stages W/0/1/2 with the rail. If the rail slips, the fallback
+is stage 0 centred with deliberate framing — the board centred, gutters carrying the board's
+own background rather than flat app ground, so it reads as composed rather than stranded.
+What v2.0 must **not** do is overflow, clip, or look accidental. Confirm the Duo's real
+dimensions against the simulator before its own screenshot set is shot (§11.3).
+
+**Orientation stays locked to portrait in every stage**, including unfolded. A 10 × 15 board
+is inherently portrait; landscape would either shrink the cell to fit 15 rows in 626 pt of
+height or demand a different board, and the board shape is a rules parameter (`gameplay.md`
+§3), not a layout one.
 
 ### 3.3 Safe area
 
@@ -385,8 +517,19 @@ interval(k) = max(150, 250 − 20 × (k − 1))     // 250, 230, 210, 190, 170, 
 It tightens as the chain deepens, which is both faster and dramatically correct — a cascade
 should feel like it is accelerating.
 
-**At most 5 cascade steps are animated separately.** Steps 6 and beyond are replayed as one
-combined final step. Nobody can read eight discrete cascade steps; past five the drama is in
+**At most 5 cascade steps are animated separately, counted across the whole turn** — not per
+phase. `SETTLE` and `ARRIVAL` each run their own resolution, so one `reduce()` can emit clear
+events from both; the player experiences one turn, so the animation cap and the budget below
+are both per-turn quantities. Steps 6 and beyond are replayed as one combined final step.
+
+**Event-count contract for the cascade pipeline.** The number of `CLEAR_STEP` events a single
+turn can deliver is bounded by board mass, not by a step counter (`gameplay.md` §4): ~15
+*steps* and ~19 *events* in the worst case — they are not the same quantity, since one step can
+emit a clear plus a shrink plus a retirement — against 3 observed across 45,504 fuzzed turns.
+**Neither figure is normative**; `assert step <= 32` is the only ceiling the engine enforces. **The pipeline must not assume a small number.** What it *can* rely on is
+the animation cap: however many events arrive, they replay as **at most 6 animated units per
+turn** (5 separate + 1 combined), which is the number the 1500 ms arithmetic below is built
+on. Nobody can read eight discrete cascade steps; past five the drama is in
 the total, not the enumeration, and a six-step cascade on a 15-row board is close to
 theoretical. The engine still resolves all of them and still scores every one — this is a
 presentation cap only, and it must not change a single point of score.
@@ -412,6 +555,13 @@ readability-preserving form of compression: every step stays distinct, the seque
 shape, everything simply plays faster. Worst case needs 1500 / 1920 = **0.78×**, which is
 imperceptible. The scale floor is 0.55×, below which motion stops reading; the 5-step cap
 above is what guarantees the floor is never reached.
+
+**Measured, after Slice 1.** Across 90 bot runs the deepest cascade observed was **3 steps**,
+and no board could be constructed by hand that chains past 3. A realistic worst case is
+therefore 3 steps split 2/1 across the two phases: 560 + 310 + 570 = **1440 ms**, which fits
+the budget *uncompressed*. In practice the time-scaling rule never engages and the 5-step
+animation cap is never reached — both remain as guarantees against a board nobody has found
+yet, not as everyday behaviour. The budget is a ceiling, and the game runs well under it.
 
 Input reopens at the end of the *structural* timeline, which is the guaranteed ≤ 1500 ms —
 not when the last announcement animation finishes. A tap during the lock is **buffered and
@@ -500,9 +650,10 @@ HUD score, the streak pill, every stat tile. A score that reflows as it ticks lo
 
 **Spacing scale:** 4 · 8 · 12 · 16 · 24 · 32. Nothing off-scale.
 **Radii:** animal 6 · tray strip 6 · button 12 · card 14 · sheet 22 (top corners only) · pill 999.
-**Touch targets:** 44 pt minimum, always. At the 30 pt cell of an iPhone SE a rat is
-30 × 30 pt, so **every animal carries `hitSlop` padding it out to 44 pt on all four sides**,
-computed as `(44 - dimension) / 2`.
+**Touch targets:** 44 pt minimum, always. At the ladder's 24 pt floor (§3.2) a rat is
+24 × 24 pt, so **every animal carries `hitSlop` padding it out to 44 pt on all four sides**,
+computed as `max(0, (44 − dimension) / 2)`. This is why 24 pt is a *legibility* floor rather
+than a touch floor — touch is already solved at every cell size.
 
 ---
 
@@ -577,7 +728,15 @@ expensive to change after the first TestFlight build.
 
 ### 11.3 Screenshots
 
-Required sets: 6.9" (1320 × 2868) and 6.5" (1242 × 2688). Five shots, same five in both:
+Required sets: 6.9" (1320 × 2868) and 6.5" (1242 × 2688). Five shots, same five in both.
+
+**The iPhone Duo needs its own set** covering both states — at minimum one folded and one
+unfolded shot, the unfolded one showing the stage-W rail layout (§3.2), because a reviewer
+scrolling the listing on a Duo is exactly the audience that notices a phone app stranded in
+the middle of a foldable. **Shoot it against the Xcode 27.1 simulator, not against the
+estimated dimensions in §3.2**, and confirm the real point size at that time.
+
+The five shots:
 
 1. Mid-game, ragged skyline, buffalo visible on the board — *"Every animal is a different size. That's the whole game."*
 2. A two-row clear mid-flash with `+480` floating — *"Pack a row. Clear a row."*
