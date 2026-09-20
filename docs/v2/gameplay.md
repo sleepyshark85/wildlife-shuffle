@@ -783,7 +783,7 @@ Full motion, sound and haptic specs live in `ui.md` §8–§9. The gameplay-rele
   input for six seconds. In v2 a step's flash overlays its collapse, and step *n+1* begins
   while step *n* is still falling. Full spec and arithmetic in `ui.md` §8.2.
 - **Maximum input lock per turn is 1500 ms, guaranteed by construction**, against a typical
-  clearing turn of 880 ms and 570 ms for a turn with no clear. A tap during the lock is
+  clearing turn of 960 ms and 570 ms for a turn with no clear. A tap during the lock is
   buffered and applied at the next Phase 0, not dropped.
 - **All animation runs on the UI thread as Reanimated worklets**, and the drag is a
   gesture-handler pan writing to a shared value. Nothing is driven by `setState` or
@@ -832,6 +832,7 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D26 | The clear flash goes 140 → 320 ms, with an 80 ms leading beat on a resolution's first step, and cascades slow rather than accelerate | First real owner viewing called the clear "too abrupt". The flash is an announcement, so its length was free — 140 ms was a leftover from when it gated input (`ui.md` §8.2a). |
 | D24 | Session resume is ported from v1, stored as a seed + move list rather than a board snapshot | v2 without it is a regression against shipped behaviour. A replay can only reconstruct a legal board; a snapshot can inject an unreachable one (§9). |
 | D25 | The resume is written on `AppState` background only, never per turn | Keeps AC-1002 intact. v1's 1 Hz `setInterval` write is the thing AC-1002 forbids (§9). |
 | D23 | `streak` rides the `ADVANCE` event so `longestStreak` is event-derived like every other stat | Keeps AC-706b absolute. A carve-out for one field reintroduces the sync rule that AC-706b exists to eliminate (§7.3a). |

@@ -447,9 +447,10 @@ its own time while they carry on playing. See §8.1.
 | Illegal move | 260 ms | `cubic-bezier(.36,.07,.19,.97)` | no | 3 × 6 pt shake + 2 pt red rim + `notificationError` haptic |
 | Gravity fall | 200 ms | `cubic-bezier(.55,0,1,.45)` | **yes** | Accelerating — it *fell* |
 | Land squash | 140 ms | `spring(.34,1.56,.64,1)` | no | It has weight and has stopped |
-| Clear flash | 140 ms | linear in, ease out | no | *These* rows are the ones going |
-| Clear collapse | 110 ms | `cubic-bezier(.4,0,1,.4)` | **yes** | That row is gone |
-| Cascade step interval | 250 ms → 150 ms | see §8.2 | **yes** | A chain reaction, accelerating |
+| Clear flash | **320 ms** | 60 attack, 260 decay | no | *These* rows are the ones going |
+| Clear lead beat | **80 ms** | — | **yes** | first step of a resolution only — announce, then go |
+| Clear collapse | 110 ms | `cubic-bezier(.4,0,1,.4)` | **yes** | scale 0.85 + drift 6 pt down; fade runs 140 ms past |
+| Cascade step interval | **260 ms → 200 ms** | see §8.2 | **yes** | A chain reaction, gathering pace gently |
 | Buffalo shrink | 260 ms | 120 crack + 260 respring | **yes** | The row did **not** clear |
 | Arrival push-up | 260 ms | `cubic-bezier(.22,1,.36,1)` | **yes** | The tray told the truth |
 | Score count-up | 400 ms | ease-out cubic | no | The size of what happened |
@@ -480,9 +481,16 @@ zero JS frames, and stops the moment the band is clear.
 Two consequences worth stating plainly, because both are fluidity wins the naive reading of
 the old table would have missed:
 
-- **The clear flash overlays the collapse, it does not precede it.** v1 flashed and *then*
-  removed. Flashing concurrently with the collapse is both faster and more legible — the
-  accent lands on the rows as they go, rather than on rows that then sit there.
+- **The clear flash is an announcement, so its length is free.** Only the 110 ms collapse
+  gates input. This is why the flash could be tripled (§8.2a) without moving the budget by a
+  millisecond — and it is the thing I failed to act on when I reclassified it: the 140 ms
+  figure was argued down under a constraint that had already stopped applying to it.
+- **The flash gets an 80 ms leading beat on the first step of a resolution, then overlays.**
+  Not v1's flash-*then*-remove, which held a lit row for 1200 ms of dead time; 80 ms is the
+  flash's attack landing before the geometry starts to move, so the row is announced and
+  *then* goes. Steps 2+ of the same cascade stay strictly concurrent — by then the player is
+  watching a cascade and the announcing job is done, and a lead on every step would push the
+  realistic worst case into compression it does not currently need.
 - **An illegal move locks nothing.** The shake is pure announcement. The player can start
   their next drag on the very next frame, which is exactly what someone who has just been
   told "no" wants to do.
@@ -491,6 +499,54 @@ the old table would have missed:
   rather than 580. The dim is an opacity-animated overlay view, **never** an animated
   `filter: saturate()` — RN cannot drive a filter from the UI thread, so the approved draft's
   "desaturate" would have janked at the one moment the player is definitely watching.
+
+### 8.2a Clear timing — revised after the first real viewing
+
+> The owner played the Slice 2 build and said the row disappearance was **"too abrupt — should
+> be more natural and slower, maybe a little bit of flashing."**
+
+**What they were reacting to.** Slice 2 excluded AC-801–827, so there is no clear animation at
+all: rows vanish between frames. This is a reaction to *nothing*, not to the 140 ms spec, and
+it is not on its own evidence that the spec was wrong.
+
+**But it found a real defect anyway.** The flash went 1200 ms → 400 → 140 across three
+revisions, and **every one of those cuts was argued from input-lock arithmetic**. Then
+Revision 2 reclassified the flash as an *announcement*, which means it stopped costing budget
+— and I never revisited the duration. **140 ms is a leftover from when the flash gated
+input.** Nobody had watched any of it. The owner's instinct is right and the correction is
+free.
+
+| | was | now | class |
+|---|---:|---:|---|
+| Clear flash | 140 ms | **320 ms** (60 attack, 260 decay) | announcement — free |
+| Leading beat before collapse | 0 ms | **80 ms**, first step of a resolution only | structural |
+| Collapse | 110 ms | **110 ms** | structural — unchanged |
+| Fall | 200 ms | **200 ms** | structural — unchanged |
+| Cascade interval | `max(150, 250−20(k−1))` | `max(200, 260−15(k−1))` | structural |
+
+**Abruptness is an attack/decay problem, not only a duration problem.** A row that vanishes
+has an infinitely fast decay; a row that fades symmetrically reads as mushy. The flash is
+therefore deliberately asymmetric — **60 ms attack, 260 ms decay** — because the fast attack
+is what announces and the slow decay is what stops it feeling abrupt. A single flash, not a
+pulse train: overlapping pulses in a cascade read as a stutter.
+
+**The collapse gains physicality at no structural cost.** Within its unchanged 110 ms the
+cleared animals scale to 0.85 and drift 6 pt downward as they go, rather than simply
+shrinking; the opacity fade continues **140 ms past** the structural window as an
+announcement. "More natural" is largely this — things that leave should look like they went
+somewhere.
+
+**Cascades slow down rather than speed up.** The interval now tightens from 260 ms to a 200 ms
+floor instead of 250 → 150. The old curve was dramatically correct — a chain reaction should
+gather pace — but it was also the opposite of what "natural" asks for, and it made later steps
+overlap so heavily that they stopped reading as discrete events. With the deepest observed
+cascade at 3 steps the aggressive tightening barely engaged anyway, so it was buying drama
+nobody saw at a cost in legibility everybody did.
+
+**This is one sentence from one viewing of a build with no animation in it.** It is not
+locked. The numbers above are a considered response to a real reaction, and they should be
+watched and adjusted on the next build rather than defended — that is the whole point of
+having seen it move.
 
 ### 8.2 The input-lock budget
 
@@ -518,11 +574,13 @@ player most wants to keep acting.
 **Step interval.** The gap between the start of cascade step *k* and step *k+1*:
 
 ```
-interval(k) = max(150, 250 − 20 × (k − 1))     // 250, 230, 210, 190, 170, 150 …
+interval(k) = max(200, 260 − 15 × (k − 1))     // 260, 245, 230, 215, 200, 200 …
 ```
 
-It tightens as the chain deepens, which is both faster and dramatically correct — a cascade
-should feel like it is accelerating.
+It still tightens as the chain deepens, but gently. The original curve (250 → 150) was
+dramatically correct — a chain reaction should gather pace — but it was also the opposite of
+the "more natural" the owner asked for, and at depth 4+ the steps overlapped so heavily they
+stopped reading as discrete events. See §8.2a.
 
 **At most 5 cascade steps are animated separately, counted across the whole turn** — not per
 phase. `SETTLE` and `ARRIVAL` each run their own resolution, so one `reduce()` can emit clear
@@ -543,17 +601,26 @@ presentation cap only, and it must not change a single point of score.
 
 **The arithmetic.**
 
-```
-No clear        snap 110 + settle 200 + arrival 260                      =  570 ms
-Typical clear   snap 110 + settle 200 + 1 step 310 + arrival 260         =  880 ms
+A step costs `collapse 110 + fall 200 = 310 ms` structural. A resolution additionally pays the
+80 ms leading beat once, on its first step only (§8.1).
 
-Absolute worst  the 5 animated steps split 3 / 2 across Phase 2 and 3,
-                which costs more than 5 in one phase because each phase
-                pays its own final settle:
-                  Phase-2 cascade  250 + 230 + 310                       =   790
-                  Phase-3 cascade  250 + 310                             =   560
-                  snap 110 + settle 200 + arrival 260                    =   570
-                                                                   total = 1920 ms
+```
+No clear         snap 110 + settle 200 + arrival 260                     =  570 ms
+Typical clear    570 + (lead 80 + step 310)                              =  960 ms
+
+Realistic worst  3 steps split 2/1 — the deepest cascade ever observed:
+                   Phase-2  lead 80 + interval 260 + step 310            =   650
+                   Phase-3  lead 80 + step 310                           =   390
+                   snap 110 + settle 200 + arrival 260                   =   570
+                                                                   total = 1610 ms  → 0.93×
+
+Absolute worst   5 animated steps split 3/2, which costs more than 5 in
+                 one phase because each phase pays its own lead and its
+                 own final settle:
+                   Phase-2  80 + 260 + 245 + 310                         =   895
+                   Phase-3  80 + 260 + 310                               =   650
+                   snap 110 + settle 200 + arrival 260                   =   570
+                                                                   total = 2115 ms  → 0.71×
 ```
 
 **The guarantee.** The presentation layer lays the timeline out from the target timings
@@ -564,11 +631,17 @@ imperceptible. The scale floor is 0.55×, below which motion stops reading; the 
 above is what guarantees the floor is never reached.
 
 **Measured, after Slice 1.** Across 90 bot runs the deepest cascade observed was **3 steps**,
-and no board could be constructed by hand that chains past 3. A realistic worst case is
-therefore 3 steps split 2/1 across the two phases: 560 + 310 + 570 = **1440 ms**, which fits
-the budget *uncompressed*. In practice the time-scaling rule never engages and the 5-step
-animation cap is never reached — both remain as guarantees against a board nobody has found
-yet, not as everyday behaviour. The budget is a ceiling, and the game runs well under it.
+and no board could be constructed by hand that chains past 3. The 5-step animation cap is
+therefore never reached in practice — it remains a guarantee against a board nobody has found
+yet, not everyday behaviour.
+
+**What §8.2a cost, stated plainly.** Before the clear was slowed, the realistic worst case was
+1440 ms and fitted *uncompressed*; it is now 1610 ms and compresses by **0.93×**. I traded that
+away deliberately. "Never compresses in practice" was an observation, not a promise; the
+1500 ms guarantee (AC-822) is the promise and it is untouched, the 0.55× floor is nowhere near
+(worst case 0.71×), and a 7% speed-up on the rarest turn in the game is not perceptible. A
+visibly better clear on *every* turn is worth an imperceptible compression on a three-step
+cascade almost no one will see.
 
 Input reopens at the end of the *structural* timeline, which is the guaranteed ≤ 1500 ms —
 not when the last announcement animation finishes. A tap during the lock is **buffered and
