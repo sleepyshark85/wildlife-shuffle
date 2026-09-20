@@ -10,7 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout } from '../layout.js';
+import { STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap } from '../layout.js';
 import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
 import { useDragShared } from '../useDragShared.js';
 import { useGameRun } from '../useGameRun.js';
@@ -109,6 +109,7 @@ export function GameScreen({ seed, difficulty, onQuit }) {
           <View style={styles.railSpacer} />
           <ActionBar
             column
+            chrome={chrome}
             blocked={run.blocked}
             resolving={run.resolving}
             gameOver={run.view.gameOver}
@@ -121,7 +122,7 @@ export function GameScreen({ seed, difficulty, onQuit }) {
     body = (
       <>
         <Hud
-          height={chrome.hud}
+          chrome={chrome}
           score={run.view.score}
           streak={run.view.streak}
           buffalo={run.view.buffalo}
@@ -131,11 +132,11 @@ export function GameScreen({ seed, difficulty, onQuit }) {
         {/* The board + tray group is a flex child centred in whatever remains. */}
         <View style={styles.centre}>
           {board}
-          <View style={{ height: compact ? 10 : SPACE.lg }} />
+          <View style={{ height: boardTrayGap(chrome) }} />
           {tray}
         </View>
         <ActionBar
-          height={chrome.action}
+          chrome={chrome}
           blocked={run.blocked}
           resolving={run.resolving}
           gameOver={run.view.gameOver}

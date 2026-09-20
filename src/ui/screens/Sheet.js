@@ -16,7 +16,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
+import { COLORS, MOTION, RADIUS, SPACE, TYPE } from '../theme.js';
 
 const SHEET_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 
@@ -25,8 +25,11 @@ export function Sheet({ title, subtitle, children, testID }) {
   const rise = useSharedValue(1);
 
   useEffect(() => {
-    dim.value = withTiming(1, { duration: 240, easing: SHEET_EASING });
-    rise.value = withDelay(120, withTiming(0, { duration: 280, easing: SHEET_EASING }));
+    dim.value = withTiming(1, { duration: MOTION.dim, easing: SHEET_EASING });
+    rise.value = withDelay(
+      MOTION.sheetDelay,
+      withTiming(0, { duration: MOTION.sheet, easing: SHEET_EASING }),
+    );
   }, [dim, rise]);
 
   const dimStyle = useAnimatedStyle(() => ({ opacity: dim.value }));

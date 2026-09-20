@@ -21,7 +21,8 @@ export const MAX_ANIMATED_UNITS = 6;
 
 /** The structural ceiling. Worst case is scaled to fit it; the floor is 0.55x. */
 export const LOCK_BUDGET_MS = 1500;
-export const MIN_SCALE = 0.55;
+/** Below this, motion stops reading. The 6-unit cap is what keeps us off it. */
+const MIN_SCALE = 0.55;
 
 function cascadeMs(steps) {
   if (steps <= 0) return 0;

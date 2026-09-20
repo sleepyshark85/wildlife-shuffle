@@ -23,8 +23,17 @@ function walk(dir, out = []) {
 const SRC = walk(path.join(ROOT, 'src'))
   .concat([path.join(ROOT, 'App.js'), path.join(ROOT, 'index.js')]);
 const read = (f) => readFileSync(f, 'utf8');
-/** Strip comments so a grep does not fire on a file explaining the rule. */
-const code = (f) => read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+/**
+ * Strip comments so a grep does not fire on a file explaining the rule.
+ *
+ * Trailing comments count: `doThing(); // AC-414` used to survive the strip and
+ * then read as a hard-coded 414 to the AC-126 audit. The `[^:]` guard keeps a
+ * `https://` inside a string literal from being mistaken for a comment.
+ */
+const code = (f) =>
+  read(f)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 test('AC-830 PanResponder is not imported anywhere', () => {
   for (const file of SRC) {
@@ -58,13 +67,110 @@ test('AC-828/AC-211 the only timers in the app are the two the state layer owns'
   assert.equal((layer.match(/clearTimeout\(timer\)/g) || []).length, 2);
 });
 
-test('AC-828 no animation is driven from React state', () => {
-  // Every transform reads a shared value through useAnimatedStyle.
-  const animated = SRC.filter((f) => /useAnimatedStyle/.test(read(f)));
-  assert.ok(animated.length >= 3, 'the animated surfaces are not where expected');
-  for (const file of animated) {
-    assert.match(read(file), /from 'react-native-reanimated'/);
+/**
+ * Every `useAnimatedStyle(...)` call's source range, by brace/paren matching.
+ * Anything inside one of these runs on the UI thread as a worklet.
+ */
+function animatedRanges(body) {
+  const ranges = [];
+  const needle = 'useAnimatedStyle(';
+  for (let i = body.indexOf(needle); i !== -1; i = body.indexOf(needle, i + 1)) {
+    let depth = 0;
+    for (let j = i + needle.length - 1; j < body.length; j += 1) {
+      if (body[j] === '(') depth += 1;
+      else if (body[j] === ')') {
+        depth -= 1;
+        if (depth === 0) { ranges.push([i, j]); break; }
+      }
+    }
   }
+  return ranges;
+}
+
+/** The value of every `transform:` key, with the offset it starts at. */
+function transforms(body) {
+  const found = [];
+  const needle = 'transform:';
+  for (let i = body.indexOf(needle); i !== -1; i = body.indexOf(needle, i + 1)) {
+    const open = body.indexOf('[', i);
+    if (open === -1) continue;
+    let depth = 0;
+    for (let j = open; j < body.length; j += 1) {
+      if (body[j] === '[') depth += 1;
+      else if (body[j] === ']') {
+        depth -= 1;
+        if (depth === 0) { found.push({ at: i, value: body.slice(open, j + 1) }); break; }
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * AC-828, as a check that can actually fail.
+ *
+ * The previous version of this test filtered for files containing
+ * `useAnimatedStyle` and then asserted those files import Reanimated — true by
+ * construction for every file the filter could select, so only its count line
+ * could ever fail. A check that cannot fail is not a check.
+ *
+ * This one states the property: a transform may read a variable ONLY inside a
+ * `useAnimatedStyle` worklet. A transform outside one may contain literals and
+ * nothing else. That is exactly the shape of the regression it has to catch —
+ * `transform: [{ translateX: offset }]` where `offset` came from `useState` and
+ * a timer moves it, which is how v1 animated.
+ *
+ * The test immediately below proves the audit fires, by planting exactly that
+ * violation and asserting the audit reports it.
+ */
+function auditTransforms(body) {
+  const ranges = animatedRanges(body);
+  const inWorklet = (at) => ranges.some(([lo, hi]) => at > lo && at < hi);
+  // A literal transform: only `key: 'string'` or `key: 123` entries.
+  const literalOnly = /^\[\s*(\{\s*\w+\s*:\s*(?:'[^']*'|"[^"]*"|-?[\d.]+)\s*\}\s*,?\s*)+\]$/;
+  const violations = [];
+  for (const { at, value } of transforms(body)) {
+    if (inWorklet(at)) continue;
+    const flat = value.replace(/\s+/g, ' ').trim();
+    if (!literalOnly.test(flat)) violations.push(flat);
+  }
+  return violations;
+}
+
+test('AC-828 a transform may read a variable only inside a worklet', () => {
+  for (const file of SRC) {
+    const violations = auditTransforms(code(file));
+    assert.deepEqual(
+      violations, [],
+      `${path.relative(ROOT, file)} drives a transform from outside a useAnimatedStyle: ` +
+        violations.join(' | '),
+    );
+  }
+  // The property is only worth asserting if the app actually has animated
+  // transforms to constrain. Four: the animal body, the ghost, and the sheet's
+  // dim and rise.
+  const worklets = SRC.reduce((n, f) => n + animatedRanges(code(f)).length, 0);
+  assert.ok(worklets >= 4, `only ${worklets} useAnimatedStyle worklets found`);
+});
+
+test('AC-828 the audit fires on a planted violation', () => {
+  // v1's shape: a transform driven by React state (docs/v1-review.md A1/A4).
+  const planted = `
+    function Bad() {
+      const [offset, setOffset] = useState(0);
+      useEffect(() => { setTimeout(() => setOffset(offset + 1), 16); });
+      return <View style={{ transform: [{ translateX: offset }] }} />;
+    }`;
+  assert.deepEqual(auditTransforms(planted), ['[{ translateX: offset }]']);
+
+  // ...and does NOT fire on the two shapes the app legitimately uses.
+  const staticTransform = "const s = { transform: [{ rotate: '45deg' }] };";
+  assert.deepEqual(auditTransforms(staticTransform), []);
+  const worklet = `
+    const s = useAnimatedStyle(() => ({
+      transform: [{ translateX: tx.value }, { scale: 1 + 0.04 * grab.value }],
+    }));`;
+  assert.deepEqual(auditTransforms(worklet), []);
 });
 
 test('AC-829/AC-1304 babel.config.js lists the reanimated plugin LAST', () => {
@@ -111,14 +217,56 @@ test('AC-1303 every module under src/ is reachable from the entry point', () => 
   assert.deepEqual(orphans, [], `unreachable modules: ${orphans.join(', ')}`);
 });
 
+test('AC-1303 no module exports a symbol that nothing imports', () => {
+  // The tester found four of these by hand — MIN_SCALE, TOUCH, statusCopy and
+  // isDevelopment. Hand-finding is not a process, so here is the audit.
+  const consumers = SRC.concat(walk(path.join(ROOT, 'test')));
+  const everything = consumers.map(read).join('\n');
+  const dead = [];
+  for (const file of SRC) {
+    const body = read(file);
+    const names = new Set();
+    for (const m of body.matchAll(/export\s+(?:const|function|let)\s+(\w+)/g)) names.add(m[1]);
+    for (const m of body.matchAll(/export\s*\{([^}]*)\}/g)) {
+      for (const part of m[1].split(',')) {
+        const name = part.trim().split(/\s+as\s+/).pop().trim();
+        if (name) names.add(name);
+      }
+    }
+    for (const name of names) {
+      const imported = new RegExp(`import\\s*\\{[^}]*\\b${name}\\b[^}]*\\}\\s*from`);
+      if (!imported.test(everything)) dead.push(`${path.relative(ROOT, file)}: ${name}`);
+    }
+  }
+  assert.deepEqual(dead, [], `exported and imported nowhere:\n  ${dead.join('\n  ')}`);
+});
+
 test('AC-126 no device dimension is hard-coded in the source', () => {
   // The ladder is dimension-driven; the Duo's real point size is unpublished
   // and the circulating estimates disagree. A constant here would be a defect.
-  const devices = /\b(466|678|626|890|669|951|313|852|393|430|932|440|956|402|874)\b/;
+  //
+  // The list is every logical point dimension any iPhone has shipped at, in
+  // either axis, plus the Duo estimates and the common Display Zoom sizes. The
+  // first version of this test named only the large and foldable numbers, so a
+  // hard-coded iPhone SE or mini dimension would have sailed through it.
+  const WIDTHS = [320, 360, 375, 390, 393, 402, 414, 428, 430, 440, 466, 626, 669, 744];
+  const HEIGHTS = [
+    480, 504, 568, 667, 678, 693, 736, 780, 812, 844, 852, 874, 890, 896, 926, 932, 951, 956,
+    1024, 1133,
+  ];
+  const devices = new RegExp(`\\b(${[...new Set([...WIDTHS, ...HEIGHTS])].join('|')})\\b`);
   for (const file of SRC) {
     const body = code(file);
-    assert.ok(!devices.test(body), `${path.relative(ROOT, file)} hard-codes a device dimension`);
+    const hit = body.match(devices);
+    assert.ok(
+      !hit,
+      `${path.relative(ROOT, file)} hard-codes the device dimension ${hit && hit[0]}`,
+    );
   }
+  // The audit is only meaningful if it would fire, so: prove it does.
+  assert.match('const w = 393;', devices);
+  assert.match('if (screenH === 852) {', devices);
+  assert.equal(devices.test('const cell = Math.min(raw, 48);'), false);
 });
 
 test('AC-107 exactly one module computes a cell size', () => {

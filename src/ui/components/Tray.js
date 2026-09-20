@@ -9,7 +9,7 @@ import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { SPECIES } from '../../engine/constants.js';
-import { COLORS, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, TYPE } from '../theme.js';
+import { COLORS, COPY, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, TYPE } from '../theme.js';
 
 /** 45 degree accent stripes: "these push up from here" (ui.md §6). */
 function HazardRule({ width, height }) {
@@ -47,7 +47,7 @@ function TrayImpl({ queue, cells, cell, boardW, compact }) {
       accessible
     >
       <View style={[styles.labelRow, { height: labelH }]}>
-        <Text allowFontScaling={false} style={TYPE.label}>NEXT ARRIVAL</Text>
+        <Text allowFontScaling={false} style={TYPE.label}>{COPY.trayLabel}</Text>
         <Text allowFontScaling={false} style={TYPE.label}>{cells} CELLS</Text>
       </View>
       <View style={[styles.strip, { width: boardW, height: stripH }]}>

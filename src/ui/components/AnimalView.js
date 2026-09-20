@@ -30,7 +30,19 @@ import { COLORS, MOTION, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE } from '../th
 
 const SNAP_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 const FALL_EASING = Easing.bezier(0.55, 0, 1, 0.45);
-const GRAB_SPRING = { mass: 0.34, damping: 14, stiffness: 220 };
+
+/**
+ * Grab lift: 90 ms, `spring(.34, 1.4, .64, 1)` (ui.md §8, AC-818).
+ *
+ * That notation is not Reanimated's, and its middle terms are not in
+ * Reanimated's units — a stiffness of 1.4 would not move. Reanimated's
+ * duration-based spring is the faithful mapping: it takes the spec's 90 ms
+ * directly as the perceptual duration, and `dampingRatio` 0.64 is the spec's
+ * third term, which is the damping-ratio slot in that form. So the normative
+ * number is the number in the code, rather than a hand-tuned mass/stiffness
+ * pair that merely looks about right.
+ */
+const GRAB_SPRING = { duration: MOTION.grab, dampingRatio: 0.64 };
 
 /** ui.md §5.2 cue 2: the body counts out its own footprint in `size` panels. */
 function Panels({ size, cell, buffalo }) {

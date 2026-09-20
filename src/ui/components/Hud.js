@@ -4,6 +4,7 @@
 import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { hudHeight } from '../layout.js';
 import { COLORS, SPACE, TYPE } from '../theme.js';
 import { formatScore } from '../format.js';
 import { BuffaloChip, IconButton, StreakPill } from './Controls.js';
@@ -31,9 +32,9 @@ export const HudStats = memo(function HudStats({ score, streak, buffalo, column 
   );
 });
 
-export const Hud = memo(function Hud({ height, score, streak, buffalo, onPause, pauseMuted }) {
+export const Hud = memo(function Hud({ chrome, score, streak, buffalo, onPause, pauseMuted }) {
   return (
-    <View style={[styles.hud, { height }]}>
+    <View style={[styles.hud, { height: hudHeight(chrome) }]}>
       <HudStats score={score} streak={streak} buffalo={buffalo} />
       <IconButton glyph="❙❙" label="Pause" onPress={onPause} muted={pauseMuted} />
     </View>

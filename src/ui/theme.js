@@ -14,7 +14,9 @@ export const COLORS = Object.freeze({
   inkMuted: '#8DA0B0',
   inkDim: '#5E7183',
   accent: '#FFC24B',
-  success: '#6FD08C',
+  // ui.md §4.2 also defines `success` #6FD08C for "New best" and the chain
+  // multiplier. Both are later slices, and a token nothing reads is the v1
+  // habit this rewrite is meant to break (AC-1303), so it lands with them.
   illegal: '#FF5C5C',
   killLine: '#E05260',
   dangerBand: '#2A1D24',
@@ -58,7 +60,12 @@ export const TYPE = Object.freeze({
              color: COLORS.inkDim, textTransform: 'uppercase' },
 });
 
-/** ui.md §8, structural timings only. The full table lands with the motion slice. */
+/**
+ * ui.md §8, structural timings only. The full table lands with the motion slice.
+ * Every value here is read by something; a normative duration sitting in this
+ * object unused would mean the spec's number and the shipped number are free to
+ * disagree, which is the whole failure mode §8 exists to prevent.
+ */
 export const MOTION = Object.freeze({
   grab: 90,
   snap: 110,
@@ -67,6 +74,8 @@ export const MOTION = Object.freeze({
   clearStep: 310,
   arrival: 260,
   sheet: 280,
+  dim: 240,
+  sheetDelay: 120,
 });
 
 /** ui.md §12. The game never apologises and never explains twice. */

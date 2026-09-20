@@ -9,8 +9,15 @@
 // A run that trips the guard does not write a high score (AC-504e): the engine
 // was in a state the rules do not describe, so its score is not trustworthy.
 
-/** RN and Metro define __DEV__; Node and production bundles do not. */
-export function isDevelopment() {
+/**
+ * RN and Metro define __DEV__; Node and production bundles do not.
+ *
+ * `engine/resolve.js` carries its own copy of this three-liner. That duplicate
+ * is deliberate: the engine is pure and must not import from the presentation
+ * layer, and exporting a build-flag probe out of the rules engine to serve the
+ * UI would be a worse coupling than two identical predicates.
+ */
+function isDevelopment() {
   return typeof globalThis.__DEV__ !== 'undefined' && globalThis.__DEV__ === true;
 }
 

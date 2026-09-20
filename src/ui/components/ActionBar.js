@@ -2,14 +2,22 @@
 //
 // At compact chrome the bar is 44 pt and the Pass button fills it, so every
 // touch target survives the ladder (AC-114).
+//
+// The bar is laid out at `height + HAIRLINE`, not at `height`. React Native is
+// border-box: a 44 pt box with a 1 pt top rule has a 43 pt content box, and the
+// 44 pt button then overhangs it by a point and the page picks up a point of
+// scroll (AC-103). Adding the rule on top keeps the CONTENT box equal to the
+// chrome budget, and costs nothing, because the board/tray group above is a
+// flex child that absorbs it.
 
 import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { actionBarHeight, passButtonHeight } from '../layout.js';
 import { COLORS, COPY, SPACE, TYPE } from '../theme.js';
 import { Button } from './Controls.js';
 
-export function statusCopy({ blocked, resolving, gameOver }) {
+function statusCopy({ blocked, resolving, gameOver }) {
   if (gameOver) return 'RUN OVER';
   if (blocked) return COPY.blocked;
   if (resolving) return COPY.resolving;
@@ -17,7 +25,7 @@ export function statusCopy({ blocked, resolving, gameOver }) {
 }
 
 export const ActionBar = memo(function ActionBar({
-  height, blocked, resolving, gameOver, onPass, column,
+  chrome, blocked, resolving, gameOver, onPass, column,
 }) {
   const text = statusCopy({ blocked, resolving, gameOver });
   const muted = resolving || gameOver;
@@ -27,7 +35,7 @@ export const ActionBar = memo(function ActionBar({
       testID="pass"
       onPress={onPass}
       muted={muted}
-      style={column ? styles.wideButton : { height: Math.max(44, height - 4) }}
+      style={column ? styles.wideButton : { height: passButtonHeight(chrome) }}
     />
   );
   const status = (
@@ -50,7 +58,7 @@ export const ActionBar = memo(function ActionBar({
     );
   }
   return (
-    <View style={[styles.bar, { height }]}>
+    <View style={[styles.bar, { height: actionBarHeight(chrome) }]}>
       {status}
       {button}
     </View>

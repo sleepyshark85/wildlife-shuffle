@@ -18,6 +18,16 @@ export const ROWS = BOARD.height;  // 15
 /** Total horizontal space reserved outside the board in the vertical stages. */
 export const GUTTER = 32;
 
+/**
+ * The HUD's bottom rule and the action bar's top rule. React Native is
+ * border-box, so a bar given `height: chrome.action` has a CONTENT box of
+ * `chrome.action - HAIRLINE` — which is one point too short to hold the 44 pt
+ * Pass button at compact chrome, and the button then overhangs the rule.
+ * Chrome heights in CHROME below are content heights; the bars add this.
+ */
+export const HAIRLINE = 1;
+
+
 /** Wide stage: outer gutter and the board/rail gap. */
 export const WIDE_GUTTER = 12;
 export const WIDE_GAP = 12;
@@ -40,6 +50,17 @@ export const CHROME = Object.freeze({
 });
 
 const sum = (c) => c.hud + c.action + c.tray + c.gaps;
+
+/**
+ * The gap between the board and the tray. The `gaps` line of the chrome budget
+ * covers this plus the breathing room above and below the group; the group is
+ * a flex child centred in whatever remains, so the surplus is absorbed rather
+ * than spent (ui.md §3.1).
+ */
+export function boardTrayGap(chrome) {
+  return chrome === CHROME.compact ? 10 : 16;
+}
+
 
 export const STAGE = Object.freeze({
   WIDE: 'wide',
@@ -113,6 +134,56 @@ function finish(stage, cell, chrome, screenW, wide) {
     // AC-106: the board is centred, so the gutter is the same on both sides.
     gutter: wide ? WIDE_GUTTER : Math.round((screenW - boardW) / 2),
   };
+}
+
+/** ui.md §9: the floor for every touch target, at every stage (AC-114). */
+export const MIN_TOUCH = 44;
+
+/**
+ * The action bar's laid-out height.
+ *
+ * React Native is border-box, so a bar given `chrome.action` has a CONTENT box
+ * of `chrome.action - HAIRLINE`. Adding the rule on top is what keeps the
+ * content box equal to the chrome budget — and the budget is what has to hold
+ * the Pass button. Getting this backwards cost a point of vertical scroll at
+ * compact and minimum chrome (AC-103).
+ */
+export function actionBarHeight(chrome) {
+  return chrome.action + HAIRLINE;
+}
+
+/** Same construction, same correction: the HUD's rule sits below its content. */
+export function hudHeight(chrome) {
+  return chrome.hud + HAIRLINE;
+}
+
+/**
+ * The Pass button's height inside the vertical action bar. It never falls below
+ * MIN_TOUCH, and it must never exceed the bar's content box — `test/layout.test.js`
+ * asserts both, for every chrome budget on the ladder.
+ */
+export function passButtonHeight(chrome) {
+  return Math.max(MIN_TOUCH, chrome.action - 4);
+}
+
+/**
+ * How much vertical room the board + tray group has left over, once the HUD and
+ * the action bar have taken their content heights AND their rules.
+ *
+ * This is the AC-103 guarantee expressed in the geometry the screen actually
+ * renders, rather than in the ladder's abstract budget: a negative result is a
+ * scroll or a clip. `test/layout.test.js` sweeps it.
+ */
+export function verticalSlack(layout, screenH, insetTop, insetBottom) {
+  if (layout.stage === STAGE.UNSUPPORTED) return 0;
+  const { chrome, cell } = layout;
+  const wide = layout.stage === STAGE.WIDE;
+  // Stage W moves the HUD and the action bar into the rail, so the only
+  // vertical chrome left is the tray.
+  const bars = wide ? 0 : hudHeight(chrome) + actionBarHeight(chrome);
+  const region = screenH - insetTop - insetBottom - bars;
+  const group = cell * ROWS + boardTrayGap(chrome) + chrome.tray;
+  return region - group;
 }
 
 /** ui.md §9: every animal is padded out to a 44 pt touch target (AC-415). */

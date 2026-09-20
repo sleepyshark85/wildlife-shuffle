@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
 
-export const TOUCH = 44;
+const TOUCH = 44;
 
 /**
  * `muted` is not `disabled`. AC-413 wants the control to read as unavailable and
