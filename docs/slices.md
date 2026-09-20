@@ -16,7 +16,7 @@ exists).
 | **0** | Squad and approved design | — | **Merged** · PR #1 |
 | **1** | Rules engine, headless | 2xx–7xx | **Merged** · PR #2, re-landed #3 |
 | **2** | React state layer and board | 1xx, 4xx, 13xx | **Merged** · PR #5 |
-| **3** | Motion, visual states, accessibility | 5xx, 8xx, 9xx | **In verification** |
+| **3** | Motion, visual states, accessibility | 5xx, 8xx, 9xx | **Merged** · PR #9 |
 | **4** | Meta progression and persistence | 10xx | Not started |
 | **5** | Polish — sound, haptics, juice | 11xx | Not started |
 | **6** | App Store readiness | 12xx | Not started |
@@ -116,7 +116,7 @@ with state; a 44 pt button in a 43 pt border-box; and a test that could not fail
 
 ## Slice 3 — Motion, visual states, accessibility
 
-*In verification.* The motion table, clearing and buffalo visual states, accessibility, and
+*Merged.* The motion table, clearing and buffalo visual states, accessibility, and
 Reduce Motion. New: `src/ui/replay.js` — a pure function from pre-turn board plus the turn's
 event stream to an animation schedule.
 
@@ -136,9 +136,25 @@ beat 83 vs 80, collapse 101 vs 110, input reopened 955 vs a 960 budget.
 **A real Reanimated defect found**: `withDelay` under Reduce Motion does not shorten a delay,
 it *skips* it — every scheduled beat of a turn would have fired on one frame.
 
-**Open at time of writing**: Dynamic Type was unsatisfiable as specified and has been split by
-surface; the clear timings and the anticipation wash are marked provisional pending a device
-viewing.
+**Bugs found by measuring rather than assuming**: the score count-up finished 233–249 ms
+*before* the row flashed; the displayed score dropped to zero on every clearing turn (18
+backwards steps in 45 turns — `animatedProps` had made the input controlled); the first
+clock-origin fix passed its unit test and changed nothing; and a new audit found
+`MOTION.flash` read by no shipped code.
+
+**Dynamic Type was unsatisfiable as specified** and is now split by surface — board never
+scales, sheets scale freely, the HUD trades labels for values, fixed-height chrome caps
+rather than pins. *A cap is not an exemption.* It is **not observable at Tier 2 at all**:
+`react-native-web` hard-codes `fontScale: 1` (AC-910h).
+
+**The anticipation wash is the clearest case of implementation correcting design.** The spec
+asked for a uniform row wash; building it revealed that a row about to be completed is by
+definition nearly full, so what actually lights is the remaining *gap* — the columns the
+arrival is about to fill. Now specified deliberately at 0.14 on the gap and 0.05 on the
+bodies, with the levers written as a judgement rule rather than a tuning step.
+
+Tests 161 → 194. The clear timings and the wash remain **provisional** pending a device
+viewing (AC-824c carries the full list).
 
 ---
 
@@ -191,7 +207,7 @@ node docs/v2/layout-sweep.mjs     # must be 0 overflowing
 **`git fetch` before trusting anything.** A session-start snapshot is a snapshot, not the
 truth — `docs/development-process.md` §6.4 records the time that cost a whole review.
 
-Test counts locate the slice: **118** = Slice 1, **161** = Slice 2, **176** = Slice 3.
+Test counts locate the slice: **118** = Slice 1, **161** = Slice 2, **194** = Slice 3.
 
 ### 2. Know the shape of the work
 
