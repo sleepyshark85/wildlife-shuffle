@@ -62,6 +62,26 @@ export function boardTrayGap(chrome) {
 }
 
 
+/**
+ * The tray's internal geometry (ui.md §6).
+ *
+ * It lives here, next to the one sizing function, because two components now
+ * need it: the tray draws the strip, and the arrival flight has to start from
+ * the exact pixel the strip drew the animal at (AC-809). Two copies of these
+ * five numbers would be v1's two disagreeing cell formulas in miniature.
+ */
+export function trayMetrics(cell, compact) {
+  const labelH = compact ? 10 : 14;
+  const stripH = Math.round(cell * (compact ? 0.67 : 0.78));
+  return {
+    labelH,
+    stripH,
+    ruleH: compact ? 2 : 3,
+    bodyH: Math.round(stripH * 0.93),
+    glyph: Math.round(cell * 0.42),
+  };
+}
+
 export const STAGE = Object.freeze({
   WIDE: 'wide',
   COMFORTABLE: 'comfortable',

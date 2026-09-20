@@ -452,6 +452,11 @@ panel count equals the new size.
 **AC-509** Given a buffalo is on the board, Then the HUD buffalo chip is visible and shows its
 remaining segments filled and its spent segments dimmed.
 
+**AC-509b** Given a buffalo shrinks, Then the chip's segment fades on the **same 260 ms
+timeline as the body's shrink**, not on the React commit. *(Slice 3 measured the chip reading
+"1 of 4" beside a two-cell-wide body for a quarter second — the HUD contradicting the board
+about the one fact the chip exists to report.)*
+
 **AC-510** Given a buffalo is retired, Then the HUD chip disappears.
 
 **AC-511** Given a clear step occurs, Then its flash-and-collapse animation plays exactly
@@ -581,8 +586,17 @@ is set to 3.0. Precedence against every other streak rule is AC-609.
 **AC-614** Given any number of turns elapse with no clears, Then the score does not change.
 Turns are never worth points.
 
-**AC-615** Given the score changes, Then the HUD counts up to the new value over 400 ms and a
-floating `+N` rises from the affected row.
+**AC-615** *(amended — see `ui.md` §8.2a)* Given the score changes, Then the HUD count-up and
+the floating `+N` both **start at the turn's first clear unit's `collapseAt`** — never at the
+React commit. The order the player sees is flash → collapse → score.
+
+**AC-615b** Given an ARRIVAL-phase clear, Then the score does **not** reach its final value
+before the flash begins. *(Slice 3 measured the count-up finishing at 400 ms while the flash
+started at 570 ms — the HUD answering before the board asked.)*
+
+**AC-615c** Given a cascade, Then there is **one** count-up for the turn, of duration
+`max(400, lastClearUnit.collapseAt − firstClearUnit.collapseAt + 400)`, targeting the turn's
+final score — one accumulating sweep, not a counter that restarts on every step.
 
 **AC-616** Given the score is displayed anywhere, Then it uses tabular figures and does not
 reflow as it ticks.
@@ -714,6 +728,14 @@ Then an 80 ms leading beat plays before the collapse begins — the row is annou
 Given any **subsequent** step of the same cascade, Then its collapse begins concurrently with
 its flash. In no case do the same rows flash twice.
 
+**AC-813e** Given any clear step, Then the flash peaks at **0.92** on the animal body and
+**0.22** on the row's background cells, reached at the end of the attack.
+
+**AC-813f** Given any clear step, Then the flash is an **additive overlay, never a fill swap**:
+the body keeps its species colour and panel seams underneath throughout, and they resurface
+through the decay. *(A fill swap would destroy §5.2's size cues rather than briefly
+overwhelming them.)*
+
 **AC-813b** Given any clear step, Then its flash lasts **320 ms** with a **60 ms attack and a
 260 ms decay** — deliberately asymmetric, because the fast attack is what announces and the
 slow decay is what stops it reading as abrupt. It is a single flash, not a pulse train.
@@ -774,6 +796,17 @@ this case was 1440 ms and needed no compression. That property was traded delibe
 visibly better clear on every turn: "never compresses in practice" was an observation, the
 1500 ms guarantee is the promise, and a 7% speed-up on the rarest turn in the game is not
 perceptible.)*
+
+**AC-823b** Given a cascade, Then step *n+1* begins at **75%** through step *n*'s fall, which
+follows from AC-823's interval (collapse 0–110 ms, fall 110–310 ms, 260 ms interval →
+(260−110)/200). *(§8.2's prose said 60%; it had been stale since before §8.2a.)*
+
+**AC-824d — ANTICIPATION, PROVISIONAL.** Given an ARRIVAL-phase clear, Then the row the
+arrival is about to complete carries a **0.10 row wash fading in across the 260 ms push-up**,
+so the flash lands where the player is already looking. The engine has resolved the turn
+before the first frame plays, so this is true information shown early, not a guess. **Review
+it on device with AC-824c**: if it reads as a smear rather than a focus, drop it and accept
+the 570 ms, which is correct if unglamorous — see `ui.md` §8.2b.
 
 **AC-824c — PROVISIONAL.** Given the §8.2a clear timings (flash 320 ms, lead beat 80 ms,
 interval 260→200 ms), Then they are **reviewed against a real build before being locked**.
@@ -873,8 +906,31 @@ determinable from width and panel count alone.
 except `ink-dim` which is used only at 10 pt / 600 uppercase and always paired with an
 `ink`-weight value.
 
-**AC-910** Given Dynamic Type is set to AccessibilityLarge, Then all HUD, sheet and overlay
-text scales and no text is clipped or truncated. The board does not scale.
+**AC-910** *(amended — the approved wording was unsatisfiable; see `ui.md` §10)* Given Dynamic
+Type is set to any size, Then the **board never scales**, and no text anywhere is clipped or
+truncated.
+
+**AC-910b** Given Dynamic Type at any size up to `AccessibilityExtraExtraExtraLarge`, Then all
+**sheet and overlay** text — Pause, Game Over, Settings, Records, How to Play — scales fully,
+scrolling where needed.
+
+**AC-910c** Given the source tree, Then `allowFontScaling={false}` appears **only** on HUD
+text. Its presence on any sheet or overlay `<Text>` is a defect. *(Slice 2 applied it
+app-wide to make the fixed chrome heights hold.)*
+
+**AC-910d** Given Dynamic Type at `xxLarge` or above, Then the HUD **keeps its fixed height**
+and instead drops its 10 pt uppercase labels and grows its values into the freed space: the
+score goes to 40 pt in a 52 pt HUD and 34 pt in a 44 pt compact HUD, with the streak pill and
+buffalo chip scaling to match.
+
+**AC-910e** Given any Dynamic Type size, Then the HUD's height is unchanged and the board's
+cell size is unaffected. *(The ladder's chrome budget is what guarantees the board fits;
+letting the HUD grow would spend board rows on chrome for the players least able to afford
+losing them.)*
+
+**AC-910f** Given VoiceOver at any Dynamic Type size, Then every HUD value is still announced
+with its name, because the names live on `accessibilityLabel` rather than on the visible
+labels that AC-910d hides.
 
 **AC-911** Given keyboard or switch-control focus, Then every interactive control shows a 2 pt
 accent focus ring at 2 pt offset.

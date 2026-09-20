@@ -8,20 +8,24 @@ export const COLORS = Object.freeze({
   board: '#16212C',
   cell: '#1A2833',
   cellLine: '#223442',
+  /** ui.md §10: the High Contrast toggle brightens every cell line to this. */
+  cellLineHigh: '#33475A',
   hairline: '#24333F',
 
   ink: '#EFF4F8',
   inkMuted: '#8DA0B0',
   inkDim: '#5E7183',
   accent: '#FFC24B',
-  // ui.md §4.2 also defines `success` #6FD08C for "New best" and the chain
-  // multiplier. Both are later slices, and a token nothing reads is the v1
-  // habit this rewrite is meant to break (AC-1303), so it lands with them.
+  success: '#6FD08C',
   illegal: '#FF5C5C',
   killLine: '#E05260',
   dangerBand: '#2A1D24',
   dangerCellLine: 'rgba(107,47,58,.55)',
   ghostFill: 'rgba(255,194,75,.10)',
+  // ui.md §8.2a: the clear flash. White, because it has to read on five
+  // saturated species fills at once and nothing else on the board is white.
+  flash: '#FFFFFF',
+  dangerWash: '#E05260',
   illegalFill: 'rgba(255,92,92,.10)',
   scrim: 'rgba(5,9,13,.72)',
 });
@@ -34,6 +38,23 @@ export const SPECIES_STYLE = Object.freeze({
   elephant: Object.freeze({ fill: '#5B6E88', edge: '#3F4F66', glyph: '#DCE6F2' }),
   buffalo:  Object.freeze({ fill: '#8C3B4A', edge: '#E8B44A', glyph: '#FFE3B0' }),
 });
+
+/**
+ * ui.md §5.4: the grabbed edge brightens 12%.
+ *
+ * It lives with the tokens rather than with the component because it produces a
+ * token — the lit twin of a species edge — and because a worklet may only read
+ * values that were computed before it ran, so the result has to be a constant
+ * by the time the gesture starts.
+ */
+export function brighten(hex, amount) {
+  const value = parseInt(hex.slice(1), 16);
+  const lift = (channel) => Math.min(255, Math.round(channel * (1 + amount)));
+  const r = lift((value >> 16) & 255);
+  const g = lift((value >> 8) & 255);
+  const b = lift(value & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
 
 export const SEAM = 'rgba(0,0,0,.22)';
 export const SEAM_BUFFALO = 'rgba(232,180,74,.5)';
@@ -61,21 +82,84 @@ export const TYPE = Object.freeze({
 });
 
 /**
- * ui.md §8, structural timings only. The full table lands with the motion slice.
- * Every value here is read by something; a normative duration sitting in this
+ * ui.md §8 — the whole motion table, and the only copy of it.
+ *
+ * Every value here is read by something. A normative duration sitting in this
  * object unused would mean the spec's number and the shipped number are free to
- * disagree, which is the whole failure mode §8 exists to prevent.
+ * disagree, which is the failure mode §8 exists to prevent.
+ *
+ * `flash` is written as attack + decay rather than as its total because the
+ * asymmetry IS the specification (ui.md §8.2a): the fast attack announces and
+ * the slow decay is what stops the row reading as abrupt. A single total would
+ * lose the only property that matters about it.
  */
+const FLASH_ATTACK = 60;
+const FLASH_DECAY = 260;
+
 export const MOTION = Object.freeze({
-  grab: 90,
+  // --- structural: these gate input (ui.md §8.1) ------------------------
   snap: 110,
-  illegal: 260,
   fall: 200,
+  /** The leading beat, first clear step of a resolution only (AC-813). */
+  lead: 80,
+  collapse: 110,
+  /** collapse + fall: what one cascade step costs the budget. */
   clearStep: 310,
   arrival: 260,
+  buffaloShrink: 260,
+
+  // --- announcements: these never gate input ---------------------------
+  grab: 90,
+  illegal: 260,
+  squash: 140,
+  flashAttack: FLASH_ATTACK,
+  flashDecay: FLASH_DECAY,
+  flash: FLASH_ATTACK + FLASH_DECAY,
+  /** The collapse's opacity fade outlives the structural window (AC-813d). */
+  fadePast: 140,
+  buffaloCrack: 120,
+  scoreCount: 400,
+  float: 900,
+  shake: 180,
+
+  // --- ambient ----------------------------------------------------------
+  dangerPulse: 1200,
+
+  // --- sheets -----------------------------------------------------------
   sheet: 280,
+  sheetOut: 220,
   dim: 240,
   sheetDelay: 120,
+
+  /**
+   * ui.md §8.4. Reduce Motion turns every transform into a cross-fade of at
+   * most this long. It is a CEILING applied to each duration, not a
+   * replacement for the schedule: cascade steps keep their §8.2 start times so
+   * the chain stays countable.
+   */
+  reduced: 120,
+});
+
+/** ui.md §8: the geometry the numbers above move, kept beside them. */
+export const MOTION_SIZE = Object.freeze({
+  grabScale: 1.04,
+  grabLift: 2,
+  /** ui.md §5.4: the grabbed edge brightens by this fraction. */
+  edgeBrighten: 0.12,
+  squashScaleY: 0.86,
+  /** AC-813d: cleared animals scale to this and drift this far down. */
+  collapseScale: 0.85,
+  collapseDrift: 6,
+  /** The flash's peak opacity on the body, and on the row behind it. */
+  flashPeak: 0.92,
+  flashRowPeak: 0.22,
+  floatRise: 46,
+  shakeAmplitude: 4,
+  illegalShake: 6,
+  dangerPulseLow: 0.05,
+  dangerPulseHigh: 0.13,
+  /** AC-907: Reduce Motion replaces the pulse with a static wash. */
+  dangerStatic: 0.1,
 });
 
 /** ui.md §12. The game never apologises and never explains twice. */
@@ -85,4 +169,7 @@ export const COPY = Object.freeze({
   blocked: 'BLOCKED',
   pass: 'Pass',
   trayLabel: 'NEXT ARRIVAL',
+  buffaloShrink: 'BUFFALO −1',
+  buffaloDown: 'BUFFALO DOWN  +500',
+  perfect: 'PERFECT  +1000',
 });

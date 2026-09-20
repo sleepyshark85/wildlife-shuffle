@@ -5,11 +5,18 @@
 // exact spawn columns, in their exact species colours, with their exact panel
 // counts. The engine guarantees the batch arrives verbatim (AC-301).
 
-import React, { memo } from 'react';
+import React, { memo, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { SPECIES } from '../../engine/constants.js';
-import { COLORS, COPY, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, TYPE } from '../theme.js';
+import { trayMetrics } from '../layout.js';
+import { EASE, delay, timing } from '../motion.js';
+import { COLORS, COPY, MOTION, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, TYPE } from '../theme.js';
 
 /** 45 degree accent stripes: "these push up from here" (ui.md §6). */
 function HazardRule({ width, height }) {
@@ -33,12 +40,25 @@ function HazardRule({ width, height }) {
   return <View style={{ width, height, overflow: 'hidden' }}>{bars}</View>;
 }
 
-function TrayImpl({ queue, cells, cell, boardW, compact }) {
-  const labelH = compact ? 10 : 14;
-  const stripH = Math.round(cell * (compact ? 0.67 : 0.78));
-  const ruleH = compact ? 2 : 3;
-  const bodyH = Math.round(stripH * 0.93);
-  const glyph = Math.round(cell * 0.42);
+function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced }) {
+  const { labelH, stripH, ruleH, bodyH, glyph } = trayMetrics(cell, compact);
+
+  // The batch on screen while an arrival is in flight is the NEXT one: the
+  // engine advanced the queue in the same reducer call that emptied it. So the
+  // strip waits for the flight to clear the tray before it shows its new
+  // contents, rather than swapping them under the animals that are still
+  // leaving. `withDelay`, not a timer — this is presentation, and presentation
+  // does not get to own a timer (AC-828).
+  const reveal = useSharedValue(1);
+  useEffect(() => {
+    if (!revealAt) {
+      reveal.value = 1;
+      return;
+    }
+    reveal.value = 0;
+    reveal.value = delay(revealAt, withTiming(1, timing(MOTION.reduced, EASE.out, reduced)));
+  }, [queue, revealAt, reduced, reveal]);
+  const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
 
   return (
     <View
@@ -50,7 +70,7 @@ function TrayImpl({ queue, cells, cell, boardW, compact }) {
         <Text allowFontScaling={false} style={TYPE.label}>{COPY.trayLabel}</Text>
         <Text allowFontScaling={false} style={TYPE.label}>{cells} CELLS</Text>
       </View>
-      <View style={[styles.strip, { width: boardW, height: stripH }]}>
+      <Animated.View style={[styles.strip, { width: boardW, height: stripH }, revealStyle]}>
         {queue.map((animal) => {
           const style = SPECIES_STYLE[animal.type] || SPECIES_STYLE.rat;
           const buffalo = animal.type === SPECIES.buffalo.type;
@@ -97,7 +117,7 @@ function TrayImpl({ queue, cells, cell, boardW, compact }) {
             </View>
           );
         })}
-      </View>
+      </Animated.View>
       <HazardRule width={boardW} height={ruleH} />
     </View>
   );

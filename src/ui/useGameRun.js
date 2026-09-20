@@ -32,8 +32,28 @@ import {
 } from '../engine/engine.js';
 import { STATUS } from '../engine/constants.js';
 import { inspectChainGuard } from './chainGuard.js';
-import { turnTimeline } from './timeline.js';
+import { buildReplay } from './replay.js';
 import { MOTION } from './theme.js';
+
+/**
+ * The engine's `reduce()` IS the reducer — unchanged, and still the only thing
+ * that decides what the board becomes. This wrapper adds one derived field and
+ * decides nothing: the replay plan for the turn that just resolved (ui.md §8.3
+ * ¶3, AC-833/AC-834).
+ *
+ * It has to happen here, and not in a `useMemo` further down, for one reason:
+ * building the plan needs the board as it stood BEFORE the turn, and a cascade
+ * has already deleted the animals whose departure has to be drawn. This is the
+ * only place both boards exist at once. It is pure, so React 19 StrictMode's
+ * double-invocation remains a no-op (AC-203).
+ */
+export function runReducer(state, action) {
+  const next = reduce(state, action);
+  if (next !== state && next.lastTurn && next.lastTurn !== state.lastTurn) {
+    return { ...next, plan: buildReplay(state.animals, next.lastTurn) };
+  }
+  return next;
+}
 
 /** A run seed. Called from event handlers only, never during render. */
 export function newSeed() {
@@ -41,7 +61,7 @@ export function newSeed() {
 }
 
 export function useGameRun({ seed, difficulty }) {
-  const [state, dispatch] = useReducer(reduce, { seed, difficulty }, createRun);
+  const [state, dispatch] = useReducer(runReducer, { seed, difficulty }, createRun);
 
   const [resolving, setResolving] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -77,16 +97,15 @@ export function useGameRun({ seed, difficulty }) {
 
     lockedRef.current = true;
     setResolving(true);
-    const { lockMs } = turnTimeline(turn.events, turn.action);
     const timer = setTimeout(() => {
       lockedRef.current = false;
       setResolving(false);
       const buffered = bufferedRef.current;
       bufferedRef.current = null;
       if (buffered && stateRef.current.status === STATUS.READY) dispatch(buffered);
-    }, lockMs);
+    }, state.plan.lockMs);
     return () => clearTimeout(timer);
-  }, [state.lastTurn, state.seed]);
+  }, [state.lastTurn, state.seed, state.plan]);
 
   // ---- the BLOCKED announcement ----------------------------------------
   useEffect(() => {
@@ -133,6 +152,7 @@ export function useGameRun({ seed, difficulty }) {
   const view = useMemo(
     () => ({
       animals: state.animals,
+      plan: state.plan || null,
       queue: state.queue,
       queueCells: queueCells(state),
       score: state.score,

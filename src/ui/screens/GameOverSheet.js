@@ -19,10 +19,10 @@ function Stat({ caption, value }) {
   );
 }
 
-export function GameOverSheet({ record, difficulty, flagged, onAgain, onQuit }) {
+export function GameOverSheet({ record, difficulty, flagged, reduced, onAgain, onQuit }) {
   const habitat = (DIFFICULTIES[difficulty] || DIFFICULTIES.savanna).label;
   return (
-    <Sheet testID="game-over" title={`Run over · ${habitat}`}>
+    <Sheet testID="game-over" reduced={reduced} title={`Run over · ${habitat}`}>
       <Text allowFontScaling={false} style={TYPE.display}>{formatScore(record.score)}</Text>
       {flagged ? (
         // AC-504e / AC-1309: the engine was in a state the rules do not
