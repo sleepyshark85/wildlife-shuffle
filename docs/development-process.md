@@ -191,7 +191,17 @@ a required file. Verifying the tree is correct is not the same as verifying the 
 complete. Before pushing a slice, run the suite against what was actually committed — a
 detached worktree at HEAD, or a `git stash` around the test run.
 
-### 6.6 The stacked-branch merge
+### 6.6 Reverting a planted fault with git
+
+An agent injecting faults to prove its tests can fail used `git checkout <file>` to undo one,
+twice in a single slice — and both times destroyed real uncommitted work, because the file was
+tracked but the *working-tree* version was the deliverable. It caught both by grepping for the
+symbol immediately afterwards.
+
+**Rule:** agents restore a planted fault from a scratchpad copy, never from git. Fault
+injection happens on files whose committed state is by definition not the state you want back.
+
+### 6.7 The stacked-branch merge
 
 Slice 1's PR was based on Slice 0's branch. Both were merged within nine seconds — Slice 0
 into `main` first, then Slice 1 into the already-merged Slice 0 branch. Slice 1's code never
@@ -214,7 +224,7 @@ result is on `main` afterwards.
   numbers rather than adjectives.
 - **Before pushing, run the suite against what was committed**, not the working tree — a
   detached worktree at HEAD, or a `git stash` around the test run (§6.5).
-- **After merging, verify the code is actually on `main`** (§6.6).
+- **After merging, verify the code is actually on `main`** (§6.7).
 
 **Merge authority:** when the owner says *"go for it"*, that carries through to merging the
 PR. The orchestrator still opens the PR and reports what is in it; it does not wait for a

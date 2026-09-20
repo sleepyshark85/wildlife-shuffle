@@ -808,8 +808,35 @@ before the first frame plays, so this is true information shown early, not a gue
 it on device with AC-824c**: if it reads as a smear rather than a focus, drop it and accept
 the 570 ms, which is correct if unglamorous — see `ui.md` §8.2b.
 
-**AC-824c — PROVISIONAL.** Given the §8.2a clear timings (flash 320 ms, lead beat 80 ms,
-interval 260→200 ms), Then they are **reviewed against a real build before being locked**.
+**AC-824e — DERIVED, NOT RESTATED.** Given `node docs/v2/budget.mjs` is run, Then it exits 0
+and its printed table **matches the figures in `ui.md` §8.2 exactly**. The absolute worst case
+is a **3/3 split of 6 animated units = 2360 ms → 0.636×**, and every one of the 882 legal
+`(settle, arrival)` splits stays above the 0.55× floor. *(A figure in §8.2 has gone stale
+behind its own ACs three times — 0.78×, 0.71×, and "60% through the fall" — every time because
+prose restated an arithmetic result. It is now computed.)*
+
+**AC-824f — THE CLOCK STARTS AT FINGER-UP.** Given AC-820, AC-821 and AC-822, Then their
+budgets are measured from **finger-up**, not from the React commit, and the presentation layer
+subtracts `commitTime − fingerUpTime` from the budget before scaling the timeline. *(Slice 3
+measured that gap at a median of 61 ms, p90 94, max 114 in a dev web bundle, which put a real
+single-clear turn at ~1021 ms against AC-821's 960. A release iOS build will be far smaller
+but not zero.)* Where the measured gap is under one frame (≈16 ms) the correction may be
+skipped. **The gap must be measured on device** as part of the AC-824c review.
+
+**AC-824c — PROVISIONAL / THE DEVICE REVIEW LIST.** Given the §8.2a clear timings (flash
+320 ms, lead beat 80 ms, interval 260→200 ms), Then they are **reviewed against a real build
+before being locked**, together with everything else that cannot be settled off-device:
+
+| | what to look for |
+|---|---|
+| §8.2a clear timings | does the clear still read as abrupt? |
+| Flash peak 0.92 (AC-813e) | does a **multi-row** clear read as one event, or as a white band? If it flattens, lower the body peak before touching the duration. |
+| Anticipation wash (AC-824d) | focus, or smear? If smear, drop it and accept the 570 ms. |
+| Commit gap (AC-824f) | measure `commitTime − fingerUpTime` on a release build. |
+| Screen shake (AC-811) | never occurred in ~250 bot turns; the trigger is proved at the plan layer but nobody has watched it render. |
+| A rendered 2-step cascade | real but rare — max depth 2 across 111 clearing turns. |
+
+
 They are a considered response to one sentence of owner feedback given while watching a build
 that had *no* clear animation at all, so they are the first of these numbers anyone has
 actually seen move. Watch them and adjust; do not defend them.
@@ -890,10 +917,23 @@ via a polite live region.
 **AC-904** Given VoiceOver is active, Then every button exposes a role and an accessible name,
 and no control is reachable only by an emoji glyph.
 
-**AC-905** Given the Size Numerals toggle is on, Then every animal displays its size digit.
+**AC-905** *(amended — the approved spec said "10 pt / 600 mono" and nothing about colour, so
+the numeral inherited the species glyph style and three of five species failed AC-909: fox
+4.46, elk 3.92, elephant 3.47)* Given the Size Numerals toggle is on, Then every animal
+displays its size digit at 10 pt / 600 mono in `ink` **`#EFF4F8`** at **full opacity**, on a
+**solid `#0D141B` chip** — radius 3, 2 pt horizontal padding, inset 3 pt from the bottom-right
+corner.
+
+**AC-905b** Given the size numeral on **any** species, Then its contrast is **16.7:1**, fixed
+by the chip rather than dependent on the fill beneath it. An accessibility aid that itself
+fails contrast is worse than no aid.
 
 **AC-906** Given the High Contrast toggle is on, Then animal borders are 2.5 pt white and
 seams are 1.5 pt white at 55%.
+
+**AC-906b** Given the three accessibility toggles, Then persistence is **Layer A (Slice 4)**;
+until AsyncStorage lands under AC-10xx they are session-scoped, which is a deliberate deferral
+rather than an omission.
 
 **AC-907** Given OS Reduce Motion is enabled, Then every transform animation becomes a
 ≤120 ms cross-fade, the illegal-move shake becomes a static 400 ms red rim, the danger pulse
@@ -901,6 +941,13 @@ becomes a static wash, and screen shake is disabled.
 
 **AC-908** Given a deuteranopia or protanopia simulation, Then every animal's size remains
 determinable from width and panel count alone.
+
+**AC-908b** Given Brettel/Viénot simulation over the §4.3 palette, Then the worst pairs are
+recorded accurately: **deuteranopia** closest pair **fox/elk** at RGB distance 53;
+**protanopia** fox/elk at distance **20** (`#9b9b48` vs `#9e9e5c`). Both are acceptable — fox
+and elk are adjacent in size and therefore adjacent on the lightness ramp, so the collision is
+the ramp working as designed. **Do not separate fox and elk in hue to fix it**: that breaks
+the size→lightness mapping to rescue a species distinction the game does not use.
 
 **AC-909** Given every text/background pair in the app, Then contrast is at least 4.5:1,
 except `ink-dim` which is used only at 10 pt / 600 uppercase and always paired with an

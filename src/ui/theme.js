@@ -40,6 +40,55 @@ export const SPECIES_STYLE = Object.freeze({
 });
 
 /**
+ * Relative luminance, WCAG 2.1 §1.4.3, and the contrast ratio built on it.
+ *
+ * `contrast` is exported so AC-905b and AC-909 can be *computed* in the tests
+ * rather than
+ * asserted as a hex code somebody eyeballed. The size numeral's old ink passed
+ * review and failed the arithmetic on three species out of five.
+ */
+function luminance(hex) {
+  const value = parseInt(hex.slice(1), 16);
+  const channel = (c) => {
+    const x = c / 255;
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+  };
+  return (
+    0.2126 * channel((value >> 16) & 255) +
+    0.7152 * channel((value >> 8) & 255) +
+    0.0722 * channel(value & 255)
+  );
+}
+
+/** WCAG contrast ratio between two opaque colours. */
+export function contrast(a, b) {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * AC-905b: the size numeral sits on its own chip.
+ *
+ * It used to inherit the species' emoji ink at 0.85 opacity, which failed
+ * 4.5:1 on three of the five fills (fox 4.46, elk 3.92, elephant 3.47). Emoji
+ * ink is chosen to sit ON an emoji and is decorative by design (§5.2 cue 4,
+ * "nothing may depend on it alone"); a numeral cannot borrow that, because the
+ * numeral IS the information and it is the affordance somebody turned on
+ * because they needed help reading size.
+ *
+ * Tuning five inks would have needed five correct answers, of which three were
+ * already wrong. A chip needs none: `ink` on `bg` is 16.74:1 whatever is
+ * underneath it, by construction. An accessibility aid that itself fails
+ * contrast is worse than no aid.
+ */
+export const NUMERAL = Object.freeze({
+  size: 10,
+  weight: '600',
+  ink: '#EFF4F8',
+  chip: '#0D141B',
+});
+
+/**
  * ui.md §5.4: the grabbed edge brightens 12%.
  *
  * It lives with the tokens rather than with the component because it produces a
@@ -88,10 +137,13 @@ export const TYPE = Object.freeze({
  * object unused would mean the spec's number and the shipped number are free to
  * disagree, which is the failure mode §8 exists to prevent.
  *
- * `flash` is written as attack + decay rather than as its total because the
- * asymmetry IS the specification (ui.md §8.2a): the fast attack announces and
- * the slow decay is what stops the row reading as abrupt. A single total would
- * lose the only property that matters about it.
+ * The flash is here as attack and decay, and NOT as the 320 ms total the ACs
+ * quote. Two reasons. The asymmetry is the specification (ui.md §8.2a) — the
+ * fast attack announces, the slow decay is what stops the row reading as
+ * abrupt — so a single total loses the only property that matters. And the
+ * total is a consequence of two numbers that do ship, which means it cannot
+ * disagree with them; a third copy could. The AC-814 audit found it sitting
+ * here read by nothing, which is exactly what that audit is for.
  */
 const FLASH_ATTACK = 60;
 const FLASH_DECAY = 260;
@@ -114,7 +166,6 @@ export const MOTION = Object.freeze({
   squash: 140,
   flashAttack: FLASH_ATTACK,
   flashDecay: FLASH_DECAY,
-  flash: FLASH_ATTACK + FLASH_DECAY,
   /** The collapse's opacity fade outlives the structural window (AC-813d). */
   fadePast: 140,
   buffaloCrack: 120,
@@ -150,9 +201,16 @@ export const MOTION_SIZE = Object.freeze({
   /** AC-813d: cleared animals scale to this and drift this far down. */
   collapseScale: 0.85,
   collapseDrift: 6,
-  /** The flash's peak opacity on the body, and on the row behind it. */
+  /** AC-813e: the flash's peak opacity on the body, and on the row behind it. */
   flashPeak: 0.92,
   flashRowPeak: 0.22,
+  /**
+   * AC-824d, PROVISIONAL: the row an ARRIVAL clear is about to complete is
+   * washed at this while the push-up plays, so the flash lands somewhere the
+   * player is already looking. The engine resolved the turn before the first
+   * frame, so this is true information shown early, not a guess.
+   */
+  anticipate: 0.1,
   floatRise: 46,
   shakeAmplitude: 4,
   illegalShake: 6,
@@ -161,6 +219,41 @@ export const MOTION_SIZE = Object.freeze({
   /** AC-907: Reduce Motion replaces the pulse with a static wash. */
   dangerStatic: 0.1,
 });
+
+/**
+ * ui.md §10 / AC-910d: the HUD keeps its height and trades labels for values.
+ *
+ * At `xxLarge` and above the 10 pt uppercase labels go — they are the part
+ * that fails an accessibility text size AND the expendable part, since a large
+ * number under a tiny word reading "SCORE" carries very little — and the
+ * values grow into the freed space. VoiceOver is unaffected: the names live on
+ * `accessibilityLabel`, never on the visible label (AC-910f).
+ *
+ * The step is the iOS content-size ladder: body 17 pt goes 17 / 19 / 21 at
+ * L / xL / xxL, so xxLarge lands at a font scale of about 1.235.
+ */
+const HUD_LARGE_STEP = 1.2;
+const HUD_SCORE = Object.freeze({ base: 30, large: 40, largeCompact: 34 });
+
+/**
+ * AC-910d/AC-910e, as arithmetic rather than as a branch buried in a component.
+ *
+ * react-native-web hard-codes `fontScale: 1` and ignores `allowFontScaling`
+ * entirely, so none of this is observable in the browser — which is exactly
+ * why it is a pure function with a test rather than something only a device
+ * could ever contradict.
+ *
+ * @returns {{large:boolean, score:number}} whether the labels go, and the size
+ *          the score grows into the space they leave. The HUD's HEIGHT is not
+ *          in the answer, because it never changes: the ladder's chrome budget
+ *          is what guarantees the board fits, and letting the HUD grow would
+ *          spend board rows on chrome for the players least able to afford it.
+ */
+export function hudScale(fontScale, compact) {
+  const large = (fontScale || 1) >= HUD_LARGE_STEP;
+  if (!large) return { large: false, score: HUD_SCORE.base };
+  return { large: true, score: compact ? HUD_SCORE.largeCompact : HUD_SCORE.large };
+}
 
 /** ui.md §12. The game never apologises and never explains twice. */
 export const COPY = Object.freeze({

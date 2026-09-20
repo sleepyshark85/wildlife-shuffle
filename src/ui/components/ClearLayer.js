@@ -59,6 +59,51 @@ function useFlash(at, peak, reduced) {
   return flash;
 }
 
+/**
+ * AC-824d, PROVISIONAL: anticipation.
+ *
+ * On an ARRIVAL clear nothing is announced for 570 ms — snap, settle and the
+ * push-up all happen first, and no amount of tuning the flash changes that
+ * (ui.md §8.2b). But the engine resolved the whole turn before the first frame
+ * played, so the presentation layer already KNOWS which row the arrival is
+ * about to complete. Washing it at 0.10 while the push-up plays puts the
+ * player's eye on the row before the flash lands on it. True information shown
+ * early, in the same category as the honest tray preview — not a guess.
+ *
+ * It hands over to the flash rather than adding to it: the wash fades out over
+ * the flash's own attack, so the peak stays AC-813e's 0.22 rather than
+ * stacking to 0.32.
+ */
+const AnticipationRow = memo(function AnticipationRow({ row, plan, cell, boardW, reduced }) {
+  const wash = useSharedValue(0);
+  useEffect(() => {
+    const holdFor = Math.max(0, plan.handoverAt - (plan.at + plan.dur));
+    wash.value = sequence(
+      delay(plan.at, withTiming(MOTION_SIZE.anticipate, timing(plan.dur, EASE.inOut, reduced))),
+      delay(holdFor, withTiming(0, timing(MOTION.flashAttack, EASE.out, reduced))),
+    );
+  }, [plan.at, plan.dur, plan.handoverAt, reduced, wash]);
+
+  const style = useAnimatedStyle(() => ({ opacity: wash.value }));
+  return (
+    <Animated.View
+      testID={`anticipate-${row}`}
+      style={[
+        styles.inert,
+        {
+          position: 'absolute',
+          left: 0,
+          top: rowTop(row, cell),
+          width: boardW,
+          height: cell,
+          backgroundColor: COLORS.flash,
+        },
+        style,
+      ]}
+    />
+  );
+});
+
 /** "These rows are the ones going." Full board width, behind the bodies. */
 const FlashRow = memo(function FlashRow({ row, at, cell, boardW, reduced }) {
   const flash = useFlash(at, MOTION_SIZE.flashRowPeak, reduced);
@@ -262,6 +307,18 @@ const TONE = {
 function ClearLayerImpl({ plan, cell, boardW, reduced, highContrast }) {
   return (
     <View style={[StyleSheet.absoluteFill, styles.inert]}>
+      {plan.anticipate
+        ? plan.anticipate.rows.map((row) => (
+          <AnticipationRow
+            key={`anticipate-${row}`}
+            row={row}
+            plan={plan.anticipate}
+            cell={cell}
+            boardW={boardW}
+            reduced={reduced}
+          />
+        ))
+        : null}
       {plan.flashes.map((flash) =>
         flash.rows.map((row) => (
           <FlashRow

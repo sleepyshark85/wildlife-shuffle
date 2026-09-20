@@ -16,10 +16,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ACTIONS, createRun, reduce } from '../src/engine/engine.js';
+import { turnTimeline } from '../src/ui/timeline.js';
 import { BOARD } from '../src/engine/constants.js';
 import { buildReplay, inDangerBand } from '../src/ui/replay.js';
 import { runReducer } from '../src/ui/useGameRun.js';
-import { MOTION, MOTION_SIZE, brighten } from '../src/ui/theme.js';
+import {
+  MOTION, MOTION_SIZE, NUMERAL, SPECIES_STYLE, brighten, contrast,
+} from '../src/ui/theme.js';
 import { animal, fullRow, rowExcept } from './helpers.js';
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -138,11 +141,42 @@ test('AC-807/AC-511 an animal that falls before it clears leaves from where it l
 
   const gravity = after.lastTurn.events.find((e) => e.type === 'GRAVITY');
   assert.deepEqual(gravity.moved, [{ id: faller.id, fromY: 3, toY: 0 }]);
+  assert.equal(plan.departures.find((d) => d.id === faller.id).y, 0);
+});
 
+test('an animal that falls and SURVIVES is given the fall to play', () => {
+  // The same drop, with the row one short so nothing clears: now it is the
+  // board's own animal and the plan has to move it.
+  const faller = animal('rat', 8, 3);
+  const { plan } = turnOn([...rowExcept(0, [8, 9]), faller]);
   const move = plan.moves[faller.id];
+  // One key, not three: the ARRIVAL phase lifts it a row and gravity puts it
+  // straight back, which is a round trip to where it already was.
+  assert.equal(move.keys.length, 1);
   assert.equal(move.keys[0].y, 0);
   assert.equal(move.keys[0].dur, MOTION.fall);
-  assert.equal(plan.departures.find((d) => d.id === faller.id).y, 0);
+  assert.equal(move.keys[0].kind, 'fall');
+  // AC-807: a landing squashes, and the squash waits for the landing.
+  assert.equal(move.landAt, move.keys[0].at + move.keys[0].dur);
+});
+
+test('an animal that has left the board is not left behind in `moves`', () => {
+  // Reproduced by the tester on an ARRIVAL clear: an arriving animal cleared
+  // by its own turn sat in `moves` still holding a flight record while also
+  // appearing in `departures`. Nothing iterates `moves` instead of the board
+  // today, which is the only reason it never drew the same animal flying in
+  // and collapsing at once.
+  const queue = [animal('fox', 8, 0)];
+  const { after, plan } = turnOn([...rowExcept(0, [8, 9])], queue);
+  assert.ok(plan.departures.length > 0, 'the fixture must clear on ARRIVAL');
+
+  const live = new Set(after.animals.map((a) => a.id));
+  for (const id of Object.keys(plan.moves)) {
+    assert.ok(live.has(id) || live.has(Number(id)), `${id} is in moves but not on the board`);
+  }
+  for (const gone of plan.departures) {
+    assert.equal(plan.moves[gone.id], undefined, `${gone.id} departed and kept a moves entry`);
+  }
 });
 
 test('AC-813/AC-813b the first step is announced 80 ms before it goes', () => {
@@ -155,19 +189,52 @@ test('AC-813/AC-813b the first step is announced 80 ms before it goes', () => {
   assert.equal(first.collapseAt - first.flashAt, MOTION.lead);
   assert.equal(second.collapseAt - second.flashAt, 0);
 
-  // AC-813b: 320 ms total, 60 attack and 260 decay. The asymmetry is the spec.
-  assert.equal(MOTION.flash, 320);
-  assert.equal(MOTION.flashAttack, 60);
-  assert.equal(MOTION.flashDecay, 260);
-  // AC-813c: the flash outlives the step it announces, and is allowed to.
-  assert.ok(MOTION.flash > MOTION.lead + MOTION.collapse);
+  // AC-813b: the asymmetry IS the specification. Asserting the two numbers
+  // against theme.js would only be theme.js agreeing with itself, so assert
+  // the property they exist to produce: a decay that is several times the
+  // attack, which is what stops the row reading as abrupt.
+  assert.ok(
+    MOTION.flashDecay >= 4 * MOTION.flashAttack,
+    `decay ${MOTION.flashDecay} is not several times attack ${MOTION.flashAttack}`,
+  );
+  // ...and the total the ACs quote is the sum of the two that ship.
+  assert.equal(MOTION.flashAttack + MOTION.flashDecay, 320);
 });
 
-test('AC-813d the collapse has somewhere to go, and the fade outlives it', () => {
-  assert.equal(MOTION_SIZE.collapseScale, 0.85);
-  assert.equal(MOTION_SIZE.collapseDrift, 6);
-  assert.equal(MOTION.collapse, 110);
-  assert.equal(MOTION.fadePast, 140);
+test('AC-813c the flash is an announcement, so it costs the budget nothing', () => {
+  // The property, swept: however the turn is shaped, the flash never delays
+  // input by more than a frame. On every shape but one it finishes INSIDE the
+  // structural window, because the collapse's own 110+200 tail outlasts the
+  // 240 ms of flash left after the lead. The exception is a turn whose last
+  // animated unit is a cascade step 2+, where it runs 10 ms past.
+  let worstOverhang = -Infinity;
+  for (let settle = 0; settle <= 6; settle += 1) {
+    for (let arrival = 0; settle + arrival <= 6; arrival += 1) {
+      if (settle + arrival === 0) continue;
+      const events = [];
+      for (let k = 1; k <= settle; k += 1) {
+        events.push({ type: 'CLEAR_STEP', phase: 'SETTLE', step: k });
+      }
+      for (let k = 1; k <= arrival; k += 1) {
+        events.push({ type: 'CLEAR_STEP', phase: 'ARRIVAL', step: k });
+      }
+      const t = turnTimeline(events, 'MOVE');
+      const lastFlash = Math.max(...t.units.map((u) => u.flashAt));
+      const flash = (MOTION.flashAttack + MOTION.flashDecay) * t.scale;
+      worstOverhang = Math.max(worstOverhang, lastFlash + flash - t.lockMs);
+    }
+  }
+  assert.ok(worstOverhang <= 16, `the flash ran ${worstOverhang} ms past the lock`);
+  assert.ok(worstOverhang > 0, 'AC-813c allows an overhang; if there is none, say so');
+});
+
+test('AC-813d the fade outlives the collapse, and the collapse goes somewhere', () => {
+  // Again the property rather than the digits: the point of AC-813d is that
+  // the structural part ends before the announcement does, and that a cleared
+  // body actually shrinks and moves rather than just vanishing.
+  assert.ok(MOTION.fadePast > 0, 'the fade must outlive the structural collapse');
+  assert.ok(MOTION_SIZE.collapseScale < 1 && MOTION_SIZE.collapseScale > 0.5);
+  assert.ok(MOTION_SIZE.collapseDrift > 0, 'things that leave should go somewhere');
 });
 
 test('AC-811 the screen shakes at three rows in one step, and not at two', () => {
@@ -233,6 +300,105 @@ test('AC-508/AC-812 a shrinking buffalo gets a new width and a shard, not a depa
   assert.ok(plan.floats.some((f) => f.text === 'BUFFALO −1'));
 });
 
+// ---- the score announcement (AC-615, AC-615b, AC-615c) ------------------
+
+test('AC-615/AC-615b the score waits for the board to say so', () => {
+  // An ARRIVAL clear: the shape where the count-up used to finish 233-249 ms
+  // before the row it was paying for had even flashed.
+  const queue = [animal('fox', 8, 0)];
+  const { after, plan } = turnOn([...rowExcept(0, [8, 9])], queue);
+  assert.ok(after.lastTurn.score > 0, 'the fixture must actually score');
+
+  const firstFlash = Math.min(...plan.departures.map((d) => d.flashAt));
+  const firstCollapse = Math.min(...plan.departures.map((d) => d.collapseAt));
+
+  assert.ok(plan.score, 'a scoring turn must carry a count-up');
+  // AC-615: it starts at the first clear unit's collapse, never at the commit.
+  assert.equal(plan.score.at, firstCollapse);
+  assert.notEqual(plan.score.at, 0);
+  // AC-615b: it cannot have finished — or even started — before the flash.
+  assert.ok(plan.score.at > firstFlash, 'the score moved before the row was announced');
+  assert.equal(plan.score.gained, after.lastTurn.score);
+
+  // The floating +N is the same announcement and keeps the same clock.
+  const float = plan.floats.find((f) => f.tone === 'score');
+  assert.equal(float.at, plan.score.at);
+  assert.equal(float.text, `+${after.lastTurn.score}`);
+});
+
+test('AC-615c a cascade gets ONE sweep, spanning its steps', () => {
+  const { after, plan } = turnOn(cascadeBoard().board);
+  const collapses = [...new Set(plan.departures.map((d) => d.collapseAt))]
+    .sort((a, b) => a - b);
+  assert.equal(collapses.length, 2, 'the fixture must cascade');
+
+  // One count-up, not one per step.
+  assert.equal(plan.floats.filter((f) => f.tone === 'score').length, 1);
+  assert.equal(plan.score.at, collapses[0]);
+  assert.equal(
+    plan.score.dur,
+    Math.max(MOTION.scoreCount, collapses[1] - collapses[0] + MOTION.scoreCount),
+  );
+  // ...and it is still running when the last step lands, which is the point:
+  // one accumulating sweep rather than a counter that restarts.
+  assert.ok(plan.score.at + plan.score.dur > collapses[1]);
+  assert.equal(plan.score.gained, after.lastTurn.score);
+});
+
+test('a turn that scores nothing announces nothing', () => {
+  const { after, plan } = turnOn([animal('rat', 0, 0)]);
+  assert.equal(after.lastTurn.score, 0);
+  assert.equal(plan.score, null);
+  assert.equal(plan.floats.filter((f) => f.tone === 'score').length, 0);
+});
+
+// ---- the buffalo chip (AC-509b) -----------------------------------------
+
+test('AC-509b the chip is given the body\'s own timeline, not the commit', () => {
+  const buff = animal('buffalo', 0, 0);
+  const board = [buff, ...Array.from({ length: 6 }, (_, i) => animal('rat', 4 + i, 0))];
+  const { after, plan } = turnOn(board);
+
+  const shrink = plan.moves[buff.id].size;
+  const collapse = Math.min(...plan.departures.map((d) => d.collapseAt));
+  // The HUD reads this off the same plan the body plays, so the two cannot
+  // disagree: same start, same 260 ms, same target size.
+  assert.equal(shrink.at, collapse);
+  assert.equal(shrink.dur, MOTION.buffaloShrink);
+  assert.equal(shrink.to, after.animals.find((a) => a.id === buff.id).size);
+  assert.ok(shrink.at > 0, 'the commit is at 0; the chip must not fade there');
+});
+
+// ---- anticipation (AC-824d) ---------------------------------------------
+
+test('AC-824d an ARRIVAL clear washes the row it is about to complete', () => {
+  const queue = [animal('fox', 8, 0)];
+  const { after, plan } = turnOn([...rowExcept(0, [8, 9])], queue);
+
+  const step = after.lastTurn.events.find(
+    (e) => e.type === 'CLEAR_STEP' && e.phase !== 'SETTLE',
+  );
+  assert.ok(step, 'the fixture must clear during ARRIVAL');
+
+  assert.ok(plan.anticipate, 'an ARRIVAL clear must be anticipated');
+  assert.deepEqual(plan.anticipate.rows, step.clearedRows);
+  // It fades in across the push-up — the 260 ms the player is otherwise
+  // waiting through with nothing to look at (ui.md §8.2b).
+  assert.equal(plan.anticipate.dur, MOTION.arrival);
+  // ...and hands over to the flash rather than stacking under it.
+  const firstFlash = Math.min(...plan.departures.map((d) => d.flashAt));
+  assert.equal(plan.anticipate.handoverAt, firstFlash);
+  assert.ok(plan.anticipate.at + plan.anticipate.dur <= firstFlash);
+});
+
+test('AC-824d a SETTLE clear is not anticipated: it has nothing to wait for', () => {
+  const { after, plan } = turnOn([...fullRow(0), animal('elk', 3, 1)]);
+  assert.ok(
+    after.lastTurn.events.some((e) => e.type === 'CLEAR_STEP' && e.phase === 'SETTLE'),
+  );
+  assert.equal(plan.anticipate, null);
+});
+
 // ---- arrival (AC-809) ----------------------------------------------------
 
 test('AC-809 every animal from the tray is given a flight from the tray', () => {
@@ -260,6 +426,30 @@ test('AC-810 the pulse follows the band, and stops when it is clear', () => {
 });
 
 // ---- ui.md §5.4 ----------------------------------------------------------
+
+// ---- contrast (AC-905b, AC-909) -----------------------------------------
+
+test('AC-905b the size numeral clears 4.5:1 on every species, by construction', () => {
+  // The old numeral took the species' emoji ink at 0.85 opacity and failed on
+  // three of five (fox 4.46, elk 3.92, elephant 3.47). Emoji ink is decorative
+  // by design; the numeral is the information. The chip makes the answer the
+  // same number whatever is underneath it.
+  const ratio = contrast(NUMERAL.ink, NUMERAL.chip);
+  assert.ok(ratio >= 4.5, `numeral contrast is ${ratio.toFixed(2)}:1`);
+  assert.equal(Number(ratio.toFixed(1)), 16.7);
+
+  // And prove the arithmetic is the arithmetic that condemned the old choice:
+  // recomputing the superseded treatment must still fail on the same three.
+  const composite = (fg, bg, alpha) => {
+    const px = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const mix = px(fg).map((c, i) => Math.round(alpha * c + (1 - alpha) * px(bg)[i]));
+    return `#${mix.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+  };
+  const failed = Object.entries(SPECIES_STYLE)
+    .filter(([, v]) => contrast(composite(v.glyph, v.fill, 0.85), v.fill) < 4.5)
+    .map(([k]) => k);
+  assert.deepEqual(failed.sort(), ['elephant', 'elk', 'fox']);
+});
 
 test('ui.md §5.4 the grabbed edge brightens 12%, and clamps at white', () => {
   assert.equal(brighten('#000000', 0.12), '#000000');

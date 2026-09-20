@@ -8,6 +8,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { hudScale } from '../src/ui/theme.js';
+
 import {
   CHROME,
   COLS,
@@ -370,4 +372,35 @@ test('AC-120/AC-121 the rail cap is why stage W is buildable at 600 pt', () => {
   assert.equal(mine600.cell, 46);
   assert.equal(mine600.railW, 104);
   assert.equal(mine600.stage, STAGE.WIDE);
+});
+
+// ---- AC-910d/e: Dynamic Type inside a fixed HUD ---------------------------
+//
+// react-native-web hard-codes `fontScale: 1` and ignores `allowFontScaling`,
+// so the browser can never contradict any of this. It is arithmetic, and it is
+// tested as arithmetic; the appearance still needs a device (AC-824c's list).
+
+test('AC-910d the HUD trades its labels for its values at xxLarge', () => {
+  // iOS body text goes 17 / 19 / 21 pt at Large / xLarge / xxLarge, so xxLarge
+  // lands at a font scale of about 1.235.
+  assert.deepEqual(hudScale(1, false), { large: false, score: 30 });
+  assert.deepEqual(hudScale(1.12, false), { large: false, score: 30 }, 'xLarge is not enough');
+  assert.deepEqual(hudScale(1.235, false), { large: true, score: 40 }, 'xxLarge trades');
+  assert.deepEqual(hudScale(3.1, false), { large: true, score: 40 }, 'AX sizes do not grow past it');
+  // Compact chrome is a 44 pt HUD, so its value grows less far.
+  assert.deepEqual(hudScale(1.235, true), { large: true, score: 34 });
+  assert.deepEqual(hudScale(undefined, false), { large: false, score: 30 }, 'a missing scale is 1');
+});
+
+test('AC-910e the grown score still fits the HUD it grew inside', () => {
+  for (const chrome of [CHROME.full, CHROME.compact]) {
+    const compact = chrome.hud === 44;
+    const { score } = hudScale(2, compact);
+    assert.ok(
+      score <= chrome.hud,
+      `a ${score} pt score does not fit a ${chrome.hud} pt HUD`,
+    );
+    // ...and the board never pays for it: the chrome budget is untouched.
+    assert.equal(hudHeight(chrome), chrome.hud + 1);
+  }
 });

@@ -18,6 +18,13 @@ import { trayMetrics } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
 import { COLORS, COPY, MOTION, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, TYPE } from '../theme.js';
 
+/**
+ * The tray's label row is 14 pt at full chrome and 10 at compact, so its 10 pt
+ * labels can grow by about a third before the row cannot hold them (AC-910c).
+ * The strip's animals are board, not text, and never scale (AC-910).
+ */
+const TRAY_FONT_CAP = 1.3;
+
 /** 45 degree accent stripes: "these push up from here" (ui.md §6). */
 function HazardRule({ width, height }) {
   const bars = [];
@@ -67,8 +74,8 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced }) {
       accessible
     >
       <View style={[styles.labelRow, { height: labelH }]}>
-        <Text allowFontScaling={false} style={TYPE.label}>{COPY.trayLabel}</Text>
-        <Text allowFontScaling={false} style={TYPE.label}>{cells} CELLS</Text>
+        <Text maxFontSizeMultiplier={TRAY_FONT_CAP} style={TYPE.label}>{COPY.trayLabel}</Text>
+        <Text maxFontSizeMultiplier={TRAY_FONT_CAP} style={TYPE.label}>{cells} CELLS</Text>
       </View>
       <Animated.View style={[styles.strip, { width: boardW, height: stripH }, revealStyle]}>
         {queue.map((animal) => {

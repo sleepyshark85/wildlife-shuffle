@@ -108,6 +108,14 @@ export function GameScreen({ seed, difficulty, onQuit }) {
 
   // The wide stage spaces the group by hand; every other stage uses the ladder's
   // own gap. The flight has to start from whichever one is on screen.
+  // AC-615 / AC-509b: the HUD's two schedules come off the same plan the board
+  // is playing, so the chip and the score cannot disagree with the animals.
+  const count = plan ? plan.score : null;
+  const buffaloShrink =
+    plan && run.view.buffalo && plan.moves[run.view.buffalo.id]
+      ? plan.moves[run.view.buffalo.id].size
+      : null;
+
   const gap = wide ? SPACE.lg : boardTrayGap(chrome);
   const arrivalLandsAt = arrivals.length ? arrivals[0].plan.at + arrivals[0].plan.dur : 0;
   const board = unsupported ? null : (
@@ -159,8 +167,8 @@ export function GameScreen({ seed, difficulty, onQuit }) {
     // AC-116: a clear message, never a clipped or overflowing board.
     body = (
       <View style={styles.unsupported}>
-        <Text allowFontScaling={false} style={TYPE.title}>Screen too small</Text>
-        <Text allowFontScaling={false} style={[TYPE.body, styles.unsupportedCopy]}>
+        <Text style={TYPE.title}>Screen too small</Text>
+        <Text style={[TYPE.body, styles.unsupportedCopy]}>
           Wildlife Shuffle needs a taller window to show all fifteen rows. Resize
           the window, or turn off Display Zoom, and the board will come back.
         </Text>
@@ -179,8 +187,10 @@ export function GameScreen({ seed, difficulty, onQuit }) {
           <View style={styles.railTop}>
             <HudStats
               score={run.view.score}
+              count={count}
               streak={run.view.streak}
               buffalo={run.view.buffalo}
+              buffaloShrink={buffaloShrink}
               reduced={reduced}
               column
             />
@@ -204,8 +214,10 @@ export function GameScreen({ seed, difficulty, onQuit }) {
         <Hud
           chrome={chrome}
           score={run.view.score}
+          count={count}
           streak={run.view.streak}
           buffalo={run.view.buffalo}
+          buffaloShrink={buffaloShrink}
           reduced={reduced}
           onPause={() => setPaused(true)}
           pauseMuted={!inputOpen}

@@ -31,7 +31,7 @@ import { BOARD, SPECIES } from '../../engine/constants.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
 import { EASE, delay, sequence, spring, timing } from '../motion.js';
 import {
-  COLORS, MOTION, MOTION_SIZE, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, brighten,
+  COLORS, MOTION, MOTION_SIZE, NUMERAL, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, brighten,
 } from '../theme.js';
 
 /**
@@ -376,10 +376,11 @@ function AnimalViewImpl({
           {(SPECIES[type] || SPECIES.rat).emoji}
         </Text>
         {sizeNumerals ? (
-          // ui.md §10, AC-905: the optional fifth size cue.
-          <Text allowFontScaling={false} style={[styles.numeral, { color: style.glyph }]}>
-            {size}
-          </Text>
+          // ui.md §10, AC-905 / AC-905b: the optional fifth size cue, on its
+          // own chip so its contrast does not depend on the fill beneath it.
+          <View style={styles.numeralChip}>
+            <Text allowFontScaling={false} style={styles.numeral}>{size}</Text>
+          </View>
         ) : null}
       </Animated.View>
     </GestureDetector>
@@ -406,15 +407,23 @@ const styles = StyleSheet.create({
     bottom: 0,
     boxShadow: '0px 6px 16px rgba(0,0,0,0.45)',
   },
-  numeral: {
+  numeralChip: {
     position: 'absolute',
-    right: 3,
-    bottom: 1,
-    fontSize: 10,
-    lineHeight: 11,
-    fontWeight: '600',
+    right: 2,
+    bottom: 2,
+    minWidth: 13,
+    paddingHorizontal: 2,
+    borderRadius: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: NUMERAL.chip,
+  },
+  numeral: {
+    fontSize: NUMERAL.size,
+    lineHeight: NUMERAL.size + 3,
+    fontWeight: NUMERAL.weight,
+    color: NUMERAL.ink,
     fontVariant: ['tabular-nums'],
-    opacity: 0.85,
   },
 });
 

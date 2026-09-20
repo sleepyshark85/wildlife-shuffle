@@ -241,6 +241,81 @@ test('AC-1303 no module exports a symbol that nothing imports', () => {
   assert.deepEqual(dead, [], `exported and imported nowhere:\n  ${dead.join('\n  ')}`);
 });
 
+/**
+ * theme.js claims "every value here is read by something", because a normative
+ * duration sitting unused means the spec's number and the shipped number are
+ * free to disagree. That claim was a comment; this makes it a check.
+ *
+ * It replaces two tests that asserted `MOTION.flash === 320` and
+ * `MOTION_SIZE.collapseScale === 0.85` — theme.js agreeing with itself, which
+ * cannot fail on a behaviour regression and proves nothing about whether the
+ * components consume the constants at all.
+ */
+test('AC-814 every normative motion number is read by something', () => {
+  const theme = read(path.join(ROOT, 'src/ui/theme.js'));
+  // SHIPPED code only. Counting the tests as consumers would let an assertion
+  // about a constant keep that constant alive after the app stopped reading
+  // it, which is the exact failure this audit exists to catch — verified by
+  // hard-coding a drift value and watching this fire.
+  const consumers = SRC.filter((f) => !f.endsWith('theme.js')).map(code).join('\n');
+
+  const unused = [];
+  for (const object of ['MOTION', 'MOTION_SIZE']) {
+    const block = new RegExp(`export const ${object} = Object.freeze\\(\\{([\\s\\S]*?)\\n\\}\\)`);
+    const body = theme.match(block);
+    assert.ok(body, `${object} is not a frozen object literal any more`);
+    for (const m of body[1].matchAll(/^\s{2}(\w+):/gm)) {
+      const key = m[1];
+      if (!new RegExp(`\\b${object}\\.${key}\\b`).test(consumers)) {
+        unused.push(`${object}.${key}`);
+      }
+    }
+  }
+  assert.deepEqual(unused, [], `normative numbers nothing reads: ${unused.join(', ')}`);
+});
+
+/**
+ * AC-910c. Slice 2 applied `allowFontScaling={false}` to all 32 `<Text>` in
+ * the tree so the ladder's fixed chrome heights would hold; the designer has
+ * since split the rule by surface (ui.md §10). Sheets and overlays are reading
+ * surfaces and scale fully; the HUD scales within a fixed height by trading
+ * labels for values; the board is spatial and never scales.
+ *
+ * So the flag belongs on HUD text and on board text, and nowhere else. Where a
+ * fixed-height bar still has to bound its text it uses `maxFontSizeMultiplier`
+ * — which is a cap, not an exemption: the text still grows, it just stops
+ * before it clips, which is what AC-910 asks for.
+ */
+test('AC-910c allowFontScaling={false} appears only on HUD and board text', () => {
+  const ALLOWED = new Set([
+    'src/ui/components/Hud.js',          // the HUD itself
+    'src/ui/components/AnimalView.js',   // board
+    'src/ui/components/ClearLayer.js',   // board
+    'src/ui/components/ArrivalFlight.js',// board
+    'src/ui/components/Tray.js',         // the strip's animals are board
+    'src/ui/components/Controls.js',     // the streak pill and buffalo chip
+  ]);
+  const offenders = [];
+  for (const file of SRC) {
+    if (!/allowFontScaling=\{false\}/.test(read(file))) continue;
+    const rel = path.relative(ROOT, file);
+    if (!ALLOWED.has(rel)) offenders.push(rel);
+  }
+  assert.deepEqual(offenders, [], `text that refuses Dynamic Type: ${offenders.join(', ')}`);
+
+  // The audit is only worth anything if the sheets really did lose it.
+  for (const rel of [
+    'src/ui/screens/Sheet.js',
+    'src/ui/screens/GameOverSheet.js',
+    'src/ui/screens/HomeScreen.js',
+  ]) {
+    assert.ok(
+      !/allowFontScaling/.test(read(path.join(ROOT, rel))),
+      `${rel} still pins its text size`,
+    );
+  }
+});
+
 test('AC-126 no device dimension is hard-coded in the source', () => {
   // The ladder is dimension-driven; the Duo's real point size is unpublished
   // and the circulating estimates disagree. A constant here would be a defect.

@@ -82,16 +82,44 @@ function cascade(start, steps) {
 }
 
 /**
+ * AC-824f: what remains of a turn's lock, measured from finger-up.
+ *
+ * The budget is a promise about what the player feels, and that starts when
+ * they let go — not when React commits, which is an internal event they cannot
+ * perceive. Everything between the two (the runOnJS hop, the engine resolving
+ * the turn, reconciliation, the DOM commit) is time the player has already
+ * spent waiting, so it comes out of the lock.
+ *
+ * `reservedMs` is the part already taken out of the budget when the timeline
+ * was scaled, so it is not charged twice. The rest is charged here.
+ *
+ * @param {number} lockMs     the scaled animation length, from the commit
+ * @param {number} reservedMs what the scale already reserved
+ * @param {number} elapsedMs  measured finger-up -> now
+ */
+export function lockDelay(lockMs, reservedMs, elapsedMs) {
+  const unreserved = Math.max(0, elapsedMs - reservedMs);
+  return Math.max(0, Math.round(lockMs - unreserved));
+}
+
+/**
  * The whole turn, at natural timings and then uniformly scaled to fit.
  *
  * @param {object[]} events  the turn's event stream, straight off state.lastTurn
  * @param {string} action    'MOVE' or 'PASS'
+ * @param {number} reservedMs AC-824f: the commit gap to make room for. The
+ *                            budgets are measured from finger-up, so the time
+ *                            the engine and React spend before the first frame
+ *                            can play has to come out of the timeline, not be
+ *                            added to it. Uniform time-scaling is the
+ *                            mechanism AC-824 already blesses; this applies it
+ *                            for a second reason.
  * @returns {{lockMs:number, scale:number, rawMs:number,
  *            settleSteps:number, arrivalSteps:number,
  *            settleFallAt:number, arrivalAt:number,
  *            units:object[]}}
  */
-export function turnTimeline(events, action) {
+export function turnTimeline(events, action, reservedMs = 0) {
   let settleSteps = 0;
   let arrivalSteps = 0;
   for (const event of events) {
@@ -115,7 +143,16 @@ export function turnTimeline(events, action) {
 
   // Uniform time-scaling is the readability-preserving form of compression:
   // every step stays distinct, the sequence keeps its shape (ui.md §8.2).
-  const scale = rawMs > LOCK_BUDGET_MS ? Math.max(MIN_SCALE, LOCK_BUDGET_MS / rawMs) : 1;
+  // The turn owes whichever is smaller — its own natural length (AC-820/821)
+  // or the hard 1500 ms cap (AC-822) — and it owes it from FINGER-UP, so the
+  // commit gap comes off both. A 960 ms turn that spent 62 ms resolving and
+  // committing gets 898 ms of animation, and reopens at 960 as promised.
+  //
+  // Subtracting from only the 1500 cap, as the first version did, made the
+  // reservation bite on compressed turns and nowhere else — which is to say
+  // almost never. The browser duly measured a one-clear turn at 1027 ms.
+  const ceiling = Math.min(LOCK_BUDGET_MS, rawMs) - Math.max(0, reservedMs);
+  const scale = rawMs > ceiling ? Math.max(MIN_SCALE, ceiling / rawMs) : 1;
 
   const units = settle.units
     .map((u) => ({ ...u, phase: 'SETTLE' }))

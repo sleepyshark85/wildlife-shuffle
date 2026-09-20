@@ -345,7 +345,18 @@ The point of §5 is this list. Any one of these can be missed; all four cannot.
    (emoji render differently across OS versions) and nothing may depend on it alone.
 
 Optional fifth: **Size numerals**, an accessibility toggle (§10) that prints the size digit
-bottom-right of each body at 10 pt / 600 mono.
+bottom-right of each body. **Normative, because leaving it to the glyph style is what broke
+it:** 10 pt / 600 mono, `ink` **`#EFF4F8`** at **full opacity**, on a **solid `#0D141B` chip**
+— radius 3, 2 pt horizontal padding, inset 3 pt from the bottom-right corner.
+
+The chip is the point. Inheriting the species glyph colour made the numeral's contrast depend
+on which animal it sat on, and three of five failed: fox 4.46, elk 3.92, elephant 3.47 against
+a 4.5:1 floor. A solid chip fixes the pair at **ink on app ground = 16.7:1 on every species,
+by construction** (and the chip itself separates from every fill, minimum 2.5:1 against
+buffalo) — the same move as everything else here, making a thing impossible to get
+wrong rather than requiring five separate correct choices. An accessibility aid that itself
+fails contrast is worse than no aid, because the player has asked for help and been given
+something harder to read.
 
 ### 5.3 Buffalo
 
@@ -591,8 +602,24 @@ having seen it move.
 
 ### 8.2 The input-lock budget
 
-> **Worst case, from finger-up to input reopening: 1500 ms. Typical clearing turn: 880 ms.
+> **Worst case, from finger-up to input reopening: 1500 ms. Typical clearing turn: 960 ms.
 > Turn with no clear: 570 ms.**
+
+**The clock starts at finger-up, not at the React commit.** That is a ruling, not a wording
+choice: the budget is a promise about what the player feels, and what the player feels starts
+when they let go. Between finger-up and the commit sits the reducer's synchronous work and a
+React render, which Slice 3 measured at a median of 61 ms in a dev web bundle — not
+representative of a release iOS build, but not zero there either.
+
+**So the implementation owes the difference.** `react-native-gesture-handler` gives the
+release timestamp on the gesture; the presentation layer subtracts
+`commitTime − fingerUpTime` from the budget *before* scaling the timeline, so the promise
+stays exact on a slow device and nothing changes on a fast one. If the measured gap is under
+one frame (≈16 ms) the correction is noise and may be skipped.
+
+I am not asking anyone to engineer further around this before it is measured on hardware —
+only that the ACs and the code agree about where zero is. On-device measurement of the gap
+joins the AC-824c review list.
 
 This replaces the ~3.2 s figure in the approved draft. A three-second lockout is the opposite
 of fluid however good the frames inside it are, and a long cascade is precisely the moment a
@@ -648,30 +675,30 @@ presentation cap only, and it must not change a single point of score.
 A step costs `collapse 110 + fall 200 = 310 ms` structural. A resolution additionally pays the
 80 ms leading beat once, on its first step only (§8.1).
 
-```
-No clear         snap 110 + settle 200 + arrival 260                     =  570 ms
-Typical clear    570 + (lead 80 + step 310)                              =  960 ms
+**These figures are derived, not restated.** `node docs/v2/budget.mjs` computes them from the
+timing constants, exhaustively over every `(settle, arrival)` split the AC-825 cap permits,
+and prints exactly the table below. A number in this section has now gone stale behind its own
+ACs three times — 0.78×, then 0.71×, then the 60%-through-the-fall figure — every time because
+prose restated an arithmetic result. **AC-824e requires the script and this table to agree.**
 
-Realistic worst  3 steps split 2/1 — the deepest cascade ever observed:
-                   Phase-2  lead 80 + interval 260 + step 310            =   650
-                   Phase-3  lead 80 + step 310                           =   390
-                   snap 110 + settle 200 + arrival 260                   =   570
-                                                                   total = 1610 ms  → 0.93×
-
-Absolute worst   5 animated steps split 3/2, which costs more than 5 in
-                 one phase because each phase pays its own lead and its
-                 own final settle:
-                   Phase-2  80 + 260 + 245 + 310                         =   895
-                   Phase-3  80 + 260 + 310                               =   650
-                   snap 110 + settle 200 + arrival 260                   =   570
-                                                                   total = 2115 ms  → 0.71×
 ```
+case                                   split    raw      scale
+no clear                               0/0       570 ms  none
+typical: one clear step                1/0       960 ms  none
+realistic worst: 3 steps, 2/1          2/1      1610 ms  0.932x
+absolute worst: 6 units, 3/3           3/3      2360 ms  0.636x
+```
+
+The absolute worst is a **3/3 split of 6 animated units**, not the 5 units the previous text
+assumed: AC-825 caps a turn at 5 separately-animated steps **plus one combined**, which is 6,
+and splitting them evenly across the two phases costs most because each phase pays its own
+lead beat and its own final settle. Verified against all 882 legal combinations.
 
 **The guarantee.** The presentation layer lays the timeline out from the target timings
 above, then **uniformly time-scales it so it never exceeds 1500 ms**. Uniform scaling is the
 readability-preserving form of compression: every step stays distinct, the sequence keeps its
-shape, everything simply plays faster. Worst case needs 1500 / 2115 = **0.71×**, which is
-imperceptible. The scale floor is 0.55×, below which motion stops reading; the 5-step cap
+shape, everything simply plays faster. Worst case needs 1500 / 2360 = **0.636×**, still
+comfortably above the 0.55× floor. The scale floor is 0.55×, below which motion stops reading; the 5-step cap
 above is what guarantees the floor is never reached.
 
 **Measured, after Slice 1.** Across 90 bot runs the deepest cascade observed was **3 steps**,
@@ -680,7 +707,7 @@ therefore never reached in practice — it remains a guarantee against a board n
 yet, not everyday behaviour.
 
 **What §8.2a cost, stated plainly.** Before the clear was slowed, the realistic worst case was
-1440 ms and fitted *uncompressed*; it is now 1610 ms and compresses by **0.93×**. I traded that
+1440 ms and fitted *uncompressed*; it is now 1610 ms and compresses by **0.932×**. I traded that
 away deliberately. "Never compresses in practice" was an observation, not a promise; the
 1500 ms guarantee (AC-822) is the promise and it is untouched, the 0.55× floor is nowhere near
 (worst case 0.71×), and a 7% speed-up on the rarest turn in the game is not perceptible. A
@@ -821,10 +848,25 @@ The tray: `"Next arrival: rat at column 1, fox at columns 3 to 4, elk at columns
 The HUD score has `accessibilityLiveRegion="polite"` so a clear is announced.
 
 **Colour independence.** Size never depends on hue: width, panel count and optional numerals
-all carry it. A deuteranope loses the rat/fox distinction by colour and keeps it three other
-ways. Buffalo is identified by its gold rim and glow, not its redness.
+all carry it. Buffalo is identified by its gold rim and glow, not its redness.
 
-**Three toggles in Settings**, all persisted:
+Brettel/Viénot simulation over the §4.3 palette gives the real worst pairs, which are **not**
+the ones the approved draft named: under **deuteranopia** the closest pair is **fox/elk**
+(RGB distance 53), and under **protanopia fox and elk very nearly collide** — `#9b9b48` vs
+`#9e9e5c`, distance **20**. That is the worst case in the palette and the draft did not
+mention it.
+
+**It is acceptable, and the reason is structural rather than lucky.** Fox and elk are adjacent
+in size, so they are adjacent on the lightness ramp — the collision is the ramp working as
+designed, not a palette accident. What matters is carried achromatically: fox is 2 cells wide
+with 2 panels, elk is 3 with 3, and the lightness difference survives every simulation even
+when hue does not. Species *identity* blurs; **size never does**, which is what AC-908
+actually requires. Do not fix this by pulling fox and elk apart in hue — that would break the
+size→lightness mapping to rescue a distinction the game does not use.
+
+**Three toggles in Settings.** Persistence is **Layer A (Slice 4)** — they are session-scoped
+until AsyncStorage lands under AC-10xx, which `src/ui/settings.js` documents as a deliberate
+deferral rather than an omission:
 
 | Toggle | Effect |
 |---|---|

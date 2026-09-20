@@ -58,9 +58,9 @@ export function Sheet({ title, subtitle, children, reduced, visible = true, onCl
       <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, dimStyle]} />
       <Animated.View testID={testID} style={[styles.sheet, sheetStyle]}>
         <View style={styles.grabber} />
-        <Text allowFontScaling={false} style={TYPE.title}>{title}</Text>
+        <Text style={TYPE.title}>{title}</Text>
         {subtitle ? (
-          <Text allowFontScaling={false} style={TYPE.body}>{subtitle}</Text>
+          <Text style={TYPE.body}>{subtitle}</Text>
         ) : null}
         {children}
       </Animated.View>

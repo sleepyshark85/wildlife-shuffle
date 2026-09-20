@@ -20,12 +20,28 @@ import { BOARD } from '../engine/constants.js';
 import { MOTION } from './theme.js';
 import { turnTimeline } from './timeline.js';
 
-/** Keys with the same start time collapse to the last one written. */
-function compact(keys) {
-  const out = [];
+/**
+ * Keys with the same start time collapse to the last one written, and a key
+ * that lands where the animal already was is dropped.
+ *
+ * The second half is not tidiness. The ARRIVAL phase lifts the whole board by
+ * one row and gravity immediately pulls back every column the new batch did
+ * not prop up, so an animal under an empty column emits a rise and a fall to
+ * the row it started on. Left in, that is a 260 ms animation to nowhere and —
+ * worse — a land squash for a landing that never happened (AC-807).
+ */
+function compact(keys, startY) {
+  const merged = [];
   for (const key of keys) {
-    if (out.length && out[out.length - 1].at === key.at) out[out.length - 1] = key;
-    else out.push(key);
+    if (merged.length && merged[merged.length - 1].at === key.at) merged[merged.length - 1] = key;
+    else merged.push(key);
+  }
+  const out = [];
+  let at = startY;
+  for (const key of merged) {
+    if (key.y === at) continue;
+    out.push(key);
+    at = key.y;
   }
   return out;
 }
@@ -33,10 +49,17 @@ function compact(keys) {
 /**
  * @param {object[]} prevAnimals  the board as it stood before the turn
  * @param {object} lastTurn       state.lastTurn, verbatim
+ * @param {number} reservedMs     AC-824f: how much of the 1500 ms budget is
+ *                                spent before the first frame can play. It
+ *                                arrives on the action, measured on the
+ *                                PREVIOUS turn, because the gap this turn will
+ *                                cost has not happened yet when the plan is
+ *                                built. The lock timer corrects the remainder
+ *                                exactly, so this only has to be close.
  * @returns {object} the plan; see the shape returned at the bottom
  */
-export function buildReplay(prevAnimals, lastTurn) {
-  const timeline = turnTimeline(lastTurn.events, lastTurn.action);
+export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
+  const timeline = turnTimeline(lastTurn.events, lastTurn.action, Math.max(0, reservedMs));
   const { scale } = timeline;
   const fallMs = MOTION.fall * scale;
   const arrivalMs = MOTION.arrival * scale;
@@ -49,11 +72,18 @@ export function buildReplay(prevAnimals, lastTurn) {
   const shards = [];
   const floats = [];
   let shakeAt = null;
+  let anticipate = null;
+  /** AC-615c: the turn's count-up spans its clear units, and there is one. */
+  let firstCollapseAt = null;
+  let lastCollapseAt = null;
+  let floatRow = 0;
 
-  const entry = (id) => {
+  /** `startY` is where the animal stood when the turn began: the row every
+   *  key below is a departure from, and the one a no-op key returns to. */
+  const entry = (id, startY) => {
     let found = motion.get(id);
     if (!found) {
-      found = { keys: [], size: null, arrival: null };
+      found = { keys: [], size: null, arrival: null, startY };
       motion.set(id, found);
     }
     return found;
@@ -87,8 +117,9 @@ export function buildReplay(prevAnimals, lastTurn) {
         for (const moved of event.moved) {
           const animal = board.get(moved.id);
           if (!animal) continue;
+          const record = entry(moved.id, animal.y);
           animal.y = moved.toY;
-          entry(moved.id).keys.push({ at, dur, y: moved.toY, kind: 'fall' });
+          record.keys.push({ at, dur, y: moved.toY, kind: 'fall' });
         }
         break;
       }
@@ -97,12 +128,13 @@ export function buildReplay(prevAnimals, lastTurn) {
         for (const id of event.risenIds) {
           const animal = board.get(id);
           if (!animal) continue;
+          const record = entry(id, animal.y);
           animal.y += 1;
-          entry(id).keys.push({ at: timeline.arrivalAt, dur: arrivalMs, y: animal.y, kind: 'rise' });
+          record.keys.push({ at: timeline.arrivalAt, dur: arrivalMs, y: animal.y, kind: 'rise' });
         }
         for (const placed of event.placed) {
           board.set(placed.id, { ...placed, y: 0 });
-          const record = entry(placed.id);
+          const record = entry(placed.id, 0);
           // AC-809: it travels from the tray strip, because it is the animal the
           // tray promised. The board coordinate it ends at is written below by
           // the ARRIVAL gravity; the flight start is the tray.
@@ -121,6 +153,29 @@ export function buildReplay(prevAnimals, lastTurn) {
         // The engine scored every one of them; this changes no points.
         const unit = units[Math.min(step, units.length) - 1];
 
+        if (firstCollapseAt === null) {
+          firstCollapseAt = unit.collapseAt;
+          const rows = event.clearedRows.length ? event.clearedRows : event.rows;
+          floatRow = rows.length ? Math.max(...rows) : 0;
+        }
+        lastCollapseAt = unit.collapseAt;
+
+        // AC-824d: the row an ARRIVAL clear is about to complete is washed
+        // while the push-up plays. Only the first such step, and only if it
+        // actually clears — a buffalo row is not about to go anywhere.
+        if (
+          anticipate === null &&
+          event.phase !== 'SETTLE' &&
+          event.clearedRows.length > 0
+        ) {
+          anticipate = {
+            at: timeline.arrivalAt,
+            dur: arrivalMs,
+            handoverAt: unit.flashAt,
+            rows: event.clearedRows.slice(),
+          };
+        }
+
         const gone = event.removedIds.concat(event.retiredIds);
         for (const id of gone) {
           const animal = board.get(id);
@@ -132,13 +187,25 @@ export function buildReplay(prevAnimals, lastTurn) {
             key: `${animal.id}@${unit.phase}${unit.index}`,
           });
           board.delete(id);
+          // An animal that has left is not one of the board's animals any
+          // more, so it must not be left behind in `moves` — an arriving
+          // animal cleared by its own turn's ARRIVAL resolution would sit
+          // there still holding a flight record, and anything that iterated
+          // `moves` instead of the board would draw it flying in and
+          // collapsing at the same time. Nothing does today; this is what
+          // stops that from being one refactor away.
+          motion.delete(id);
         }
 
         for (const shrink of event.shrunk) {
           const animal = board.get(shrink.id);
           if (!animal) continue; // retired: it left as a departure above
           animal.size = shrink.toSize;
-          entry(shrink.id).size = { at: unit.collapseAt, dur: shrinkMs, to: shrink.toSize };
+          entry(shrink.id, animal.y).size = {
+            at: unit.collapseAt,
+            dur: shrinkMs,
+            to: shrink.toSize,
+          };
           // The segment that came off. It is the trailing panel, because the
           // buffalo keeps its x (AC-506).
           shards.push({
@@ -166,22 +233,12 @@ export function buildReplay(prevAnimals, lastTurn) {
         // AC-811: three or more rows in one step, and only then.
         if (event.clearedRows.length >= 3) shakeAt = unit.collapseAt;
 
-        if (event.score > 0) {
-          const rows = event.clearedRows.length ? event.clearedRows : event.rows;
-          floats.push({
-            key: `score-${unit.phase}${unit.index}-${step}`,
-            at: unit.collapseAt,
-            y: Math.max(...rows),
-            text: `+${event.score}`,
-            tone: 'score',
-          });
-        }
-
         for (const moved of event.moved) {
           const animal = board.get(moved.id);
           if (!animal) continue;
+          const record = entry(moved.id, animal.y);
           animal.y = moved.toY;
-          entry(moved.id).keys.push({ at: unit.fallAt, dur: fallMs, y: moved.toY, kind: 'fall' });
+          record.keys.push({ at: unit.fallAt, dur: fallMs, y: moved.toY, kind: 'fall' });
         }
         break;
       }
@@ -205,10 +262,38 @@ export function buildReplay(prevAnimals, lastTurn) {
     }
   }
 
+  // ---- the turn's one score announcement (AC-615, AC-615b, AC-615c) -------
+  //
+  // It starts at the FIRST clear unit's collapse, never at the React commit.
+  // Started at the commit it finished 233-249 ms before the row it was paying
+  // for had even flashed: on an ARRIVAL clear the count-up ran 0-400 ms while
+  // the flash did not begin until 570. The HUD was answering before the board
+  // asked, inside the exact sequence the owner complained about.
+  //
+  // One count-up for the turn, not one per step: a cascade restarting the
+  // counter on every step jitters, where this reads as one accumulating sweep.
+  let score = null;
+  if (firstCollapseAt !== null && lastTurn.score > 0) {
+    score = {
+      at: firstCollapseAt,
+      dur: Math.max(MOTION.scoreCount, lastCollapseAt - firstCollapseAt + MOTION.scoreCount),
+      gained: lastTurn.score,
+      // The row to float it over: the topmost row of the first step that went.
+      y: floatRow,
+    };
+    floats.unshift({
+      key: `score-${lastTurn.turn}`,
+      at: firstCollapseAt,
+      y: floatRow,
+      text: `+${lastTurn.score}`,
+      tone: 'score',
+    });
+  }
+
   // ---- per-animal: tidy the keys and decide which landings squash ---------
   const moves = {};
   for (const [id, record] of motion) {
-    const keys = compact(record.keys);
+    const keys = compact(record.keys, record.startY);
     const last = keys[keys.length - 1];
     // AC-807: the squash is what a FALL lands with. `applyGravity` only ever
     // moves an animal down, so a 'fall' key is a landing by construction; a
@@ -227,6 +312,7 @@ export function buildReplay(prevAnimals, lastTurn) {
     /** Identity for the announcement layer: a new turn is a new layer. */
     key: `${lastTurn.turn}.${lastTurn.action}`,
     lockMs: timeline.lockMs,
+    reservedMs: Math.max(0, reservedMs),
     scale,
     rawMs: timeline.rawMs,
     // Everything below is keyed by the turn, so mounting it is the same React
@@ -237,6 +323,8 @@ export function buildReplay(prevAnimals, lastTurn) {
     shards,
     floats,
     shakeAt,
+    anticipate,
+    score,
   };
 }
 

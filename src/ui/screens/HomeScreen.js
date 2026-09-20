@@ -34,7 +34,7 @@ function Habitat({ id, selected, onSelect }) {
       accessibilityLabel={`${DIFFICULTIES[id].label}. ${BLURB[id]}`}
       style={[styles.choice, selected && styles.choiceSelected, ring.focused && styles.focusRing]}
     >
-      <Text allowFontScaling={false} style={[TYPE.button, selected && styles.choiceInkSelected]}>
+      <Text style={[TYPE.button, selected && styles.choiceInkSelected]}>
         {DIFFICULTIES[id].label}
       </Text>
     </Pressable>
@@ -50,16 +50,16 @@ export function HomeScreen({ onStart }) {
     <View style={[styles.screen, { paddingTop: insets.top + SPACE.xxl, paddingBottom: insets.bottom + SPACE.xl }]}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Text allowFontScaling={false} style={TYPE.display}>Wildlife{'\n'}Shuffle</Text>
+          <Text style={TYPE.display}>Wildlife{'\n'}Shuffle</Text>
           <IconButton glyph="⚙" label="Settings" onPress={() => setSettingsOpen(true)} />
         </View>
-        <Text allowFontScaling={false} style={TYPE.body}>
+        <Text style={TYPE.body}>
           Animals rise. Drag them sideways to pack a row. A full row clears.
         </Text>
       </View>
 
       <View style={styles.choices}>
-        <Text allowFontScaling={false} style={TYPE.label}>HABITAT</Text>
+        <Text style={TYPE.label}>HABITAT</Text>
         <View style={styles.row}>
           {HABITATS.map((id) => (
             <Habitat
@@ -70,7 +70,7 @@ export function HomeScreen({ onStart }) {
             />
           ))}
         </View>
-        <Text allowFontScaling={false} style={TYPE.body}>{BLURB[difficulty]}</Text>
+        <Text style={TYPE.body}>{BLURB[difficulty]}</Text>
       </View>
 
       <Button label="Start run" testID="start" onPress={() => onStart(difficulty)} />
