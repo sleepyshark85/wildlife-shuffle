@@ -9,15 +9,28 @@ iPhone first; Android and web are incidental.
 
 ## Where things stand
 
-v1 is the code currently on `main`. It works but is buggy and visually unfinished.
-`docs/v1-review.md` is the authoritative list of what is wrong with it — read it before
-proposing or writing anything. **We are designing v2.** No v2 implementation begins until
-the owner has reviewed and approved the design.
+**v1 is gone.** It was deleted in Slice 2 and replaced. `main` carries the v2 rebuild:
+`src/engine/` (pure rules) and `src/ui/` (React state layer and presentation). The game
+plays end to end — pick a habitat, drag an animal, resolve a turn, reach Game Over.
+
+**Read `docs/slices.md` first.** It records what each slice contains, what is actually true
+of it, and — in *Resuming this project in a fresh session* — exactly what to run and read if
+you are picking this up with no conversation history.
+
+Shipped: the rules engine, the state layer and the board, on Expo SDK 57.
+In flight: Slice 3 (motion, visual states, accessibility) on branch
+`slice-3-motion-and-visual-states`, built and committed, awaiting independent verification
+and five design rulings.
+Not started: meta progression and persistence, sound and haptics, App Store readiness.
+
+**Always `git fetch` and compare against `origin/<branch>` before reviewing anything.** A
+session-start snapshot is a snapshot, not the truth (`docs/development-process.md` §6.4).
 
 ## Repo map
 
 | Path | What it is |
 |---|---|
+| `docs/slices.md` | **What each slice contains, and how to resume with no history. Start here.** |
 | `docs/development-process.md` | The team, the procedure, and the rules each incident produced. Read §6. |
 | `docs/v1-review.md` | Engineering review of v1. Carries a correction — it was written against a stale commit. |
 | `docs/v2/` | The approved v2 design: gameplay, UI, 249 acceptance criteria, open questions. |
