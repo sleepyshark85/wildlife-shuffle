@@ -5,6 +5,41 @@ This document is the squad's input: it records what v1 got wrong so v2 does not 
 
 ---
 
+## CORRECTION — this review was written against a stale commit
+
+**Added 2026-09-20.** The review below was written against `1f6f9c3`, taken from a
+session-start git snapshot. `origin/main` was **7 commits ahead** (work dated 11–16 July,
+897 insertions across 14 files). The correct HEAD is `01c247e`.
+
+The architectural findings survive. **The feature inventory does not.** Corrections:
+
+| Section | Original claim | Corrected |
+|---|---|---|
+| **C2** | The next-row preview re-rolls spawn columns, so it lies | **FIXED in v1.** The reposition loop is gone from `gameStore.js`. |
+| **D5** | Every animal is the same blue block | **PARTLY FIXED.** Buffalo is now red `#e74c3c`; all four other species remain `#2255dd`. Size is still not legible. |
+| **D6** | `console.log` on every render in three components | **PARTLY FIXED.** `GameGrid` and `GamePreview` are clean; `GameScreen` still has two. |
+| **E** | "No score" | **WRONG.** v1 has a score, a persisted high score, and session history (`StatsPanel.js`). |
+| **E** | "Nothing is persisted; settings reset on every launch" | **WRONG.** `src/hooks/useLocalStorage.js` persists high score and supports **session resume** — a mid-run game survives a relaunch. |
+| **E** | "No sound" | **WRONG.** `src/hooks/useSoundManager.js` provides haptics via `expo-haptics`. |
+| **E** | "`@react-native-async-storage/async-storage` is unused" | **WRONG.** It is used by `useLocalStorage`. `expo-sqlite` and `react-native-url-polyfill` remain unused. |
+| **D1** | Two disagreeing cell-size formulas | **Understated — there are three.** `GameScreen.js:41` sizes on width only; `GameGrid.js:30` and `GamePreview.js:14` on `min(w,h)`. |
+
+**Re-verified as still present at `01c247e`**, by execution or direct inspection:
+A1 (turn resolution inside `setState` updaters), B1 (the conditional hook in
+`GamePreview.js:7-9`, byte-identical), C1 (`Math.ceil(1.5)` at `gameLogic.js:72` — Normal
+and Hard remain identical), C4, C5, D3 (`PanResponder`, 10 occurrences), D4 (`dropping: {}`
+is still an empty style object), D7 (deprecated `SafeAreaView`), and the absence of both
+`assets/` and `babel.config.js`.
+
+**Consequence for v2.** Session resume is a real v1 feature with no equivalent anywhere in
+the v2 design, and it is the one most likely to be missed. Score, high score and haptics are
+covered by Layers A and B but were specified as new work rather than as ports.
+
+**Process rule adopted:** `git fetch` and compare against `origin/<branch>` before reviewing
+anything. See `docs/development-process.md` §6.4.
+
+---
+
 ## A. State-management defects (the root cause of most gameplay bugs)
 
 **A1 — Side effects inside `setState` updaters.** `gameStore.js:170-250` runs the entire
