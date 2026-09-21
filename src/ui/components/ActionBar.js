@@ -18,6 +18,12 @@
 // scales up to CHROME_FONT_CAP rather than without limit. A cap is not an
 // exemption — the text still grows, it just stops before it clips.
 //
+// THE RAIL MEASURES TOO. Stage W stacks the same controls in a card, and it
+// used to pass `showLabel` unconditionally because a rail "is wide". At the
+// Duo's unfolded width it is 158 pt, the word did not fit, and the button
+// shipped reading `⚡ ABIL…`. `railSlots` now decides it from the rail's
+// content width, exactly as `actionBarSlots` does from the screen's.
+//
 // The bar is laid out at `height + HAIRLINE`, not at `height`. React Native is
 // border-box: a 44 pt box with a 1 pt top rule has a 43 pt content box, and the
 // 44 pt button then overhangs it by a point and the page picks up a point of
@@ -28,7 +34,7 @@
 import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { actionBarHeight, actionBarSlots, passButtonHeight } from '../layout.js';
+import { actionBarHeight, actionBarSlots, passButtonHeight, railSlots } from '../layout.js';
 import { COLORS, COPY, SPACE, TYPE } from '../theme.js';
 import { AbilityButton, TargetingChip } from './AbilityButton.js';
 import { Button, CHROME_FONT_CAP } from './Controls.js';
@@ -38,7 +44,11 @@ export const ActionBar = memo(function ActionBar({
   ability, grants, reduced, targeting, onAbilities, onCancelTarget, status,
 }) {
   const muted = resolving || gameOver;
+  // `screenW` is the RAIL's width in the column layout and the screen's in the
+  // row layout, so each measures the box it is actually laid out in. Neither
+  // asks what device it is on (AC-126).
   const slots = actionBarSlots(screenW || 0);
+  const rail = railSlots(screenW || 0);
   const height = passButtonHeight(chrome);
 
   // AC-1414: while an ability is armed the bar IS the chip, so Cancel is always
@@ -72,7 +82,7 @@ export const ActionBar = memo(function ActionBar({
       button={ability}
       grants={grants}
       reduced={reduced}
-      showLabel={column || slots.showAbilityLabel}
+      showLabel={column ? rail.showAbilityLabel : slots.showAbilityLabel}
       onPress={onAbilities}
       style={column ? styles.wideSlot : { width: slots.abilityW }}
     />

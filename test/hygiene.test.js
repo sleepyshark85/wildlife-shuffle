@@ -1081,3 +1081,66 @@ test('AC-1415 the components render the composed value, never a factor of it', (
   assert.match(tray, /trayStripOpacity\(/, 'the tray stopped reading the composed opacity');
   assert.ok(!/opacity:\s*0\.45/.test(tray), 'the frozen opacity is hard-coded in the component');
 });
+
+
+/**
+ * §6.2, applied to the defect that was reported.
+ *
+ * The tray said `1 cells`, and the FIRST question was whether it was the only
+ * one. It was not: the same shape was in the abilities button's VoiceOver
+ * label (`1 charges`), on the Records screen (`1 turns`) and — found by this
+ * audit rather than by reading — in the tray's own VISIBLE counter, which
+ * showed a sighted player `1 CELLS` beside the silhouette.
+ *
+ * So the answer is an audit rather than four edits: a count may not be pasted
+ * next to a noun that has to agree with it. `plural()` returns the whole
+ * phrase, so a call to it leaves nothing for this to match.
+ */
+test('AC-902 no shipped string pastes a count next to a noun that must agree', () => {
+  // An interpolation, optionally one word, then a count noun that ENDS the
+  // phrase. The trailing guard is what keeps `on turn ${n}` — an ordinal, not
+  // a count — out of it (src/ui/screens/HomeScreen.js).
+  const bare = /\$\{[^}]*\}\s+(?:\w+\s+)?(cells?|charges?|turns?|moves?)\b(?!\s*(?:\$\{|\d))/i;
+  const offenders = [];
+  for (const file of SRC) {
+    const hit = code(file).match(bare);
+    if (hit) offenders.push(`${path.relative(ROOT, file)}: ${hit[0]}`);
+  }
+  assert.deepEqual(offenders, [], `a count that will read "1 cells":\n  ${offenders.join('\n  ')}`);
+
+  // The audit is only meaningful if it would fire, so: prove it does, on each
+  // of the four real shapes, and prove it does not on the fixed form.
+  assert.match('`${cells} cells.`', bare);
+  assert.match('`${cells} CELLS`', bare);
+  assert.match('`Abilities, ${button.charges} charges`', bare);
+  assert.match('`${run.turns} turns`', bare);
+  assert.match('`Nothing arrives for ${frozen} more turns.`', bare);
+  assert.equal(bare.test("`${plural(cells, 'cell')}.`"), false);
+  assert.equal(bare.test('`on turn ${resume.turn} —`'), false);
+
+  // ...and the components really do route through it, rather than agreeing
+  // with a helper they do not call (§6.7: the pip asserted 25% and drew 13.75%).
+  for (const [rel, pattern] of [
+    ['src/ui/components/Tray.js', /plural\(cells, 'CELL', 'CELLS'\)/],
+    ['src/ui/components/Tray.js', /trayLabel\(queue, cells, frozen\)/],
+    ['src/ui/components/AbilityButton.js', /plural\(button\.charges, 'charge'\)/],
+    ['src/ui/screens/RecordsScreen.js', /plural\(run\.turns, 'turn'\)/],
+  ]) {
+    assert.match(code(path.join(ROOT, rel)), pattern, `${rel} stopped reading plural()`);
+  }
+});
+
+/**
+ * §6.7's second rule, applied to AC-902.
+ *
+ * The label was built inside `Tray.js`, which imports Reanimated, so the one
+ * string a VoiceOver user has instead of the strip could not be read by
+ * `node --test` at all. It now lives in `src/ui/format.js`, and that module
+ * stays importless so it keeps being checkable.
+ */
+test('AC-902 the labels stay loadable in Node', () => {
+  const body = code(path.join(ROOT, 'src/ui/format.js'));
+  const imports = [...body.matchAll(/^\s*import\s.+$/gm)].map((m) => m[0].trim());
+  assert.deepEqual(imports, [], `format.js must import nothing: ${imports.join(' | ')}`);
+  assert.match(body, /export function trayLabel\(/, 'AC-902s label left the checkable module');
+});

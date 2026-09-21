@@ -24,6 +24,7 @@ import {
   isMigratable,
 } from '../engine/abilities.js';
 import { ABILITY_CHARGE_CAP } from '../engine/constants.js';
+import { plural } from './format.js';
 import { COPY } from './theme.js';
 
 /**
@@ -74,7 +75,10 @@ const REASON = Object.freeze({
  * "why not that one" is a question the player will actually ask.
  */
 function shortfall(cost) {
-  return cost === 1 ? 'Needs a charge' : `Needs ${cost} charges`;
+  // "a charge" rather than "1 charge" is the designer's wording and is kept;
+  // the count above one still goes through the one agreement rule, so the `s`
+  // is not decided here.
+  return cost === 1 ? 'Needs a charge' : `Needs ${plural(cost, 'charge')}`;
 }
 
 /**
@@ -259,7 +263,7 @@ export function frozenLabel(frozen) {
 /** ui.md §13.4 — `2 MOVES LEFT`, counting down, while a Dart is open. */
 export function dartLabel(dart) {
   if (dart <= 0) return null;
-  return dart === 1 ? '1 MOVE LEFT' : `${dart} MOVES LEFT`;
+  return `${plural(dart, 'MOVE', 'MOVES')} LEFT`;
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   stepInterval,
   turnTimeline,
 } from '../src/ui/timeline.js';
+import { plural, trayLabel } from '../src/ui/format.js';
 import { HANDOVER_MS, MOTION } from '../src/ui/theme.js';
 import { inspectChainGuard } from '../src/ui/chainGuard.js';
 
@@ -434,4 +435,53 @@ test('AC-424 the recess survives Reduce Motion, and needs no reduced twin', () =
   // The reason it needs no twin: 110 ms already sits inside the cross-fade
   // ceiling, so there is nothing for Reduce Motion to shorten.
   assert.ok(MOTION.snap <= MOTION.reduced, `${MOTION.snap} ms must fit the ${MOTION.reduced} ms ceiling`);
+});
+
+
+// ---- AC-902 · the label VoiceOver reads off the tray ----------------------
+
+/**
+ * The tray announced a one-cell arrival as `1 cells` for six slices.
+ *
+ * It is worth a test of its own rather than a test of `plural()`, because the
+ * label is the thing AC-902 is about: it is DELIBERATELY more detailed than the
+ * silhouette strip (AC-902b), so it is the one place a VoiceOver user learns
+ * what is coming, and "the helper is right" is not the same claim as "the label
+ * is right" — that distinction is the §6.7 defect class exactly.
+ */
+test('AC-902 the tray label names each animal, and agrees with its own count', () => {
+  const one = [{ id: 'a', type: 'rat', x: 0, size: 1 }];
+  assert.equal(trayLabel(one, 1, 0), 'Next arrival: rat at column 1. 1 cell.');
+
+  const many = [
+    { id: 'a', type: 'rat', x: 0, size: 1 },
+    { id: 'b', type: 'fox', x: 3, size: 2 },
+  ];
+  assert.equal(
+    trayLabel(many, 3, 0),
+    'Next arrival: rat at column 1, fox at columns 4 to 5. 3 cells.',
+  );
+
+  // AC-902/AC-902b: the species names are the information the silhouette
+  // withholds, so they are asserted rather than assumed.
+  for (const type of ['rat', 'fox']) assert.match(trayLabel(many, 3, 0), new RegExp(type));
+
+  assert.equal(trayLabel([], 0, 0), 'Next arrival: nothing queued.');
+
+  // AC-1410: while the freeze holds, the label counts turns and agrees too.
+  assert.equal(trayLabel(many, 3, 2), 'Nothing arrives for 2 more turns.');
+  assert.equal(trayLabel(many, 3, 1), 'Nothing arrives for 1 more turn.');
+});
+
+test('AC-902 a count and its noun agree at one, and above it', () => {
+  assert.equal(plural(1, 'cell'), '1 cell');
+  assert.equal(plural(0, 'cell'), '0 cells');
+  assert.equal(plural(2, 'cell'), '2 cells');
+  assert.equal(plural(1, 'charge'), '1 charge');
+  assert.equal(plural(3, 'charge'), '3 charges');
+  assert.equal(plural(1, 'turn'), '1 turn');
+  // The `s` rule does not reach an uppercase noun, which is why the chrome
+  // labels pass both forms — `MOVE` + `s` is `MOVEs`, and the suite caught it.
+  assert.equal(plural(1, 'MOVE', 'MOVES'), '1 MOVE');
+  assert.equal(plural(3, 'MOVE', 'MOVES'), '3 MOVES');
 });

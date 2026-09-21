@@ -21,6 +21,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { ABILITY_CHARGE_CAP, BOARD, SPECIES } from '../src/engine/constants.js';
 import {
@@ -50,8 +51,8 @@ import {
 } from '../src/ui/abilities.js';
 import { buildReplay } from '../src/ui/replay.js';
 import {
-  ABILITY_LABEL_W, ABILITY_W, ACTION_GAP, GUTTER, MIN_TOUCH, STATUS_W,
-  actionBarSlots, boardLayout, STAGE,
+  ABILITY_LABEL_W, ABILITY_W, ACTION_GAP, GUTTER, MIN_TOUCH, RAIL_MIN, RAIL_PAD, STATUS_W,
+  actionBarSlots, boardLayout, railSlots, STAGE,
 } from '../src/ui/layout.js';
 import { HIT, Z, tapAt, topmost } from '../src/ui/stacking.js';
 import {
@@ -370,6 +371,84 @@ test('AC-114/AC-1415 every action-bar slot survives every supported width', () =
   // component, which is what keeps this sweep about the shipped layout.
   assert.equal(reference.statusW, STATUS_W);
   assert.equal(reference.abilityW, ABILITY_W + ABILITY_LABEL_W);
+});
+
+// ---- ui.md §13.1 · and the same question asked of the RAIL ---------------
+
+/**
+ * Stage W's abilities button shipped reading `⚡ ABIL…`.
+ *
+ * The bar measures; the rail did not. `showLabel={column || ...}` treated
+ * "this is a rail" as "this is wide", and at the Duo's unfolded width the rail
+ * is 158 pt — 134 pt of content against the 156 pt the word needs. ui.md §13
+ * already specifies the glyph-only variant "where the bar is too narrow for the
+ * word"; the variant existed and nothing chose it. This sweeps every rail the
+ * ladder can produce rather than the one width the capture happened to show,
+ * which is AC-126's rule: derive from the dimension, never from the device.
+ */
+test('AC-121/AC-1415 the rail measures its own width before it shows the word', () => {
+  const offenders = [];
+  let withWord = 0;
+  let glyphOnly = 0;
+  for (let w = 600; w <= 1600; w += 1) {
+    for (const h of [600, 700, 800, 890, 951, 1024, 1200]) {
+      const layout = boardLayout(w, h, 42, 34);
+      if (layout.stage !== STAGE.WIDE) continue;
+      const rail = railSlots(layout.railW);
+
+      // AC-121, and the arithmetic railSlots depends on.
+      if (layout.railW < RAIL_MIN) offenders.push(`${w}x${h}: rail ${layout.railW} pt`);
+      if (rail.content !== layout.railW - RAIL_PAD * 2) {
+        offenders.push(`${w}x${h}: content ${rail.content} is not the padded box`);
+      }
+      // The abilities control at its smallest must fit, or the glyph-only
+      // variant clips too and there is nothing further to fall back to.
+      if (rail.content < ABILITY_W) offenders.push(`${w}x${h}: abilities ${rail.content} pt`);
+      // AC-121 requires the turn state to be IN the rail, so it gets no drop.
+      // That is only honest if it always fits — which is what this asserts, and
+      // it is why railSlots carries no `showStatus`: an unreachable branch is
+      // untested code.
+      if (rail.content < STATUS_W) offenders.push(`${w}x${h}: status ${rail.content} pt`);
+      // The word is shown exactly when it fits, and never otherwise.
+      if (rail.showAbilityLabel !== (rail.content >= ABILITY_W + ABILITY_LABEL_W)) {
+        offenders.push(`${w}x${h}: label ${rail.showAbilityLabel} at ${rail.content} pt`);
+      }
+      if (rail.showAbilityLabel) withWord += 1; else glyphOnly += 1;
+    }
+  }
+  assert.deepEqual(offenders, [], `the rail does not fit: ${offenders.slice(0, 6).join(', ')}`);
+
+  // Both branches are real rather than theoretical, or one of them is untested.
+  assert.ok(glyphOnly > 0, 'no rail is narrow enough to drop the word, so the fix is dead code');
+  assert.ok(withWord > 0, 'no rail is wide enough to keep the word');
+
+  // THE REPORTED DEFECT, at the width it was captured at
+  // (`duo-unfolded-01-skyline.png`, Slice 6). The dimension lives here rather
+  // than in the source, which is AC-126.
+  const duo = boardLayout(626, 890, 42, 34);
+  assert.equal(duo.stage, STAGE.WIDE);
+  assert.equal(duo.railW, 158);
+  assert.equal(railSlots(duo.railW).showAbilityLabel, false,
+    'the Duo unfolded still picks the word it cannot draw');
+  // ...and a rail with room keeps it, so this is a measurement and not a ban.
+  assert.equal(railSlots(ABILITY_W + ABILITY_LABEL_W + RAIL_PAD * 2).showAbilityLabel, true);
+  assert.equal(railSlots(ABILITY_W + ABILITY_LABEL_W + RAIL_PAD * 2 - 1).showAbilityLabel, false);
+});
+
+/**
+ * §6.7: a pure function asserted, and nothing asserting what the component does
+ * with it, is how the gold pip rendered at 13.75% against a test that passed.
+ * `railSlots` is only the fix if the rail actually calls it.
+ */
+test('AC-1415 the rail reads railSlots rather than assuming a rail is wide', () => {
+  const bar = readFileSync(
+    new URL('../src/ui/components/ActionBar.js', import.meta.url), 'utf8',
+  );
+  assert.match(bar, /railSlots\(/, 'ActionBar stopped measuring the rail');
+  assert.match(bar, /showLabel=\{column \? rail\.showAbilityLabel : slots\.showAbilityLabel\}/,
+    'the abilities label is not chosen from a measurement');
+  assert.ok(!/showLabel=\{column \|\|/.test(bar),
+    'the rail is back to asserting that it is wide enough for the word');
 });
 
 // ---- D1's whole class · what a tap actually REACHES ----------------------
