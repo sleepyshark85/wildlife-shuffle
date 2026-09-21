@@ -26,7 +26,7 @@ Slices 1–3 are a complete, shippable game. 4–6 are layers the owner can appr
 independently (`docs/v2/gameplay.md` §0).
 
 **All slices are merged.** `npm test` on `main` is **431 passing**. What remains is not
-slices — it is the light-theme round (in flight) and the things only the owner can do.
+slices — it is the things only the owner can do. The light-theme round landed as PR #36.
 
 Out-of-band work merged alongside: PR #4 (process doc, v1 review correction), PR #6 (Expo
 SDK 57 — Expo Go for iOS only ships the latest SDK, so SDK 56 could not run on a phone),
@@ -268,7 +268,7 @@ two (PR #30, #31).
 
 | | |
 |---|---|
-| **The light theme** | AC-1501–1514. Designed and merged (PR #33); the build round was in flight at the end of the last session. Light is to be the default, with a natural texture on the board and Home. |
+| **~~The light theme~~** | **Done** — PR #36. AC-1501–1522. Light default, persisted, paper-grain texture, per-ramp cosmetics. |
 | **The device review** | AC-824c. Owed since Slice 3 and still owed. Only the owner can do it. |
 | **Store assets from a device** | Real screenshots, icon sign-off, support and privacy URLs. |
 
@@ -321,8 +321,8 @@ node docs/v2/layout-sweep.mjs     # must be 0 overflowing
 truth — `docs/development-process.md` §6.4 records the time that cost a whole review.
 
 Test counts locate the slice: **118** = Slice 1, **161** = Slice 2, **194** = Slice 3,
-**263** = Slice 4, **344** = Layer D, **431** = everything merged, including the worklet
-audit that came out of the crash (§6.9).
+**263** = Slice 4, **344** = Layer D, **431** = the worklet audit that came out of the crash
+(§6.9), **448** = the light theme.
 
 ### 2. Know the shape of the work
 

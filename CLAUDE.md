@@ -26,8 +26,15 @@ The app has been through TestFlight once. **That build crashed on the very first
 PR #34; read `docs/development-process.md` §6.9 before trusting a green suite to mean a
 working build.
 
-In flight, not yet merged: **the light theme** (AC-1501–1514, designed in PR #33). Light is
-to become the default, with a natural texture on the board and Home.
+**The light theme is merged** (PR #36, design PR #33 + #35's contrast round): both themes
+ship, **light is the default**, the choice persists, and a seeded paper-grain texture sits
+under the board and Home. `npm test` is **448 passing**. The light accent is `#975C0F` —
+not §16.2's original `#B06B12`, which failed four of the accent's seven duties.
+
+**Cosmetics are per-ramp now.** A cosmetic supplying a *ground* names its ramp; one supplying
+a *colour* ships one table per ramp; the ramp in force selects the variant. This exists
+because Tundra had never cleared 3:1 on the ground it was designed for and nothing was
+checking the product of palette × ground. `docs/v2/theme-contrast.mjs` sweeps it now.
 
 **Owed to the owner: a device review.** The clear timings and the anticipation wash are
 marked provisional in AC-824c, which carries the full list of what only a phone can settle —
