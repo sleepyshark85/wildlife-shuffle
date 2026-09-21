@@ -103,6 +103,27 @@ export function lockDelay(lockMs, reservedMs, elapsedMs) {
 }
 
 /**
+ * AC-315e: when the silhouette starts becoming the animal, and for how long.
+ *
+ * A function rather than two lines inside `ArrivalFlight` because the claim it
+ * encodes is arithmetic and therefore checkable: the resolve must END WITH THE
+ * FLIGHT. Scheduling it from the start instead — `at` to `at + 160` — would
+ * finish the transformation 100 ms early and fly the rest of the way as a
+ * completed animal, which loses the one moment the whole device exists for:
+ * the shadow becoming real as it lands is what turns a forecast into a board.
+ *
+ * `dur` is clamped rather than assumed 260 because Reduce Motion shortens the
+ * flight, and a 160 ms resolve inside a 120 ms flight would run past its own
+ * arrival.
+ *
+ * @returns {{at:number, dur:number}} start time and duration of the resolve.
+ */
+export function handoverWindow(at, dur, handoverMs) {
+  const span = Math.min(handoverMs, dur);
+  return { at: at + dur - span, dur: span };
+}
+
+/**
  * The whole turn, at natural timings and then uniformly scaled to fit.
  *
  * @param {object[]} events  the turn's event stream, straight off state.lastTurn

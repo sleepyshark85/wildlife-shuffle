@@ -19,6 +19,28 @@ export function useDragShared() {
   const ghostVisible = useSharedValue(0);
   const blockedId = useSharedValue('');
   /**
+   * ui.md §5.5 — the origin recess: where the dragged animal came FROM.
+   *
+   * These live here, beside the ghost, for the same reason the ghost does:
+   * they are board-level presentation written by a gesture worklet and read by
+   * one view, with no React state in between (AC-423, AC-831).
+   *
+   * And they are cheaper than the ghost. The destination recomputes on every
+   * touch frame because it is a question about where the finger is now; the
+   * origin is fixed the instant the gesture starts, so `onBegin` writes it
+   * once and `onFinalize` fades it. Nothing touches it in `onUpdate`.
+   *
+   * `originFill` carries the dragged animal's species fill so the recess can
+   * be tinted 12% toward the piece in your hand — the thing that stops a board
+   * with several vacated shapes on it from being ambiguous. It is a string
+   * shared value because the worklet cannot look the species up.
+   */
+  const originX = useSharedValue(0);
+  const originY = useSharedValue(0);
+  const originSize = useSharedValue(1);
+  const originFill = useSharedValue('#FFD166');
+  const originAlpha = useSharedValue(0);
+  /**
    * Bumped whenever the board or the layout changes under the finger. A drag
    * that spans a bump is cancelled rather than committed, because the columns
    * it was aimed at no longer mean what they meant when it started (AC-129) —
@@ -30,7 +52,11 @@ export function useDragShared() {
   const inputOpen = useSharedValue(0);
 
   return useMemo(
-    () => ({ ghostX, ghostY, ghostSize, ghostLegal, ghostVisible, blockedId, epoch, inputOpen }),
-    [ghostX, ghostY, ghostSize, ghostLegal, ghostVisible, blockedId, epoch, inputOpen],
+    () => ({
+      ghostX, ghostY, ghostSize, ghostLegal, ghostVisible, blockedId, epoch, inputOpen,
+      originX, originY, originSize, originFill, originAlpha,
+    }),
+    [ghostX, ghostY, ghostSize, ghostLegal, ghostVisible, blockedId, epoch, inputOpen,
+      originX, originY, originSize, originFill, originAlpha],
   );
 }

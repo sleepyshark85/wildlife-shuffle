@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { SPECIES } from '../src/engine/constants.js';
 import { chainMult, rowValue, stepScore, streakMult } from '../src/engine/scoring.js';
 
 test('AC-602/603/604 rowValue is super-linear', () => {
@@ -61,15 +62,20 @@ test('AC-610/611 buffalo terms are paid before the multipliers', () => {
   assert.equal(stepScore({ rows: 0, shrinks: 1, step: 2 }), 100);
   assert.equal(
     stepScore({ rows: 0, shrinks: 1, retired: 1, step: 1 }),
-    550,
+    700,
     'a retiring completion pays both terms: taking the last segment is still taking one',
   );
 });
 
-test('AC-611b a buffalo pays exactly 700 across its life at chain 1, streak x1.0', () => {
+test('AC-611b a buffalo pays exactly 900 across its life at chain 1, streak x1.0', () => {
+  // Five completions now, not four: the buffalo spawns at size 5. Four shrinks
+  // at 50 plus a retiring completion at 50 + 650. The 650 rose with the size so
+  // the premium over five ordinary clears stays +400 (gameplay.md §7.2).
   const shrink = stepScore({ rows: 0, shrinks: 1, step: 1, clearingTurns: 1 });
   const retire = stepScore({ rows: 0, shrinks: 1, retired: 1, step: 1, clearingTurns: 1 });
-  assert.equal(shrink * 3 + retire, 700);
+  assert.equal(SPECIES.buffalo.size, 5);
+  assert.equal(shrink * (SPECIES.buffalo.size - 1) + retire, 900);
+  assert.equal(900 - 5 * 100, 400, 'the premium over five ordinary clears');
 });
 
 test('AC-614 a step with nothing in it scores nothing', () => {

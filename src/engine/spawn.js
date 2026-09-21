@@ -8,18 +8,44 @@
 // v1 generated a preview and threw it away (docs/v1-review.md C2), and required a
 // free column either side of every placement, which capped every batch at 8 of 10
 // columns (C3). Both are gone.
+//
+// COUNT FIRST, THEN SPECIES, THEN PLACE — and the inversion is the whole point.
+//
+// The approved algorithm chose species against a SHRINKING candidate pool: a
+// species stayed eligible only while enough room remained for it. With a 3-5
+// cell target the capacity left after one or two draws is already smaller than
+// an elephant, so the largest species was shut out of the LAST draw of nearly
+// every batch — and batches are two or three animals long, so most draws are
+// last-ish. Measured over 60,000 batches, Savanna drew 48.9% rats against a
+// weight of 25 and 6.6% elephants against 20: a realised mean size of 1.81
+// against 2.42, every difficulty running about 0.7 of a cell lighter than
+// written. The owner saying the game "felt easy" was a defect report.
+//
+// The designer's first diagnosis — fragmentation from interleaved placement —
+// was measured and refuted: removing fragmentation entirely moved the mean from
+// 1.79 to 1.81. It is capacity exclusion, and no placement change touches it.
+//
+// So the dependency runs the other way now. The cell target buys a NUMBER of
+// animals up front; every species draw then sees the full pool. What that costs
+// is the band's per-batch guarantee: `k` is a whole number of animals, so a
+// batch's cell total scatters around the rolled target. Stochastic rounding
+// keeps the expectation on target (AC-306, AC-307b).
+//
+// It also removes the only part of this file that could fail. Placement is now
+// arithmetic — pack contiguously, scatter the free columns — so there is no
+// candidate-fits-the-run test, no retry and no fallback, because there is
+// nothing left that can come up empty (AC-317b).
 
 import {
   BOARD,
   BUFFALO,
   DIFFICULTIES,
   DRAWABLE,
-  MAX_BATCH_CELLS,
   RAMP_EVERY_TURNS,
   SPECIES,
+  meanDrawnSize,
 } from './constants.js';
-import { freeRuns } from './board.js';
-import { nextInt, pick, shuffle, weightedPick } from './rng.js';
+import { nextFraction, nextInt, shuffle, weightedPick } from './rng.js';
 
 /**
  * The cells-per-turn band for a difficulty at a given turn.
@@ -43,40 +69,36 @@ export function isBuffaloTurn(difficultyId, turn) {
   return turn > 0 && turn % difficulty.buffaloEvery === 0;
 }
 
-/** Every column at which an animal of `size` fits entirely in free cells. */
-function validPositions(occupancy, size) {
-  const positions = [];
-  for (let x = 0; x + size <= occupancy.length; x++) {
-    let fits = true;
-    for (let c = x; c < x + size; c++) {
-      if (occupancy[c]) {
-        fits = false;
-        break;
-      }
-    }
-    if (fits) positions.push(x);
-  }
-  return positions;
-}
-
 /** Total columns a batch occupies. */
 export function batchCells(batch) {
   return batch.reduce((sum, animal) => sum + animal.size, 0);
 }
 
 /**
- * Generate one batch.
+ * Scatter `free` columns at random among `slots` gaps.
  *
- * Species selection and placement are interleaved: a species is only a candidate
- * if it fits both the remaining cell target AND the largest remaining free run in
- * row 0 (gameplay.md §5.2 step 3). Interleaving is what makes step 5's "pick a
- * valid x" total — selecting the whole batch first can produce a set of sizes
- * that sums to <= 9 yet cannot be packed by sequential random placement
- * (e.g. rat at x=1, elk at x=4, then an elephant has nowhere to go).
+ * Every free column picks its own gap, so the spacing is multinomial rather
+ * than clumped at one end. This is the whole of "WHERE", and it cannot fail:
+ * the gaps sum to exactly the free columns by construction.
+ */
+function distributeGaps(rng, free, slots) {
+  const gaps = new Array(slots).fill(0);
+  let state = rng;
+  for (let i = 0; i < free; i += 1) {
+    const slot = nextInt(state, 0, slots - 1);
+    state = slot.rng;
+    gaps[slot.value] += 1;
+  }
+  return { rng: state, value: gaps };
+}
+
+/**
+ * Generate one batch. gameplay.md §5.2.
  *
  * @returns {{ rng: number, nextId: number, batch: object[], target: number }}
- *   `target` is the rolled cell count. Invariant 3 of §5.2: the batch occupies
- *   exactly that many columns, never fewer (AC-307b).
+ *   `target` is the rolled cell count. The batch scatters around it rather than
+ *   matching it (AC-307b) — a batch that misses the target is not a defect, a
+ *   mean that misses it is.
  */
 export function generateBatch({
   turn,
@@ -93,54 +115,64 @@ export function generateBatch({
 
   let state = rng;
   let id = nextId;
+  /** Invariant 1: a batch may never fill the row. Derived, never a literal. */
+  const cap = width - 1;
 
   const [low, high] = bandForTurn(difficulty, turn);
   const rolled = nextInt(state, low, high);
   state = rolled.rng;
-  let target = Math.max(1, Math.min(MAX_BATCH_CELLS, rolled.value));
+  const target = Math.max(1, Math.min(cap, rolled.value));
 
-  const occupancy = new Array(width).fill(false);
-  const batch = [];
+  const chosen = [];
   let filled = 0;
 
-  const place = (speciesKey, x) => {
-    const species = SPECIES[speciesKey];
-    batch.push({ id: `${idPrefix}${id++}`, type: species.type, x, y: 0, size: species.size });
-    for (let c = x; c < x + species.size; c++) occupancy[c] = true;
-    filled += species.size;
-  };
-
-  // Step 2: the scheduled buffalo, at most one on the board at a time (AC-310, AC-311).
-  if (allowBuffalo && !hasBuffaloOnBoard && isBuffaloTurn(difficulty, turn)) {
-    target = Math.max(target, SPECIES.buffalo.size);
-    const spots = validPositions(occupancy, SPECIES.buffalo.size);
-    const spot = pick(state, spots);
-    state = spot.rng;
-    if (spot.value !== undefined) place(BUFFALO, spot.value);
+  // The scheduled buffalo, at most one on the board at a time (AC-310, AC-311).
+  // It sits outside the k draws because it is scheduled rather than drawn — it
+  // must not appear in the realised mix AC-308b measures.
+  if (
+    allowBuffalo
+    && !hasBuffaloOnBoard
+    && isBuffaloTurn(difficulty, turn)
+    && SPECIES.buffalo.size <= cap
+  ) {
+    chosen.push(BUFFALO);
+    filled += SPECIES.buffalo.size;
   }
 
-  // Step 3: draw and place until the target is met or nothing fits.
-  while (filled < target) {
-    const room = target - filled;
-    const largestRun = freeRuns(occupancy).reduce((max, [, len]) => Math.max(max, len), 0);
-    const cap = Math.min(room, largestRun);
-    const candidates = DRAWABLE.filter((key) => SPECIES[key].size <= cap);
-    if (candidates.length === 0) break;
+  // HOW MANY. Stochastic rounding, so the expected cell count is the target
+  // exactly rather than the target rounded down.
+  const raw = target / meanDrawnSize(difficulty);
+  const whole = Math.floor(raw);
+  const carry = nextFraction(state);
+  state = carry.rng;
+  const k = Math.max(1, whole + (carry.value < raw - whole ? 1 : 0));
 
-    const weights = candidates.map((key) => config.weights[key]);
-    const drawn = weightedPick(state, candidates, weights);
+  // WHICH. k draws from the FULL weighted pool. The only exclusion is the hard
+  // board limit, which is a rule rather than a fit heuristic (AC-308c).
+  for (let i = 0; i < k; i += 1) {
+    const pool = DRAWABLE.filter((key) => SPECIES[key].size <= cap - filled);
+    if (pool.length === 0) break;
+    const drawn = weightedPick(state, pool, pool.map((key) => config.weights[key]));
     state = drawn.rng;
-
-    const spots = validPositions(occupancy, SPECIES[drawn.value].size);
-    const spot = pick(state, spots);
-    state = spot.rng;
-    if (spot.value === undefined) break;
-    place(drawn.value, spot.value);
+    chosen.push(drawn.value);
+    filled += SPECIES[drawn.value].size;
   }
 
-  // Step 4: shuffle. Purely the order the tray lists them in; positions are fixed.
-  const shuffled = shuffle(state, batch);
+  // WHERE. Shuffle so the order on the row is not the order drawn, then pack
+  // contiguously and scatter the free columns among the gaps.
+  const shuffled = shuffle(state, chosen);
   state = shuffled.rng;
+  const spread = distributeGaps(state, width - filled, shuffled.value.length + 1);
+  state = spread.rng;
 
-  return { rng: state, nextId: id, batch: shuffled.value, target };
+  const batch = [];
+  let x = 0;
+  shuffled.value.forEach((key, index) => {
+    x += spread.value[index];
+    const species = SPECIES[key];
+    batch.push({ id: `${idPrefix}${id++}`, type: species.type, x, y: 0, size: species.size });
+    x += species.size;
+  });
+
+  return { rng: state, nextId: id, batch, target };
 }

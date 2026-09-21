@@ -22,7 +22,7 @@ export function makeRng(seed) {
 }
 
 /** One mulberry32 step. Returns the next state and a float in [0, 1). */
-function nextFloat(rng) {
+export function nextFraction(rng) {
   const next = (rng + 0x6d2b79f5) >>> 0;
   let t = next;
   t = Math.imul(t ^ (t >>> 15), t | 1);
@@ -33,16 +33,15 @@ function nextFloat(rng) {
 /** Integer in [min, max] inclusive. Returns min if the range is empty. */
 export function nextInt(rng, min, max) {
   if (max <= min) return { rng, value: min };
-  const { rng: next, value } = nextFloat(rng);
+  const { rng: next, value } = nextFraction(rng);
   return { rng: next, value: min + Math.floor(value * (max - min + 1)) };
 }
 
-/** Uniform pick from a non-empty array. */
-export function pick(rng, items) {
-  if (items.length === 0) return { rng, value: undefined };
-  const { rng: next, value } = nextInt(rng, 0, items.length - 1);
-  return { rng: next, value: items[value] };
-}
+// `pick` (uniform choice from an array) lived here until the count-first
+// generator landed. Its only caller was the old interleaved placement step,
+// which chose a landing spot from a list of candidate runs; placement is
+// arithmetic now, so nothing calls it. Kept as a note rather than as an unused
+// export, because AC-1303 counts dead exports as a defect.
 
 /**
  * Weighted pick. `weights[i]` is the weight of `items[i]`; weights must be
@@ -51,7 +50,7 @@ export function pick(rng, items) {
 export function weightedPick(rng, items, weights) {
   const total = weights.reduce((sum, w) => sum + w, 0);
   if (items.length === 0 || total <= 0) return { rng, value: undefined };
-  const { rng: next, value } = nextFloat(rng);
+  const { rng: next, value } = nextFraction(rng);
   let roll = value * total;
   for (let i = 0; i < items.length; i++) {
     roll -= weights[i];

@@ -8,6 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { BOARD } from '../src/engine/constants.js';
 import { hudScale } from '../src/ui/theme.js';
 
 import {
@@ -26,8 +27,11 @@ import {
   hitSlopFor,
   hudHeight,
   passButtonHeight,
+  trayMetrics,
+  traySilhouettes,
   verticalSlack,
 } from '../src/ui/layout.js';
+import { SILHOUETTE } from '../src/ui/theme.js';
 
 const INSET_PROFILES = [[0, 0], [20, 0], [44, 34], [59, 34], [62, 34], [70, 40]];
 
@@ -81,32 +85,37 @@ test('AC-119 the cell is always within the stage bounds it claims', () => {
   }
 });
 
-test('AC-102 iPhone 15 (393 x 852, insets 59/34) is 36 pt and 360 x 540', () => {
+test('AC-102 iPhone 15 (393 x 852, insets 59/34) is 39 pt and 351 x 585', () => {
+  // Was 36 pt and 360 x 540 at ten columns. Nine columns divides the same
+  // width into fewer cells and the silhouette tray returned 14 pt of height,
+  // so the reference device gains 3 pt of cell from two changes at once.
   const L = boardLayout(393, 852, 59, 34);
   assert.equal(L.stage, STAGE.COMFORTABLE);
-  assert.equal(L.cell, 36);
-  assert.equal(L.boardW, 360);
-  assert.equal(L.boardH, 540);
+  assert.equal(L.cell, 39);
+  assert.equal(L.boardW, 351);
+  assert.equal(L.boardH, 585);
 });
 
-test('AC-101 the board is always 10 x 15', () => {
-  assert.equal(COLS, 10);
+test('AC-101 the board is always 9 x 15', () => {
+  assert.equal(COLS, BOARD.width);
+  assert.equal(COLS, 9);
   assert.equal(ROWS, 15);
   const L = boardLayout(393, 852, 59, 34);
-  assert.equal(L.boardW / L.cell, 10);
+  assert.equal(L.boardW / L.cell, BOARD.width);
   assert.equal(L.boardH / L.cell, 15);
 });
 
 test('ui.md §3.2 device table: every published row reproduces', () => {
   const table = [
     ['iPhone SE 1 / 5s',      320, 568,  0,  0, STAGE.MINIMUM,     28],
-    ['iPhone SE2 / SE3 / 8',  375, 667, 20,  0, STAGE.COMFORTABLE, 31],
-    ['iPhone 12 / 13 mini',   375, 812, 50, 34, STAGE.COMFORTABLE, 34],
-    ['iPhone 14 / 15 / 16',   393, 852, 59, 34, STAGE.COMFORTABLE, 36],
-    ['iPhone 17 / 18 Pro',    402, 874, 62, 34, STAGE.COMFORTABLE, 37],
-    ['iPhone 15/16/17 Plus',  430, 932, 59, 34, STAGE.COMFORTABLE, 39],
-    ['iPhone 16/17/18 Pro Max', 440, 956, 62, 34, STAGE.COMFORTABLE, 40],
-    ['Display Zoom 320x693',  320, 693, 59, 34, STAGE.MINIMUM,     28],
+    ['iPhone SE2 / SE3 / 8',  375, 667, 20,  0, STAGE.COMFORTABLE, 32],
+    ['iPhone 12 / 13 mini',   375, 812, 50, 34, STAGE.COMFORTABLE, 37],
+    ['iPhone 14 / 15 / 16',   393, 852, 59, 34, STAGE.COMFORTABLE, 39],
+    ['iPhone 17 / 18 Pro',    402, 874, 62, 34, STAGE.COMFORTABLE, 41],
+    ['iPhone 15/16/17 Plus',  430, 932, 59, 34, STAGE.COMFORTABLE, 44],
+    ['iPhone 16/17/18 Pro Max', 440, 956, 62, 34, STAGE.COMFORTABLE, 44],
+    ['iPhone Duo, folded',    466, 678, 59, 34, STAGE.COMPACT,     30],
+    ['Display Zoom 320x693',  320, 693, 59, 34, STAGE.COMPACT,     31],
   ];
   for (const [name, w, h, it, ib, stage, cell] of table) {
     const L = boardLayout(w, h, it, ib);
@@ -115,12 +124,12 @@ test('ui.md §3.2 device table: every published row reproduces', () => {
   }
 });
 
-test('AC-112 stage 0 is used whenever a 30 pt cell fits the full 177 pt chrome', () => {
+test('AC-112 stage 0 is used whenever a 30 pt cell fits the full 163 pt chrome', () => {
   const L = boardLayout(393, 852, 59, 34);
-  assert.equal(L.chromeHeight, 177);
+  assert.equal(L.chromeHeight, 163);
   assert.equal(L.chrome.hud, 52);
   assert.equal(L.chrome.action, 48);
-  assert.equal(L.chrome.tray, 45);
+  assert.equal(L.chrome.tray, 31);
 });
 
 test('AC-113/AC-115 chrome yields before the board does', () => {
@@ -131,14 +140,14 @@ test('AC-113/AC-115 chrome yields before the board does', () => {
     const L = boardLayout(393, h, 59, 34);
     if (L.stage === STAGE.COMPACT) {
       sawCompact = true;
-      assert.equal(L.chromeHeight, 144);
+      assert.equal(L.chromeHeight, 134);
       assert.ok(L.cell >= 30);
       // Stage 0 at this same viewport really would have been too small.
-      assert.ok(Math.floor((h - 59 - 34 - 177) / ROWS) < 30);
+      assert.ok(Math.floor((h - 59 - 34 - 163) / ROWS) < 30);
     }
     if (L.stage === STAGE.MINIMUM) {
       sawMinimum = true;
-      assert.equal(L.chromeHeight, 144);
+      assert.equal(L.chromeHeight, 134);
       assert.ok(L.cell >= 24 && L.cell < 44);
     }
   }
@@ -160,7 +169,11 @@ test('AC-117 Display Zoom shrinks the viewport and the ladder absorbs it', () =>
   const normal = boardLayout(393, 852, 59, 34);
   const zoomed = boardLayout(320, 693, 59, 34);
   assert.equal(normal.stage, STAGE.COMFORTABLE);
-  assert.equal(zoomed.stage, STAGE.MINIMUM);
+  // At ten columns this fell to MINIMUM with a 28 pt cell. Nine columns and the
+  // thinner tray lift it to COMPACT at 31 — the ladder absorbing Display Zoom
+  // one rung higher than it used to (ui.md §3.2).
+  assert.equal(zoomed.stage, STAGE.COMPACT);
+  assert.equal(zoomed.cell, 31);
   assert.ok(fits(zoomed, 320, 693, 59, 34));
 });
 
@@ -181,7 +194,7 @@ test('AC-120 stage W engages at exactly 600 pt and raises the ceiling to 48', ()
   const big = boardLayout(700, 1100, 42, 34);
   assert.equal(big.stage, STAGE.WIDE);
   assert.equal(big.cell, 48);
-  assert.equal(big.chromeHeight, 77);
+  assert.equal(big.chromeHeight, 63);
 });
 
 test('AC-121/AC-122 the rail is >= 96 pt and inert gutter stays under 20%', () => {
@@ -238,9 +251,9 @@ test('AC-415 hitSlop pads any rendered body out to 44 pt', () => {
 
 test('CHROME budgets are the ones ui.md §3.2 publishes', () => {
   const total = (c) => c.hud + c.action + c.tray + c.gaps;
-  assert.equal(total(CHROME.full), 177);
-  assert.equal(total(CHROME.compact), 144);
-  assert.equal(total(CHROME.rail), 77);
+  assert.equal(total(CHROME.full), 163);
+  assert.equal(total(CHROME.compact), 134);
+  assert.equal(total(CHROME.rail), 63);
 });
 
 
@@ -306,13 +319,13 @@ test('AC-114/AC-103 the action bar contains its own Pass button, at every stage'
  * here fails and says why.
  */
 function referenceLayout(w, h, it, ib) {
-  const FULL = { hud: 52, act: 48, tray: 45, gaps: 32 };
-  const COMPACT = { hud: 44, act: 44, tray: 36, gaps: 20 };
-  const RAIL = { hud: 0, act: 0, tray: 45, gaps: 32 };
+  const FULL = { hud: 52, act: 48, tray: 31, gaps: 32 };
+  const COMPACT = { hud: 44, act: 44, tray: 26, gaps: 20 };
+  const RAIL = { hud: 0, act: 0, tray: 31, gaps: 32 };
   const total = (c) => c.hud + c.act + c.tray + c.gaps;
   const fit = (c, lo, hi) => {
     const avail = h - it - ib - total(c);
-    const raw = Math.floor(Math.min((w - 32) / 10, avail / 15));
+    const raw = Math.floor(Math.min((w - 32) / BOARD.width, avail / 15));
     return { cell: Math.min(raw, hi), ok: raw >= lo };
   };
   if (w >= 600) { const x = fit(RAIL, 30, 48); if (x.ok) return { stage: STAGE.WIDE, cell: x.cell }; }
@@ -359,18 +372,33 @@ test('AC-120/AC-121 the rail cap is why stage W is buildable at 600 pt', () => {
       }
     }
   }
-  assert.equal(referenceFailures, 6131, 'the reference AC-121 shortfall has moved');
-  assert.deepEqual([...failingWidths].sort((a, b) => a - b), [600, 602, 604, 606, 608, 610]);
+  // AT NINE COLUMNS THE DIVERGENCE IS GONE, and that is the finding.
+  //
+  // At ten columns the reference produced a rail below AC-121's 96 pt across
+  // 6,131 viewports (widths 600-610), which is why the shipped function caps
+  // the wide cell by what the rail needs. Nine columns changes the arithmetic:
+  // a 48 pt cell now spans 432 pt rather than 480, so even at exactly the
+  // breakpoint the rail gets 132 pt.
+  //
+  // The cap stays. It is no longer load-bearing at this width, but it is the
+  // thing that would catch the board widening again, and removing a guard
+  // because the current constants happen not to need it is how the constant
+  // becomes load-bearing by accident.
+  assert.equal(referenceFailures, 0, 'the reference AC-121 shortfall has moved');
+  assert.deepEqual([...failingWidths], []);
+  assert.ok(boardLayout(600, 900, 42, 34).railW >= RAIL_MIN);
 
-  // The worst case, pinned: at exactly the breakpoint the reference leaves the
-  // rail 84 pt, twelve short of a 44 pt Pass button with room to breathe.
+  // The old worst case, re-measured: at exactly the breakpoint the reference
+  // used to leave the rail 84 pt, twelve short of a 44 pt Pass button with room
+  // to breathe. At nine columns the same viewport leaves 132, so the shipped
+  // function no longer has to cap anything and the two agree.
   const ref600 = referenceLayout(600, 900, 42, 34);
   assert.equal(ref600.cell, 48);
-  assert.equal(600 - WIDE_GUTTERS - ref600.cell * COLS, 84);
+  assert.equal(600 - WIDE_GUTTERS - ref600.cell * COLS, 132);
 
   const mine600 = boardLayout(600, 900, 42, 34);
-  assert.equal(mine600.cell, 46);
-  assert.equal(mine600.railW, 104);
+  assert.equal(mine600.cell, 48);
+  assert.equal(mine600.railW, 132);
   assert.equal(mine600.stage, STAGE.WIDE);
 });
 
@@ -403,4 +431,104 @@ test('AC-910e the grown score still fits the HUD it grew inside', () => {
     // ...and the board never pays for it: the chrome budget is untouched.
     assert.equal(hudHeight(chrome), chrome.hud + 1);
   }
+});
+
+
+// ---- AC-315: the tray's silhouettes -------------------------------------
+
+/** The painted columns of one strip, at 1 pt resolution. */
+function paintedAt(queue, cell, gap) {
+  const on = new Set();
+  for (const shape of traySilhouettes(queue, cell, gap)) {
+    for (let px = Math.round(shape.left); px < Math.round(shape.left + shape.width); px += 1) {
+      on.add(px);
+    }
+  }
+  return on;
+}
+
+test('AC-315b a fox and two rats in the same columns are DIFFERENT silhouettes', () => {
+  // This is the whole of why the gap exists, and the whole of why silhouettes
+  // are honest at all. A fox at column 3 occupies 3-4 and two rats occupy 3
+  // and 4: the footprints differ, footprint is the only thing that changes how
+  // a piece behaves, so the preview must show two different shapes. Painted as
+  // one continuous 2-wide shadow they would be indistinguishable — and the
+  // preview would then be STATING a footprint the batch does not have, which
+  // is v1's defect in a new coat.
+  const cell = 39;
+  const fox = [{ id: 'f', type: 'fox', x: 3, size: 2 }];
+  const rats = [{ id: 'a', type: 'rat', x: 3, size: 1 }, { id: 'b', type: 'rat', x: 4, size: 1 }];
+
+  assert.equal(traySilhouettes(fox, cell, SILHOUETTE.gap).length, 1, 'one shape');
+  assert.equal(traySilhouettes(rats, cell, SILHOUETTE.gap).length, 2, 'two shapes');
+
+  const foxPixels = paintedAt(fox, cell, SILHOUETTE.gap);
+  const ratPixels = paintedAt(rats, cell, SILHOUETTE.gap);
+  assert.notDeepEqual(
+    [...foxPixels].sort((a, b) => a - b),
+    [...ratPixels].sort((a, b) => a - b),
+    'the two batches paint the same pixels: the outlines have merged',
+  );
+  // And specifically: the rats leave daylight where the fox does not.
+  assert.ok(foxPixels.has(4 * cell - 1), 'the fox is continuous across its seam');
+  assert.ok(!ratPixels.has(4 * cell - 1), 'the rats are not');
+});
+
+test('AC-315b every adjacent pair of silhouettes keeps at least 1 pt of daylight', () => {
+  const cell = 39;
+  let checked = 0;
+  // Every packing of a 9-wide row that a batch could produce.
+  const pack = (x, so_far) => {
+    if (x >= BOARD.width) {
+      if (so_far.length < 2) return;
+      const shapes = traySilhouettes(so_far, cell, SILHOUETTE.gap);
+      for (let i = 1; i < shapes.length; i += 1) {
+        const prev = shapes[i - 1];
+        const gap = shapes[i].left - (prev.left + prev.width);
+        assert.ok(gap >= 1, `${prev.id}->${shapes[i].id}: ${gap} pt of daylight`);
+      }
+      checked += 1;
+      return;
+    }
+    pack(x + 1, so_far); // leave the column empty
+    for (const size of [1, 2, 3, 4]) {
+      if (x + size > BOARD.width) continue;
+      pack(x + size, so_far.concat([{ id: `${x}.${size}`, type: 'rat', x, size }]));
+    }
+  };
+  pack(0, []);
+  assert.ok(checked > 400, `only ${checked} multi-animal packings`);
+});
+
+test('AC-315 a silhouette starts exactly on its spawn column', () => {
+  const cell = 39;
+  for (const size of [1, 2, 3, 4, 5]) {
+    for (let x = 0; x + size <= BOARD.width; x += 1) {
+      const [shape] = traySilhouettes([{ id: 's', type: 'rat', x, size }], cell, SILHOUETTE.gap);
+      assert.equal(shape.left, x * cell, `size ${size} at column ${x}`);
+      // The gap comes off the right, never the left: the preview is literal
+      // about where the animal LANDS.
+      assert.equal(shape.width, size * cell - SILHOUETTE.gap);
+    }
+  }
+});
+
+test('AC-315d the strip is 18 pt and the tray block 31 pt at the reference cell', () => {
+  const { labelH, stripH, ruleH } = trayMetrics(39, false);
+  assert.equal(stripH, 18, 'strip');
+  assert.equal(labelH + stripH + ruleH, 31, 'tray block');
+  assert.equal(labelH + stripH + ruleH, CHROME.full.tray, 'and it is the budget it was given');
+
+  // The assertion above CANNOT FAIL on the ratio alone, and that is worth
+  // saying out loud: at the reference 39 pt cell `0.46 x cell` rounds to 18 and
+  // the chrome clamp is also 18, so the two agree by coincidence and changing
+  // the ratio changes nothing there. The ratio only governs below the clamp,
+  // so it is checked where it governs. (Found by injecting 0.50 and watching
+  // this file stay green.)
+  for (const cell of [24, 28, 31, 34]) {
+    assert.equal(trayMetrics(cell, false).stripH, Math.round(cell * 0.46), `cell ${cell}`);
+  }
+  // ...and the clamp only governs above it, where the ratio would overrun the
+  // budget the ladder promised the board.
+  assert.equal(trayMetrics(44, false).stripH, CHROME.full.tray - 10 - 3);
 });

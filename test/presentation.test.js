@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,10 +16,12 @@ import {
   LOCK_BUDGET_MS,
   MAX_ANIMATED_UNITS,
   allocateUnits,
+  handoverWindow,
   lockDelay,
   stepInterval,
   turnTimeline,
 } from '../src/ui/timeline.js';
+import { HANDOVER_MS, MOTION } from '../src/ui/theme.js';
 import { inspectChainGuard } from '../src/ui/chainGuard.js';
 
 // ---- the drag snapshot ---------------------------------------------------
@@ -54,10 +57,10 @@ test('AC-407 the snapshot names the animal that blocks, on each side', () => {
   const animals = [
     { id: 'L', type: 'fox', x: 0, y: 0, size: 2 },
     { id: 'M', type: 'rat', x: 4, y: 0, size: 1 },
-    { id: 'R', type: 'elk', x: 7, y: 0, size: 3 },
+    { id: 'R', type: 'elk', x: BOARD.width - 3, y: 0, size: 3 },
   ];
   const r = slideRange(animals, animals[1], BOARD.width);
-  assert.deepEqual(r, { minX: 2, maxX: 6, leftBlockerId: 'L', rightBlockerId: 'R' });
+  assert.deepEqual(r, { minX: 2, maxX: BOARD.width - 4, leftBlockerId: 'L', rightBlockerId: 'R' });
 });
 
 test('an animal alone in its row may slide the full width', () => {
@@ -66,7 +69,7 @@ test('an animal alone in its row may slide the full width', () => {
     { id: 'B', type: 'rat', x: 0, y: 0, size: 1 },
   ];
   const r = slideRange(animals, animals[0], BOARD.width);
-  assert.deepEqual(r, { minX: 0, maxX: 7, leftBlockerId: '', rightBlockerId: '' });
+  assert.deepEqual(r, { minX: 0, maxX: BOARD.width - 3, leftBlockerId: '', rightBlockerId: '' });
 });
 
 // ---- the input-lock budget ----------------------------------------------
@@ -275,4 +278,160 @@ test('AC-217 an ordinary turn produces no guard record at all', () => {
     assert.equal(inspectChainGuard(state.lastTurn.events, state, () => true), null);
   }
   assert.equal(state.stats.chainGuardTrips, 0);
+});
+
+// ---- AC-315e / AC-419-425: the handover and the origin recess -----------
+//
+// Two features that a renderer would check by looking at pixels, checked here
+// by the two things that can be checked without one: the arithmetic, and the
+// structure of the worklets. Both were chosen because a pixel test on an
+// emulator would not have caught either of the failure modes below.
+
+/** One gesture callback's source body, by brace matching from `.onX(`. */
+function callbackBody(source, name) {
+  const needle = `.${name}(`;
+  const start = source.indexOf(needle);
+  assert.notEqual(start, -1, `no ${name} in the source`);
+  let depth = 0;
+  for (let i = start + needle.length - 1; i < source.length; i += 1) {
+    if (source[i] === '(') depth += 1;
+    else if (source[i] === ')') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`unbalanced ${name}`);
+}
+
+const readSrc = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
+const stripComments = (s) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+test('AC-315e the silhouette finishes becoming the animal exactly as it lands', () => {
+  // The failure this exists for is invisible on a device and obvious here: a
+  // resolve scheduled from the START of the flight (at -> at+160) finishes
+  // 100 ms early and the view spends the last 100 ms flying as a completed
+  // animal. It still LOOKS like a nice transition. It just no longer happens
+  // at the moment the arrival stops being a forecast, which is the only reason
+  // the device exists.
+  const w = handoverWindow(500, MOTION.arrival, HANDOVER_MS);
+  assert.equal(w.dur, HANDOVER_MS, 'the full 160 ms');
+  assert.equal(w.at + w.dur, 500 + MOTION.arrival, 'and it ends WITH the flight');
+  assert.equal(w.at, 500 + MOTION.arrival - HANDOVER_MS);
+
+  // Reduce Motion shortens the flight. The resolve is clamped to it rather
+  // than running past its own arrival.
+  const reducedFlight = handoverWindow(500, MOTION.reduced, HANDOVER_MS);
+  assert.equal(reducedFlight.dur, MOTION.reduced);
+  assert.equal(reducedFlight.at, 500, 'it fills the whole flight, and no more');
+  assert.equal(reducedFlight.at + reducedFlight.dur, 500 + MOTION.reduced);
+
+  assert.ok(HANDOVER_MS < MOTION.arrival, 'a handover that filled the flight would be a fade-in');
+});
+
+test('AC-419 the origin recess is not a second dashed outline in the default theme', () => {
+  // AC-419 names this as a defect BY NAME, because it is the obvious thing to
+  // reach for and it quietly undoes the whole design: three dashed outlines in
+  // three colours is the diagram the three-register split exists to avoid.
+  const source = stripComments(readSrc('src/ui/components/Board.js'));
+  const start = source.indexOf('function OriginRecess');
+  assert.notEqual(start, -1, 'the recess must exist to be checked');
+  const body = source.slice(start, source.indexOf('function BoardImpl'));
+
+  const swap = body.indexOf('if (highContrast)');
+  assert.notEqual(swap, -1, 'AC-425: High Contrast trades the register');
+  const dflt = body.slice(swap + body.slice(swap).indexOf('}\n\n'));
+
+  assert.ok(!/dashed/.test(dflt), 'the default recess must not be dashed');
+  assert.ok(!/borderStyle/.test(dflt), 'nor take a border style at all');
+  assert.ok(!/COLORS\.accent|COLORS\.illegal/.test(dflt), 'nor borrow the ghost’s colours');
+  // What it IS: a darkened ground plus a 1 pt top edge.
+  assert.match(dflt, /RECESS\.darken/);
+  assert.match(dflt, /RECESS\.topEdge/);
+  // AC-425's outline lives on the other side of the branch, and only there.
+  assert.match(body.slice(swap, swap + 900), /dashed/);
+
+  // RECORDED GAP, not an assertion dressed down to pass. AC-425 asks for the
+  // High Contrast origin to be dashed 6 on / 4 off "against the destination
+  // ghost's 3 on / 3 off, so the two remain distinguishable by rhythm".
+  // React Native exposes `borderStyle: 'dashed'` and nothing else — the dash
+  // length is the platform's. Measured in the browser, both outlines get the
+  // same UA dash, so they are distinguishable by COLOUR (white 70% against
+  // accent/red) but NOT by rhythm. The destination ghost has had this gap
+  // since it was written. Closing it needs per-segment views or an SVG
+  // dependency, which is a decision rather than an implementation detail.
+  assert.match(body.slice(swap, swap + 900), /borderStyle: 'dashed'/);
+  assert.ok(
+    !/dashArray|strokeDasharray|Svg/.test(body),
+    'if a dash pattern ever becomes controllable, this note is stale',
+  );
+});
+
+test('AC-420/AC-423 the origin is written once in onBegin and never in onUpdate', () => {
+  // AC-423 is a performance claim ("zero React commits", "written once"), and
+  // the way it breaks is not a crash: someone updates the recess in onUpdate
+  // to "keep it in sync", it still looks right, and the cheapest thing on the
+  // board silently becomes the most expensive. Counting writes is the only
+  // way that shows up.
+  const source = stripComments(readSrc('src/ui/components/AnimalView.js'));
+  const begin = callbackBody(source, 'onBegin');
+  const update = callbackBody(source, 'onUpdate');
+  const finalize = callbackBody(source, 'onFinalize');
+
+  for (const field of ['originX', 'originY', 'originSize', 'originFill', 'originAlpha']) {
+    const writes = (begin.match(new RegExp(`drag\\.${field}\\.value\\s*=`, 'g')) || []).length;
+    assert.equal(writes, 1, `onBegin must write drag.${field} exactly once`);
+  }
+  assert.ok(!/drag\.origin/.test(update), 'onUpdate must not touch the origin at all');
+
+  // AC-420: no zero-displacement suppression. The only thing onBegin is
+  // allowed to gate the recess on is the input lock, which gates the whole
+  // gesture — so the recess write sits after the lock check and under no other
+  // condition.
+  const afterLock = begin.slice(begin.indexOf('armed.value = 1;'));
+  assert.ok(afterLock.includes('drag.originAlpha.value = 1;'), 'written on every armed grab');
+  const guard = afterLock.slice(0, afterLock.indexOf('drag.originAlpha.value = 1;'));
+  assert.ok(!/\bif\s*\(/.test(guard), 'and under no further condition (AC-420)');
+
+  assert.match(finalize, /drag\.originAlpha\.value = withTiming\(0, snapConfig\)/);
+});
+
+test('AC-421/AC-422 the recess fades on every route out, before any of them', () => {
+  // Three ways a drag ends — accepted, rejected, cancelled — and each one is a
+  // separate `return` inside onFinalize. A fade written next to any single one
+  // of them would leave a recess on the board after the other two. Putting it
+  // ahead of the first return is what makes "one rule for all three outcomes"
+  // structural rather than something to remember.
+  const source = stripComments(readSrc('src/ui/components/AnimalView.js'));
+  const finalize = callbackBody(source, 'onFinalize');
+
+  const fade = finalize.indexOf('drag.originAlpha.value');
+  assert.notEqual(fade, -1);
+  // Past the guard clause that leaves before the drag was ever armed.
+  const GUARD = 'if (armed.value !== 1) return;';
+  const armedGuard = finalize.indexOf(GUARD);
+  assert.notEqual(armedGuard, -1);
+  // Past the guard's OWN return, not into it. (`+ 10` landed inside it and
+  // made this assertion compare the fade against the guard, which it always
+  // lost — the test failed on correct code until this was fixed.)
+  const firstRoute = finalize.indexOf('return;', armedGuard + GUARD.length);
+  assert.ok(fade < firstRoute, 'the fade must precede every route out of the gesture');
+
+  const routes = (finalize.match(/return;/g) || []).length;
+  assert.ok(routes >= 4, `only ${routes} exits — has a route been added past the fade?`);
+
+  // AC-422: it is the body's own snap, so the two converge to nothing
+  // together and the recess cannot outlive the shake.
+  assert.equal(MOTION.snap, 110);
+  assert.ok(MOTION.snap < MOTION.illegal, 'the shake outlasts the fade, not the other way round');
+});
+
+test('AC-424 the recess survives Reduce Motion, and needs no reduced twin', () => {
+  const source = stripComments(readSrc('src/ui/components/AnimalView.js'));
+  const finalize = callbackBody(source, 'onFinalize');
+  const line = finalize.split('\n').find((l) => l.includes('drag.originAlpha.value'));
+  assert.ok(!/reduced/.test(line), 'the fade must not be gated on Reduce Motion');
+  // The reason it needs no twin: 110 ms already sits inside the cross-fade
+  // ceiling, so there is nothing for Reduce Motion to shorten.
+  assert.ok(MOTION.snap <= MOTION.reduced, `${MOTION.snap} ms must fit the ${MOTION.reduced} ms ceiling`);
 });

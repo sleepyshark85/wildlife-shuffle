@@ -123,7 +123,10 @@ function describe(worst) {
 }
 
 test('AC-808 two animals never come within a row of each other, mid-animation', () => {
-  const { checked, worst } = sweep({ seeds: 30, turns: 40, difficulty: 'savanna' });
+  // 40 seeds, not 30: at 9 columns a Savanna run ends sooner, so 30 seeds x 40
+  // turns stopped short of the floor this assertion uses to catch a sweep that
+  // quietly checked nothing.
+  const { checked, worst } = sweep({ seeds: 40, turns: 40, difficulty: 'savanna' });
   assert.ok(checked > 500, `only ${checked} turns swept`);
   assert.ok(worst.gap >= 0.999, `animals overlapped on screen: ${describe(worst)}`);
 });

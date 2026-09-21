@@ -41,12 +41,17 @@ export const RAIL_MIN = 96;
 
 /**
  * Chrome budgets, in points of vertical space consumed outside the board.
- * ui.md §3.2: full 177, compact 144, rail 77.
+ * ui.md §3.2: full 163, compact 134, rail 63.
+ *
+ * The tray lost 14 pt when it became silhouettes (§6.2), and that is not
+ * decoration: it is a third of why the reference iPhone goes from a 36 pt cell
+ * to 39. The thinner tray is part of why nine columns reads better, rather
+ * than merely a consequence of it.
  */
 export const CHROME = Object.freeze({
-  full:    Object.freeze({ hud: 52, action: 48, tray: 45, gaps: 32 }), // 177
-  compact: Object.freeze({ hud: 44, action: 44, tray: 36, gaps: 20 }), // 144
-  rail:    Object.freeze({ hud: 0,  action: 0,  tray: 45, gaps: 32 }), //  77
+  full:    Object.freeze({ hud: 52, action: 48, tray: 31, gaps: 32 }), // 163
+  compact: Object.freeze({ hud: 44, action: 44, tray: 26, gaps: 20 }), // 134
+  rail:    Object.freeze({ hud: 0,  action: 0,  tray: 31, gaps: 32 }), //  63
 });
 
 const sum = (c) => c.hud + c.action + c.tray + c.gaps;
@@ -71,15 +76,44 @@ export function boardTrayGap(chrome) {
  * five numbers would be v1's two disagreeing cell formulas in miniature.
  */
 export function trayMetrics(cell, compact) {
-  const labelH = compact ? 10 : 14;
-  const stripH = Math.round(cell * (compact ? 0.67 : 0.78));
-  return {
-    labelH,
-    stripH,
-    ruleH: compact ? 2 : 3,
-    bodyH: Math.round(stripH * 0.93),
-    glyph: Math.round(cell * 0.42),
-  };
+  const chrome = compact ? CHROME.compact : CHROME.full;
+  const labelH = compact ? 8 : 10;
+  const ruleH = compact ? 2 : 3;
+  // ui.md §6.2: 0.46 x cell, which is 18 pt at the reference 39 pt cell and
+  // 10 + 18 + 3 = the 31 pt block exactly. The clamp is what keeps that true at
+  // the 44 pt ceiling, where the ratio alone would overrun the budget the
+  // ladder promised the board — a tray that quietly exceeds its own chrome
+  // allowance is a clip waiting for a device nobody swept.
+  const stripH = Math.min(Math.round(cell * 0.46), chrome.tray - labelH - ruleH);
+  // No `glyph`: the strip draws silhouettes now, so there is no emoji to
+  // size, and a zero left here would be a number the tray could start reading
+  // again by accident (ui.md §6.2, AC-315).
+  return { labelH, stripH, ruleH, bodyH: stripH - 2 };
+}
+
+/**
+ * Where each tray silhouette is drawn, and how wide (ui.md §6.2, AC-315b).
+ *
+ * This is a pure function rather than JSX arithmetic because AC-315b is a
+ * claim about GEOMETRY that has to be checkable: a fox at column 3 and two
+ * rats at columns 3 and 4 must produce visibly different shapes — one 2-wide
+ * shadow against two 1-wide ones — and if they merged, the preview would be
+ * stating a footprint the batch does not have. That is the one thing the
+ * silhouette is not allowed to do, because it crosses from withholding
+ * flavour into misrepresenting the plan, which is the exact v1 defect §6
+ * exists to close.
+ *
+ * The gap is taken off the RIGHT of each silhouette rather than split around
+ * it, so every left edge still sits exactly on its spawn column and the
+ * preview stays literal about where the animal lands (AC-315, AC-301).
+ */
+export function traySilhouettes(queue, cell, gap) {
+  return queue.map((animal) => ({
+    id: animal.id,
+    type: animal.type,
+    left: animal.x * cell,
+    width: animal.size * cell - gap,
+  }));
 }
 
 export const STAGE = Object.freeze({

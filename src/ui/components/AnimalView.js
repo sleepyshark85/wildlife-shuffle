@@ -89,6 +89,11 @@ function AnimalViewImpl({
   const buffalo = type === SPECIES.buffalo.type;
   const width = size * cell;
   const edgeLit = useMemo(() => brighten(style.edge, MOTION_SIZE.edgeBrighten), [style.edge]);
+  /**
+   * Captured for the gesture worklet, which cannot look a species up: the
+   * recess is tinted 12% toward the piece in the player's hand.
+   */
+  const speciesFill = style.fill;
   /** Which turn this animal's schedule belongs to; see `ty` below. */
   const trackKey = motion ? motion.key : '';
 
@@ -288,6 +293,18 @@ function AnimalViewImpl({
           drag.ghostX.value = homeCol.value;
           drag.ghostLegal.value = 1;
           drag.ghostVisible.value = 1;
+
+          // THE ORIGIN RECESS (ui.md §5.5, AC-420/AC-423). Written once, here,
+          // in the same worklet frame as the lift — and deliberately NOT
+          // suppressed at zero displacement. The body starts on top of it and
+          // uncovers it as the drag moves off, which is the animal walking off
+          // its own footprint; gating that would be a rule for hiding
+          // something already hidden.
+          drag.originX.value = homeCol.value;
+          drag.originY.value = ty.value;
+          drag.originSize.value = size;
+          drag.originFill.value = speciesFill;
+          drag.originAlpha.value = 1;
         })
         .onUpdate((event) => {
           'worklet';
@@ -320,6 +337,20 @@ function AnimalViewImpl({
           grab.value = withSpring(0, grabConfig);
           drag.ghostVisible.value = 0;
           drag.blockedId.value = '';
+          // AC-421/AC-422: ONE rule for all three outcomes — accepted,
+          // rejected, cancelled — and it is the body's own 110 ms, so the two
+          // converge to nothing together. On a rejection it must not outlive
+          // the shake: a recess still showing under a body that has come home
+          // marks "where this came from" as the place it now is, which is
+          // meaningless and reads as a second piece. The shake then plays on
+          // the body alone.
+          //
+          // Reduce Motion keeps it (AC-424). Only the fade is motion, and
+          // 110 ms is already inside the 120 ms cross-fade ceiling — so
+          // `snapConfig` is right for both, and the affordance that prevents a
+          // wasted turn is the last thing that should go when everything else
+          // has been made quieter.
+          drag.originAlpha.value = withTiming(0, snapConfig);
 
           // AC-129/AC-130: the board or the layout moved under the finger, so
           // the drag is cancelled, not committed. No turn is consumed.
@@ -363,7 +394,7 @@ function AnimalViewImpl({
     [
       cell, size, id, reduced, onCommit, onIllegal, drag, armed, startPx, startEpoch,
       sMin, sMax, sLeft, sRight, rangeMin, rangeMax, blockLeft, blockRight,
-      grab, shake, reject, tx, ty, homeX, homeCol,
+      grab, shake, reject, tx, ty, homeX, homeCol, speciesFill,
     ],
   );
 
