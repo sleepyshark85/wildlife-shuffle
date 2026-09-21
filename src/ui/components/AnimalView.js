@@ -29,6 +29,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { BOARD, SPECIES } from '../../engine/constants.js';
+import { CUE } from '../cues.js';
+import { fireCue } from '../cuePlayer.js';
 import { registerProbe, releaseProbe } from '../diagnostics.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
 import { EASE, delay, sequence, spring, timing } from '../motion.js';
@@ -311,6 +313,15 @@ function AnimalViewImpl({
           sRight.value = blockRight.value;
 
           grab.value = withSpring(1, grabConfig);
+          // AC-1101/AC-1102 and ui.md §5.4 — "the selection haptic fires with
+          // it". With the LIFT, in the same worklet frame as the touch, which
+          // is the only place it can be: React never learns a drag began.
+          //
+          // AC-831 survives this hop because `fireCue` is a module-level plain
+          // function over module-level state (src/ui/cuePlayer.js), exactly as
+          // `recordTurn` is — it renders nothing, so "zero re-renders of the
+          // board mid-drag" stays literally true.
+          runOnJS(fireCue)(CUE.grab, 1);
           drag.ghostSize.value = size;
           drag.ghostY.value = ty.value;
           drag.ghostX.value = homeCol.value;
@@ -392,7 +403,8 @@ function AnimalViewImpl({
           }
           if (col >= sMin.value && col <= sMax.value) {
             tx.value = withTiming(col * cell, snapConfig);
-            runOnJS(onCommit)(id, col); // the one runOnJS (AC-831)
+            runOnJS(fireCue)(CUE.drop, 1);
+            runOnJS(onCommit)(id, col); // the one that carries the column (AC-831)
             return;
           }
           // AC-406/AC-819: 3 x 6 pt shake, 260 ms. Pure announcement — it locks
@@ -412,6 +424,9 @@ function AnimalViewImpl({
               withTiming(0, shakeIn),
             );
           }
+          // ui.md §8's motion table names the haptic on this row explicitly:
+          // `notificationError` (AC-1102).
+          runOnJS(fireCue)(CUE.illegal, 1);
           runOnJS(onIllegal)(id);
         }),
     [
