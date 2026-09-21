@@ -32,6 +32,7 @@ import {
 } from '../engine/engine.js';
 import { STATUS } from '../engine/constants.js';
 import { inspectChainGuard } from './chainGuard.js';
+import { recordTurn } from './diagnostics.js';
 import { buildReplay } from './replay.js';
 import { lockDelay } from './timeline.js';
 import { MOTION } from './theme.js';
@@ -137,6 +138,20 @@ export function useGameRun({ seed, difficulty }) {
     const timer = setTimeout(() => {
       lockedRef.current = false;
       setResolving(false);
+      // The lock ending is the moment the structural animation has finished,
+      // which is the only moment at which "rendered disagrees with engine" is
+      // a real disagreement rather than a frame of animation. Costs one
+      // boolean when the log is off (src/ui/diagnostics.js).
+      recordTurn({
+        turn: turn.turn,
+        action: turn.action,
+        seed: state.seed,
+        difficulty: state.difficulty,
+        score: stateRef.current.score,
+        gained: turn.score,
+        lockMs: wait,
+        animals: stateRef.current.animals,
+      });
       const buffered = bufferedRef.current;
       bufferedRef.current = null;
       if (buffered && stateRef.current.status === STATUS.READY) {
@@ -145,7 +160,7 @@ export function useGameRun({ seed, difficulty }) {
       }
     }, wait);
     return () => clearTimeout(timer);
-  }, [state.lastTurn, state.seed, state.plan]);
+  }, [state.lastTurn, state.seed, state.difficulty, state.plan]);
 
   // ---- the BLOCKED announcement ----------------------------------------
   useEffect(() => {

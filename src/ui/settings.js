@@ -13,10 +13,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
+import { diagnosticsAvailable, setDiagnosticsEnabled } from './diagnostics.js';
+
 const DEFAULTS = Object.freeze({
   sizeNumerals: false,
   highContrast: false,
   reduceMotion: false,
+  diagnostics: false,
   reduced: false,
   set: () => {},
 });
@@ -32,6 +35,7 @@ export function SettingsProvider({ children }) {
     sizeNumerals: false,
     highContrast: false,
     reduceMotion: false,
+    diagnostics: false,
   });
   const [systemReduce, setSystemReduce] = useState(false);
 
@@ -51,9 +55,18 @@ export function SettingsProvider({ children }) {
     };
   }, []);
 
+  // The log's own switch is module state, because the thing that writes to it
+  // is the state layer's lock callback rather than a component. Mirroring it
+  // here keeps one source: the toggle sets it, and nothing else reads `prefs`
+  // to decide whether to record.
+  useEffect(() => {
+    setDiagnosticsEnabled(prefs.diagnostics);
+  }, [prefs.diagnostics]);
+
   const value = useMemo(
     () => ({
       ...prefs,
+      diagnostics: prefs.diagnostics && diagnosticsAvailable(),
       reduced: prefs.reduceMotion || systemReduce,
       set: (key, on) => setPrefs((previous) => ({ ...previous, [key]: on })),
     }),
