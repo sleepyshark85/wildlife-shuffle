@@ -7,6 +7,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { BOARD } from '../src/engine/constants.js';
 import { hudScale } from '../src/ui/theme.js';
@@ -32,6 +35,9 @@ import {
   verticalSlack,
 } from '../src/ui/layout.js';
 import { THEME } from '../src/ui/theme.js';
+import { BEAT, BEATS, beatRun } from '../src/ui/onboarding.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * The tray's 1 pt of daylight (AC-315b) is a METRIC, not a colour, so it is
@@ -541,4 +547,65 @@ test('AC-315d the strip is 18 pt and the tray block 31 pt at the reference cell'
   // ...and the clamp only governs above it, where the ratio would overrun the
   // budget the ladder promised the board.
   assert.equal(trayMetrics(44, false).stripH, CHROME.full.tray - 10 - 3);
+});
+
+
+// ---------------------------------------------------------------------------
+// AC-119 / AC-1206: the sweep itself, and the tutorial half of it
+// ---------------------------------------------------------------------------
+
+/**
+ * Run `docs/v2/layout-sweep.mjs` and keep what it printed.
+ *
+ * As a subprocess, the same way `budget.mjs` and `theme-contrast.mjs` are run
+ * — and for a sharper reason here. Until this test existed the sweep was never
+ * executed by anything: `npm test` did not run it, so "0 overflowing" was a
+ * sentence somebody had typed into a terminal once. It now has a non-zero exit
+ * and something that reads it.
+ */
+function sweep() {
+  let status = 0;
+  let out = '';
+  try {
+    out = execFileSync('node', [path.join(ROOT, 'docs/v2/layout-sweep.mjs')], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    status = e.status ?? 1;
+    out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
+  }
+  return { out, status };
+}
+let SWEEP = null;
+const runSweep = () => (SWEEP ??= sweep());
+
+test('AC-119 node docs/v2/layout-sweep.mjs exits 0, board and tutorial', () => {
+  const { out, status } = runSweep();
+  assert.equal(status, 0, `layout-sweep.mjs exited ${status}:\n${out.slice(-1200)}`);
+  assert.match(out, /\n {2}overflowing : 0\n/, 'the board sweep did not report 0');
+  assert.match(out, /\n {2}tutorial overflowing : 0\n/, 'the tutorial sweep did not report 0');
+  assert.match(out, /PASS: 0 overflowing, board and tutorial\./);
+});
+
+test('AC-1206 the sweep models the beats the app actually ships', () => {
+  // The sweep carries its own copy of the four beats, deliberately: a
+  // reference that imports the implementation is the implementation agreeing
+  // with itself (§6.2). This is what stops the two drifting instead.
+  const { out } = runSweep();
+  const rows = [...out.matchAll(/^ {2}(\w+)\s+topRow=\s*(-?\d+) copy=(\d+)$/gm)]
+    .map(([, id, top, copy]) => ({ id, top: Number(top), copy: Number(copy) }));
+  assert.equal(rows.length, BEATS.length, `the sweep printed ${rows.length} beats`);
+  assert.deepEqual(rows.map((r) => r.id), [...BEATS], 'beat order');
+  for (const row of rows) {
+    const animals = beatRun(row.id, 'layout-test').animals;
+    const top = animals.length ? Math.max(...animals.map((a) => a.y)) : -1;
+    assert.equal(row.top, top, `${row.id}: the sweep models a board topping out at row `
+      + `${row.top} and beatRun builds one topping out at ${top}`);
+    let sum = 0;
+    for (const ch of BEAT[row.id].title + BEAT[row.id].body) {
+      sum = (sum * 31 + ch.codePointAt(0)) >>> 0;
+    }
+    assert.equal(row.copy, sum, `${row.id}: the sweep's copy is not the shipped copy — `
+      + 'update docs/v2/layout-sweep.mjs, and re-measure ADV if the new copy uses a new character');
+  }
 });
