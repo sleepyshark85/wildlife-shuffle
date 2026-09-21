@@ -13,6 +13,8 @@
 
 import {
   ABILITIES,
+  MIN_ABILITY_COST,
+  isAbilityRemovable,
   ABILITY_BAD_TARGET,
   ABILITY_DART_ACTIVE,
   ABILITY_DISABLED,
@@ -60,11 +62,20 @@ export const ABILITY_COPY = Object.freeze({
  * a system that exists to help them.
  */
 const REASON = Object.freeze({
-  [ABILITY_NO_CHARGE]: 'Needs a charge',
   [ABILITY_DART_ACTIVE]: 'Dart in progress',
   [ABILITY_DISABLED]: 'Unavailable',
   [ABILITY_BAD_TARGET]: 'Nothing to target',
 });
+
+/**
+ * AC-1405j: an unaffordable row says what it costs, not merely that it is
+ * unavailable. A sheet that hides why a row is unavailable looks broken rather
+ * than expensive — and now that the five rows carry three different prices,
+ * "why not that one" is a question the player will actually ask.
+ */
+function shortfall(cost) {
+  return cost === 1 ? 'Needs a charge' : `Needs ${cost} charges`;
+}
 
 /**
  * The five rows of the sheet, in scope order.
@@ -79,7 +90,9 @@ export function abilityRows(state) {
   return ABILITY_IDS.map((id) => {
     const spec = ABILITIES[id];
     const probe = spec.target === 'animal'
-      ? (state.animals[0] && state.animals[0].id)
+      // The probe has to be a target the engine would ACCEPT, or an all-buffalo
+      // board would report Burrow as affordable and then reject it (AC-1412b).
+      ? (state.animals.find((a) => isAbilityRemovable(a.type)) || {}).id
       : spec.target === 'species'
         ? migratableSpecies(state.animals)[0]
         : undefined;
@@ -88,11 +101,21 @@ export function abilityRows(state) {
       id,
       species: spec.species,
       scope: spec.scope,
+      /** AC-1405h. Read off the engine's table, never re-derived from scope. */
+      cost: spec.cost,
+      /**
+       * AC-1405j / ui.md §13.2: the price renders as PIPS, not a numeral, so
+       * the player compares two rows of dots — the cost against the reserve on
+       * the button — rather than a number against a number.
+       */
+      costPips: Array.from({ length: spec.cost }, (_, i) => i),
       needsTarget: spec.target !== null,
       name: ABILITY_COPY[id].name,
       effect: ABILITY_COPY[id].effect,
       enabled: fault === null,
-      reason: fault ? REASON[fault] || 'Unavailable' : null,
+      reason: fault === ABILITY_NO_CHARGE
+        ? shortfall(spec.cost)
+        : fault ? REASON[fault] || 'Unavailable' : null,
     };
   });
 }
@@ -118,10 +141,27 @@ export function migratableSpecies(animals) {
  */
 export const LAST_STAND_PIP_ALPHA = 0.25;
 
+/** An ordinary pip that has not been earned yet. */
+export const EMPTY_PIP_ALPHA = 0.55;
+
+/**
+ * `restAlpha` is the FINAL opacity the pip sits at, not a factor.
+ *
+ * It shipped as a factor, and the component multiplied the gold pip's 0.25 by
+ * the 0.55 meant for ordinary empties — so the fourth pip rendered at 13.75%
+ * against a specified 25%, while the test asserting `restAlpha === 0.25`
+ * passed. The number was right and what was drawn was not, which is the whole
+ * shape of this defect class: a pure function asserted, and nothing asserting
+ * what the component does with its value.
+ *
+ * So the composition happens HERE, once, and `pipAlpha` below is what the
+ * component renders verbatim — a hygiene test refuses it a `restAlpha` of its
+ * own to do arithmetic on.
+ */
 export function chargePips(charges) {
   const pips = [];
   for (let i = 0; i < ABILITY_CHARGE_CAP; i += 1) {
-    pips.push({ index: i, filled: i < charges, gold: false, restAlpha: 1 });
+    pips.push({ index: i, filled: i < charges, gold: false, restAlpha: EMPTY_PIP_ALPHA });
   }
   pips.push({
     index: ABILITY_CHARGE_CAP,
@@ -130,6 +170,28 @@ export function chargePips(charges) {
     restAlpha: LAST_STAND_PIP_ALPHA,
   });
   return pips;
+}
+
+/** The opacity a pip rests at. The component renders this and nothing else. */
+export function pipAlpha(pip) {
+  return pip.filled ? 1 : pip.restAlpha;
+}
+
+/**
+ * ui.md §13.4 / AC-1410b — the frozen strip greys out, and it is load-bearing:
+ * the tray's contract is that it shows what is coming, so while nothing is
+ * coming the strip has to read as switched off rather than merely relabelled.
+ *
+ * It is a FUNCTION rather than a style, because the strip's opacity is also
+ * driven by the arrival reveal, and a static `opacity: 0.45` sitting in the
+ * same style array as an animated one is silently overwritten by whichever is
+ * written last — which is exactly how it shipped rendering at opacity 1. The
+ * two are multiplied on the UI thread instead, so neither can erase the other.
+ */
+export const FROZEN_STRIP_OPACITY = 0.45;
+
+export function trayStripOpacity(frozen) {
+  return frozen > 0 ? FROZEN_STRIP_OPACITY : 1;
 }
 
 /**
@@ -158,7 +220,11 @@ export function needsTarget(ability) {
  * targeting dim (ui.md §13.3: everything dims to 45% except valid targets).
  */
 export function isTarget(ability, animal) {
-  if (ability === ABILITIES.burrow.id) return true;
+  // AC-1412b. The rule is per-OBJECT, not per-ability: the buffalo is a
+  // different kind of thing, and AC-1412 had already encoded that for Migrate.
+  // Burrow shipped returning true unconditionally, which let one rat charge
+  // delete a size-5 buffalo that otherwise costs five clears.
+  if (ability === ABILITIES.burrow.id) return isAbilityRemovable(animal.type);
   if (ability === ABILITIES.migrate.id) return isMigratable(animal.type);
   return false;
 }
@@ -221,10 +287,36 @@ export function abilityButton(state) {
   const rows = abilityRows(state);
   return {
     visible: true,
-    muted: state.charges <= 0 || !state.abilities || state.dart > 0,
+    // AC-1415: muted below the price of the CHEAPEST thing in the set, which
+    // is what "you cannot use an ability right now" means once the five carry
+    // three different prices.
+    muted: state.charges < MIN_ABILITY_COST || !state.abilities || state.dart > 0,
     charges: state.charges,
     pips: chargePips(state.charges),
     /** How many of the five are usable right now — the sheet is worth opening. */
     usable: rows.filter((r) => r.enabled).length,
   };
 }
+
+/**
+ * ui.md §13.1 — the gold marks the EVENT, not the slot.
+ *
+ * The first wording called the fourth dot "the Last Stand pip", which conflated
+ * a slot with a moment: gold appeared only when Last Stand OVERFLOWED a full
+ * reserve — the one case that does not need it — and was absent at 0 charges,
+ * for the player the grant was invented for (AC-1408e). Whichever pip Last
+ * Stand fills now blooms gold for the 400 ms of the announce and then settles
+ * to its ordinary fill. The fourth SLOT is still reachable only by overflow;
+ * the EVENT is marked wherever it lands.
+ *
+ * Returned as data rather than decided in the component, because "the gold
+ * landed on the wrong pip" is precisely a claim about a rendered value that no
+ * position check can see.
+ */
+export function pipBloomTone(pip, grants) {
+  if (!grants) return null;
+  const grant = grants.find((g) => g.charges - 1 === pip.index);
+  if (!grant) return null;
+  return grant.reason === 'lastStand' ? 'lastStand' : 'ladder';
+}
+

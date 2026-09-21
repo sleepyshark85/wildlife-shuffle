@@ -25,6 +25,7 @@ import {
   ABILITIES,
   DART_MOVES,
   HOLD_TURNS,
+  abilityCost,
   abilityFault,
   applyAbility,
   inDangerBand,
@@ -574,18 +575,36 @@ export function reduce(state, action) {
       const fault = abilityFault(state, action.ability, action.target);
       if (fault) return rejected(state, fault, { ability: action.ability });
 
-      // The charge is spent on confirmation and in exactly one place (AC-1413).
+      // The charges are spent on confirmation and in exactly one place
+      // (AC-1413), and there are one, two or three of them (AC-1405h).
       // AC-1403 is what is NOT here: nothing touches `score`.
-      const spent = { ...state, charges: state.charges - 1 };
+      const spent = { ...state, charges: state.charges - abilityCost(action.ability) };
 
       if (action.ability === ABILITIES.dart.id) {
         // Dart resolves no turn. The player's action for this turn IS the three
         // moves, so the turn stays open and the next MOVE carries it forward.
+        //
+        // It still emits its ACTION event and still folds it, because that is
+        // where `abilitiesUsed` comes from (§7.3a). Returning early WITHOUT
+        // the fold is how the run record came to under-report by exactly the
+        // number of Darts — the one ability that never reached `commit()`.
+        const armEvents = [{
+          type: 'ACTION',
+          phase: PHASE.ACTION,
+          action: ACTIONS.ABILITY,
+          ability: action.ability,
+          target: null,
+          removedIds: [],
+          moved: [],
+          frozen: state.frozen,
+        }];
+        const armed = summariseEvents(armEvents);
         return {
           ...spent,
           dart: DART_MOVES,
           turnCleared: false,
           turnPerfect: false,
+          stats: { ...state.stats, abilitiesUsed: state.stats.abilitiesUsed + armed.abilitiesUsed },
           lastAction: { type: ACTIONS.ABILITY, ability: action.ability, target: null },
           actionSeq: state.actionSeq + 1,
         };

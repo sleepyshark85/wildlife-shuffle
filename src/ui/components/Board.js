@@ -18,6 +18,7 @@ import { inDangerBand } from '../../engine/abilities.js';
 import { BOARD } from '../../engine/constants.js';
 import { isTarget, targetingChip } from '../abilities.js';
 import { COLS, ROWS } from '../layout.js';
+import { Z } from '../stacking.js';
 import { COLORS, RADIUS, RECESS } from '../theme.js';
 import { slideRanges } from '../occupancy.js';
 import { useCosmetics } from '../progressStore.js';
@@ -52,7 +53,7 @@ function Ghost({ cell, drag }) {
           borderWidth: 2,
           borderStyle: 'dashed',
           borderRadius: RADIUS.animal,
-          zIndex: 10,
+          zIndex: Z.ghost,
         },
         style,
       ]}
@@ -121,7 +122,7 @@ function OriginRecess({ cell, drag, highContrast }) {
             borderStyle: 'dashed',
             borderColor: RECESS.highContrastEdge,
             borderRadius: RADIUS.animal,
-            zIndex: 1,
+            zIndex: Z.recess,
           },
           frame,
         ]}
@@ -144,7 +145,7 @@ function OriginRecess({ cell, drag, highContrast }) {
           borderTopWidth: RECESS.topEdgeWidth,
           borderTopColor: RECESS.topEdge,
           overflow: 'hidden',
-          zIndex: 1,
+          zIndex: Z.recess,
         },
         frame,
       ]}
@@ -185,19 +186,6 @@ function BoardImpl({
       }}
     >
       <BoardCells cell={cell} highContrast={highContrast} colors={colors} />
-      {/* ui.md §13.3: the ground dims behind the targeting state, and the dim
-          IS the cancel affordance — "tapping outside any valid target also
-          cancels" (AC-1414). It sits under the animals, so a valid target's
-          own press wins and everything else falls through to here. */}
-      {arming ? (
-        <Pressable
-          testID="target-scrim"
-          onPress={onCancelTarget}
-          accessibilityRole="button"
-          accessibilityLabel="Cancel"
-          style={[StyleSheet.absoluteFill, styles.scrim]}
-        />
-      ) : null}
       <DangerPulse
         cell={cell}
         boardW={boardW}
@@ -212,6 +200,25 @@ function BoardImpl({
           boardW={boardW}
           reduced={reduced}
           highContrast={highContrast}
+        />
+      ) : null}
+      {/* ui.md §13.3: the ground dims behind the targeting state, and the dim
+          IS the cancel affordance — "a tap outside any valid target also
+          cancels" (AC-1414).
+
+          IT SHIPPED AT zIndex 2 OVER ANIMALS AT 1, with a comment claiming the
+          opposite, and that made Burrow and Migrate unreachable by touch: the
+          scrim won every hit test, so tapping a valid target cancelled. The
+          z now comes from `src/ui/stacking.js`, where `Z.animal > Z.targetScrim`
+          is arithmetic a test can read, and this sits after the ground layers
+          (so it dims them) and before the animals (so it does not). */}
+      {arming ? (
+        <Pressable
+          testID="target-scrim"
+          onPress={onCancelTarget}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+          style={[StyleSheet.absoluteFill, styles.scrim]}
         />
       ) : null}
       {/* Painted before the animals: the body starts ON TOP of its own recess
@@ -233,6 +240,7 @@ function BoardImpl({
               : null
           }
           onTarget={onTarget}
+          onCancelTarget={onCancelTarget}
           reduced={reduced}
           sizeNumerals={sizeNumerals}
           highContrast={highContrast}
@@ -247,7 +255,7 @@ function BoardImpl({
 
 const styles = StyleSheet.create({
   /** The ground at 45%, which is `ui.md` §13.3's dim expressed as a scrim. */
-  scrim: { backgroundColor: 'rgba(13,20,27,.55)', zIndex: 2 },
+  scrim: { backgroundColor: 'rgba(13,20,27,.55)', zIndex: Z.targetScrim },
 });
 
 export const Board = memo(BoardImpl);

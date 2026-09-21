@@ -33,6 +33,7 @@ import { registerProbe, releaseProbe } from '../diagnostics.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
 import { EASE, delay, sequence, spring, timing } from '../motion.js';
 import { TARGET_DIM } from '../abilities.js';
+import { Z } from '../stacking.js';
 import { rowAt } from '../trajectory.js';
 import { useCosmetics } from '../progressStore.js';
 import {
@@ -84,7 +85,7 @@ function Panels({ size, cell, buffalo, highContrast }) {
 
 function AnimalViewImpl({
   animal, cell, range, drag, clock, motion, reduced, sizeNumerals, highContrast,
-  diagnostics, onCommit, onIllegal, targeting = null, onTarget,
+  diagnostics, onCommit, onIllegal, targeting = null, onTarget, onCancelTarget,
 }) {
   const { id, type, x, y, size } = animal;
   // AC-1011: an applied unlock substitutes the species' appearance here and
@@ -442,7 +443,7 @@ function AnimalViewImpl({
             (1 - (1 - MOTION_SIZE.squashScaleY) * squash.value),
         },
       ],
-      zIndex: grab.value > 0.01 ? 20 : 1,
+      zIndex: grab.value > 0.01 ? Z.grabbed : Z.animal,
       borderWidth: blocked ? 2 : rim,
       borderColor: blocked
         ? COLORS.illegal
@@ -499,17 +500,22 @@ function AnimalViewImpl({
           {cosmetics.glyph(type)}
         </Text>
         {targeting ? (
-          // AC-1414's other half: a tap that is not on a valid target has to
-          // reach the board's cancel layer, so an invalid target takes no
-          // press at all rather than swallowing it into a no-op.
+          // AC-1414, and EVERY animal gets one — valid or not.
+          //
+          // The first version gave the overlay only to valid targets and let
+          // the rest fall through to the scrim. That was correct only while
+          // the scrim was (wrongly) on top: now that the animals sit above it,
+          // an invalid target with no overlay would swallow the tap into its
+          // own suspended pan gesture, and the player would be stuck in a
+          // targeting state that no longer cancels. So an invalid target
+          // cancels, which is exactly what "a tap outside any valid target"
+          // means to the player standing on one.
           <Pressable
-            testID={`target-${id}`}
-            onPress={targeting.valid ? () => onTarget(animal) : undefined}
-            disabled={!targeting.valid}
+            testID={targeting.valid ? `target-${id}` : `not-target-${id}`}
+            onPress={targeting.valid ? () => onTarget(animal) : onCancelTarget}
             accessibilityRole="button"
-            accessibilityLabel={targeting.copy}
+            accessibilityLabel={targeting.valid ? targeting.copy : 'Cancel'}
             style={StyleSheet.absoluteFill}
-            pointerEvents={targeting.valid ? 'auto' : 'none'}
           />
         ) : null}
         {sizeNumerals ? (

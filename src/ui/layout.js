@@ -193,28 +193,66 @@ function finish(stage, cell, chrome, screenW, wide) {
 /** ui.md §9: the floor for every touch target, at every stage (AC-114). */
 export const MIN_TOUCH = 44;
 
-/** ui.md §13.1: the gap between the two action-bar buttons. */
+/** ui.md §13.1: the gap between action-bar controls. */
 export const ACTION_GAP = 12;
 
 /**
- * The two action-bar slots (ui.md §13.1), and the one deviation in this slice.
+ * The turn-state line's slot. 12 uppercase characters at `TYPE.label`'s 10 pt
+ * with 1.4 of letter spacing — `2 MOVES LEFT` is the longest string it carries.
+ */
+export const STATUS_W = 96;
+
+/** The abilities control at its smallest: the bolt, the four pips, padding. */
+export const ABILITY_W = 80;
+
+/** What the word ABILITIES adds when there is room for it. */
+export const ABILITY_LABEL_W = 76;
+
+/**
+ * The action bar's three slots — and the one real deviation in this layer.
  *
- * The design says "two buttons, 150 pt each, 12 pt gap". 150 is a figure read
- * off the reference 393 pt device, and taken as a constant it OVERFLOWS: the
- * layout sweep supports widths down to 248 pt, where 150 + 12 + 150 + 32 pt of
- * gutter is 344 pt against 248 available. A hard 150 would clip the Pass button
- * off the right of the screen on every stage below comfortable.
+ * ui.md §13.1 specifies two 150 pt buttons with the turn-state line moved into
+ * "the HUD's spare right-hand column". Neither half survives arithmetic:
  *
- * So the slots are derived from the width the same way every other dimension in
- * this file is (AC-126): the bar's content box, less the gap, halved. At the
- * reference device that gives 174 pt rather than 150 — wider than specified,
- * never narrower — and it stays above MIN_TOUCH everywhere the ladder supports
- * a board at all. `test/layout.test.js` sweeps it.
+ *   - **The HUD has no spare column.** A 12 pt label stacked over a 44 pt pause
+ *     button is 58 pt inside a 52 pt (full) or 44 pt (compact) budget. Laid out
+ *     as a row instead, the worst case — a 5-digit score, the streak pill, the
+ *     buffalo chip, `2 MOVES LEFT` and the 44 pt button — sums to about 411 pt
+ *     inside the reference device's 361 pt of content.
+ *   - **150 pt is a reference-device figure.** Two of them plus the gap and the
+ *     gutters is 344 pt, and the viewport sweep supports 248 pt.
+ *
+ * So the line stays in the bar where it already worked, and the abilities
+ * control is icon-sized — the bolt plus its four pips, which ui.md §13.1 itself
+ * calls "the whole status, so it needs no label". The label and then the status
+ * line drop out as the screen narrows, in that order, and Pass takes whatever
+ * is left. Every stage keeps both controls above the 44 pt touch floor, and no
+ * chrome height moved, which is what keeps the board fitting.
  */
 export function actionBarSlots(screenW) {
-  const inner = screenW - GUTTER;
+  const content = Math.max(0, screenW - GUTTER);
+  const passFor = (statusW, labelW) =>
+    content - statusW - (ABILITY_W + labelW) - ACTION_GAP * (statusW > 0 ? 2 : 1);
+
+  // The label goes first and the status second, because the pips ARE the
+  // ability's status and the turn-state line is not duplicated anywhere else.
+  let showStatus = true;
+  let showAbilityLabel = true;
+  if (passFor(STATUS_W, ABILITY_LABEL_W) < MIN_TOUCH) {
+    showAbilityLabel = false;
+    if (passFor(STATUS_W, 0) < MIN_TOUCH) {
+      showStatus = false;
+      showAbilityLabel = passFor(0, ABILITY_LABEL_W) >= MIN_TOUCH;
+    }
+  }
+  const statusW = showStatus ? STATUS_W : 0;
+  const abilityW = ABILITY_W + (showAbilityLabel ? ABILITY_LABEL_W : 0);
   return {
-    buttonW: Math.max(MIN_TOUCH, Math.floor((inner - ACTION_GAP) / 2)),
+    showStatus,
+    showAbilityLabel,
+    statusW,
+    abilityW,
+    passW: Math.max(MIN_TOUCH, passFor(statusW, showAbilityLabel ? ABILITY_LABEL_W : 0)),
     gap: ACTION_GAP,
   };
 }

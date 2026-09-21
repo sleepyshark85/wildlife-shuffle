@@ -33,8 +33,11 @@ import {
   DART_MOVES,
   HOLD_TURNS,
   MIGRATE_SPECIES,
+  MIN_ABILITY_COST,
+  abilityCost,
   abilityFault,
   abilitySpecies,
+  isAbilityRemovable,
   isMigratable,
   stampede,
 } from '../src/engine/abilities.js';
@@ -71,11 +74,39 @@ test('AC-1401 five abilities exist, one per species, and scope scales with size'
   assert.deepEqual(ABILITY_IDS, ['burrow', 'dart', 'migrate', 'stampede', 'hold']);
 });
 
+test('AC-1405h costs are priced from value, and are NOT the scope ladder', () => {
+  assert.deepEqual(
+    ABILITY_IDS.map((id) => [id, abilityCost(id)]),
+    [['burrow', 1], ['dart', 1], ['migrate', 2], ['stampede', 3], ['hold', 2]],
+  );
+  assert.equal(MIN_ABILITY_COST, 1);
+
+  // The two ladders deliberately disagree, and this is the assertion that
+  // stops somebody "tidying" cost into a function of size: Hold the Line has
+  // the LARGEST scope in the set and does not carry the largest price, because
+  // it buys turns rather than points (§13.2d).
+  const byScope = ABILITY_IDS.slice().sort((a, b) => ABILITIES[b].scope - ABILITIES[a].scope);
+  const byCost = ABILITY_IDS.slice().sort((a, b) => abilityCost(b) - abilityCost(a));
+  assert.equal(byScope[0], 'hold', 'buffalo no longer has the widest scope');
+  assert.notEqual(byCost[0], 'hold', 'price was derived from size after all');
+  assert.equal(byCost[0], 'stampede');
+});
+
+test('AC-1405i a full reserve is one Stampede or three Burrows', () => {
+  assert.equal(abilityCost('stampede'), ABILITY_CHARGE_CAP);
+  assert.equal(abilityCost('burrow') * 3, ABILITY_CHARGE_CAP);
+  // What each rung of the reserve unlocks (§13.2d's table).
+  const affordableAt = (n) => ABILITY_IDS.filter((id) => abilityCost(id) <= n);
+  assert.deepEqual(affordableAt(1), ['burrow', 'dart']);
+  assert.deepEqual(affordableAt(2), ['burrow', 'dart', 'migrate', 'hold']);
+  assert.deepEqual(affordableAt(3), ABILITY_IDS.slice());
+});
+
 test('AC-1402 an ability is available with none of its species on the board', () => {
   // Rats everywhere, so every ability's OWN species is absent except burrow's.
   const animals = [animal('rat', 0, 0), animal('rat', 2, 0), animal('rat', 4, 0)];
   for (const id of ABILITY_IDS) {
-    const state = board({ animals, charges: 1 });
+    const state = board({ animals, charges: ABILITY_CHARGE_CAP });
     const target = ABILITIES[id].target === 'animal' ? animals[0].id
       : ABILITIES[id].target === 'species' ? 'rat' : undefined;
     assert.equal(abilityFault(state, id, target), null, `${id} was gated on its species`);
@@ -86,14 +117,20 @@ test('AC-1402 an ability is available with none of its species on the board', ()
 
 test('the fault reasons are stated, not implied', () => {
   const animals = [animal('elk', 0, 0)];
-  assert.equal(abilityFault(board({ animals, charges: 1 }), 'teleport'), ABILITY_UNKNOWN);
+  assert.equal(abilityFault(board({ animals, charges: 3 }), 'teleport'), ABILITY_UNKNOWN);
   assert.equal(abilityFault(board({ animals, charges: 0 }), 'stampede'), ABILITY_NO_CHARGE);
+  // AC-1405h: two charges is not enough for a three-charge ability, and the
+  // fault says so — the sheet turns this into "Needs 3 charges".
+  assert.equal(abilityFault(board({ animals, charges: 2 }), 'stampede'), ABILITY_NO_CHARGE);
+  assert.equal(abilityFault(board({ animals, charges: 3 }), 'stampede'), null);
+  assert.equal(abilityFault(board({ animals, charges: 1 }), 'hold'), ABILITY_NO_CHARGE);
+  assert.equal(abilityFault(board({ animals, charges: 1 }), 'burrow', animals[0].id), null);
   assert.equal(
-    abilityFault(board({ animals, charges: 1, abilities: false }), 'stampede'),
+    abilityFault(board({ animals, charges: 3, abilities: false }), 'stampede'),
     ABILITY_DISABLED,
   );
   assert.equal(
-    abilityFault(board({ animals, charges: 1, dart: 2 }), 'stampede'),
+    abilityFault(board({ animals, charges: 3, dart: 2 }), 'stampede'),
     ABILITY_DART_ACTIVE,
   );
   assert.equal(
@@ -102,7 +139,21 @@ test('the fault reasons are stated, not implied', () => {
   );
   // A species with nothing on the board is a bad target, not a legal waste: a
   // charge that evaporates for nothing is the opposite of an assist.
-  assert.equal(abilityFault(board({ animals, charges: 1 }), 'migrate', 'fox'), ABILITY_BAD_TARGET);
+  assert.equal(abilityFault(board({ animals, charges: 2 }), 'migrate', 'fox'), ABILITY_BAD_TARGET);
+});
+
+test('AC-1412b no ability removes the buffalo, Burrow included', () => {
+  const animals = [animal('buffalo', 0, 0), animal('rat', 5, 0)];
+  const state = board({ animals, charges: ABILITY_CHARGE_CAP });
+  assert.equal(abilityFault(state, 'burrow', animals[0].id), ABILITY_BAD_TARGET);
+  assert.equal(abilityFault(state, 'burrow', animals[1].id), null);
+  assert.equal(abilityFault(state, 'migrate', 'buffalo'), ABILITY_BAD_TARGET);
+  // ...and the rule is per-OBJECT: one predicate, both abilities.
+  assert.equal(isAbilityRemovable('buffalo'), false);
+  assert.ok(MIGRATE_SPECIES.every(isAbilityRemovable));
+  // A board of nothing but buffalo leaves Burrow unusable rather than lethal.
+  const onlyBuffalo = board({ animals: [animal('buffalo', 0, 0)], charges: 3 });
+  assert.equal(abilityFault(onlyBuffalo, 'burrow', onlyBuffalo.animals[0].id), ABILITY_BAD_TARGET);
 });
 
 // ---- AC-1403 · spending costs no score -----------------------------------
@@ -112,7 +163,7 @@ test('AC-1403 spending a charge leaves the score exactly where it was', () => {
   for (const id of ABILITY_IDS) {
     // `ladder: 6` parks the run at the top of its own ladder, so the only
     // thing that can move `charges` in this test is the spend.
-    const before = board({ animals, charges: 2, score: 4321, ladder: 6 });
+    const before = board({ animals, charges: ABILITY_CHARGE_CAP, score: 4321, ladder: 6 });
     const target = ABILITIES[id].target === 'animal' ? animals[0].id
       : ABILITIES[id].target === 'species' ? 'rat' : undefined;
     const after = reduce(before, use(id, target));
@@ -121,7 +172,10 @@ test('AC-1403 spending a charge leaves the score exactly where it was', () => {
     // purchases, and a deduction would make the leaderboard reward never using
     // the mechanic.
     assert.ok(after.score >= before.score, `${id} deducted score`);
-    assert.equal(after.charges, before.charges - 1, `${id} did not spend exactly one charge`);
+    assert.equal(
+      after.charges, before.charges - abilityCost(id),
+      `${id} did not spend exactly its ${abilityCost(id)}-charge price`,
+    );
   }
 });
 
@@ -198,7 +252,7 @@ test('AC-1405c the ladder PAUSES at the cap and the charge is never lost', () =>
   const rungs = ABILITY_THRESHOLDS.savanna;
   // Full, and holding a score past the next two rungs.
   const full = board({
-    animals: [animal('rat', 0, 0)],
+    animals: [animal('rat', 0, 0), animal('rat', 4, 0)],
     charges: ABILITY_CHARGE_CAP,
     score: rungs[2],
     ladder: 0,
@@ -213,12 +267,10 @@ test('AC-1405c the ladder PAUSES at the cap and the charge is never lost', () =>
   // cap still bounds the reserve. Two rungs were crossed while full; the
   // second is still owed and arrives at the next spend, which is the whole of
   // "the ladder pauses" rather than "the ladder forgets".
-  const spent = reduce(held, use('stampede'));
+  const target = full.animals[0].id;
+  const spent = reduce(held, use('burrow', target));
   assert.equal(spent.charges, ABILITY_CHARGE_CAP, 'the owed rung did not arrive');
   assert.equal(spent.ladder, 1, 'the ladder paid more than the freed slot');
-  const again = reduce(spent, use('stampede'));
-  assert.equal(again.charges, ABILITY_CHARGE_CAP);
-  assert.equal(again.ladder, 2, 'the second owed rung never arrived');
 });
 
 test('AC-1405d score keeps accumulating while saturated', () => {
@@ -250,7 +302,7 @@ test('AC-1405e a median run earns two charges and a p90 run earns four', () => {
 // ---- AC-1406 / AC-1406b · an ability IS the turn's action ----------------
 
 test('AC-1406 using an ability is the turn: one arrival, one advance', () => {
-  const state = board({ animals: [animal('rat', 0, 0)], charges: 1 });
+  const state = board({ animals: [animal('rat', 0, 0)], charges: ABILITY_CHARGE_CAP });
   const next = reduce(state, use('stampede'));
   assert.equal(next.turn, state.turn + 1, 'the turn did not advance exactly once');
   const arrival = eventOfType(next.lastTurn.events, 'ARRIVAL');
@@ -259,12 +311,16 @@ test('AC-1406 using an ability is the turn: one arrival, one advance', () => {
   assert.equal(next.lastTurn.action, ACTIONS.ABILITY);
 });
 
-test('AC-1406b three charges cannot be dumped: at most one per turn', () => {
-  let state = board({ animals: [animal('rat', 0, 0), animal('elk', 4, 0)], charges: 3 });
+test('AC-1406b/AC-1405i a full reserve is three turns of Burrow, never one turn', () => {
+  // The cheapest ability is the one that makes the point sharpest: three
+  // charges is three Burrows and therefore three TURNS, because an ability is
+  // the turn's action. There is no burst to prevent (AC-1406b).
+  let state = board({ animals: [animal('rat', 0, 0)], charges: ABILITY_CHARGE_CAP, ladder: 6 });
   const startTurn = state.turn;
   let spends = 0;
   for (let i = 0; i < 3 && state.status === STATUS.READY; i += 1) {
-    const next = reduce(state, use('stampede'));
+    const victim = state.animals.find((a) => a.type !== 'buffalo');
+    const next = reduce(state, use('burrow', victim.id));
     assert.notEqual(next.lastAction.type, 'REJECTED');
     assert.equal(next.turn, state.turn + 1, 'two abilities resolved in one turn');
     spends += 1;
@@ -272,6 +328,13 @@ test('AC-1406b three charges cannot be dumped: at most one per turn', () => {
   }
   assert.equal(spends, 3);
   assert.equal(state.turn - startTurn, 3, 'three charges cost fewer than three turns');
+
+  // ...and the same reserve buys exactly ONE Stampede, which is §13.2d's
+  // breadth-against-depth dial: taking the elephant costs you the other four.
+  const rich = board({ animals: [animal('rat', 0, 0), animal('elk', 4, 0)], charges: 3, ladder: 6 });
+  const once = reduce(rich, use('stampede'));
+  assert.equal(once.charges, 0, 'Stampede did not cost the whole reserve');
+  assert.equal(reduce(once, use('stampede')).lastAction.reason, ABILITY_NO_CHARGE);
 });
 
 // ---- AC-1407 · Dart -------------------------------------------------------
@@ -302,6 +365,34 @@ test('AC-1407 Dart is three moves inside one turn', () => {
       assert.equal(next.lastTurn.partial, false);
     }
     live = next;
+  }
+});
+
+test('AC-1408 the run record counts a Dart as an ability use', () => {
+  // It did not. Arming a Dart returned from `reduce()` before the fold, so the
+  // one ability that never reaches `commit()` was the one the record never
+  // counted — the run under-reported by exactly the number of Darts.
+  const animals = [animal('rat', 0, 0)];
+  const state = board({ animals, charges: ABILITY_CHARGE_CAP, ladder: 6 });
+  assert.equal(state.stats.abilitiesUsed, 0);
+
+  const armed = reduce(state, use('dart'));
+  assert.equal(armed.stats.abilitiesUsed, 1, 'arming a Dart was not counted');
+  assert.equal(runRecord(armed).abilitiesUsed, 1);
+
+  // ...and playing the Dart out does not count it a second time.
+  let live = armed;
+  for (const x of [5, 7, 2]) {
+    live = reduce(live, { type: ACTIONS.MOVE, id: animals[0].id, x });
+  }
+  assert.equal(live.stats.abilitiesUsed, 1, 'a Dart was counted once per move');
+
+  // Every other ability reaches `commit()` and is counted there, so all five
+  // agree — which is the point of folding them off the one event stream.
+  for (const [id, target] of [['burrow', animals[0].id], ['hold', undefined],
+    ['stampede', undefined], ['migrate', 'rat']]) {
+    const one = reduce(board({ animals, charges: ABILITY_CHARGE_CAP, ladder: 6 }), use(id, target));
+    assert.equal(one.stats.abilitiesUsed, 1, `${id} was not counted`);
   }
 });
 
@@ -351,7 +442,7 @@ test('AC-1408 a clear an ability caused scores like any other', () => {
     animal('rat', 5, 0), animal('rat', 6, 0), animal('rat', 7, 0), animal('rat', 8, 0),
     animal('elk', 0, 1),
   ];
-  const state = board({ animals, charges: 1 });
+  const state = board({ animals, charges: ABILITY_CHARGE_CAP });
   assert.equal(rowString(state.animals, 0), 'R.RRRRRRR');
   const next = reduce(state, use('stampede'));
   const steps = next.lastTurn.events.filter((e) => e.type === 'CLEAR_STEP');
@@ -434,25 +525,38 @@ test('AC-1409 a player who spends every charge still reaches game over', () => {
   // tools/bot.mjs freezes the instant it can afford to, which is the strongest
   // form of the attack the guarantee has to survive.
   const report = [];
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 1; seed <= 8; seed += 1) {
-      const run = playAbilityRun(seed, difficulty, 2000);
-      assert.equal(run.ended, true,
-        `${difficulty} seed ${seed} did not end within 2000 turns`);
-      assert.ok(run.spent > 0, `${difficulty} seed ${seed} never spent, so nothing was tested`);
-      report.push(run);
+  // THREE policies, because AC-1405h's pricing split them. A bot that spends
+  // the moment it holds a charge buys Burrow at 1 and never saves the 3 a
+  // Stampede costs — measured over 60 runs it took Stampede zero times, so one
+  // policy had silently stopped testing the strongest ability in the set.
+  for (const policy of ['value', 'freeze', 'stampede']) {
+    for (const difficulty of Object.keys(DIFFICULTIES)) {
+      for (let seed = 1; seed <= 6; seed += 1) {
+        const run = playAbilityRun(seed, difficulty, 2000, { policy });
+        assert.equal(run.ended, true,
+          `${difficulty} seed ${seed} (${policy}) did not end within 2000 turns`);
+        report.push({ ...run, policy });
+      }
     }
   }
-  const frozen = Math.max(...report.map((r) => r.frozenTurns));
+  // Per POLICY rather than per run: an individual seed can die before it can
+  // afford a 2- or 3-charge ability, and that is the economy working. What
+  // must not happen is a policy that never exercises the thing it exists for.
+  const spentBy = (p) => report.filter((r) => r.policy === p).reduce((n, r) => n + r.spent, 0);
+  for (const policy of ['value', 'freeze', 'stampede']) {
+    assert.ok(spentBy(policy) > 0, `the ${policy} policy never spent, so it tested nothing`);
+  }
+  const frozen = Math.max(...report.filter((r) => r.policy === 'freeze').map((r) => r.frozenTurns));
   const turns = Math.max(...report.map((r) => r.turns));
-  console.log(`  AC-1409: 24 spending runs, all ended. longest ${turns} turns, ` +
-    `most frozen turns in one run ${frozen}`);
+  console.log(`  AC-1409: ${report.length} spending runs across three policies, all ended. ` +
+    `longest ${turns} turns, most frozen turns in one run ${frozen}, ` +
+    `${spentBy('stampede')} Stampedes taken`);
 });
 
 // ---- AC-1410 · Hold the Line ---------------------------------------------
 
 test('AC-1410 Hold the Line suppresses three arrivals and holds the batch', () => {
-  const state = board({ animals: [animal('rat', 0, 0)], charges: 1 });
+  const state = board({ animals: [animal('rat', 0, 0)], charges: abilityCost('hold') });
   const promised = state.queue.map((a) => a.id);
 
   let live = reduce(state, use('hold'));
@@ -479,8 +583,33 @@ test('AC-1410 Hold the Line suppresses three arrivals and holds the batch', () =
   assert.deepEqual(arrival.placed.map((a) => a.id), promised);
 });
 
+test('AC-1410d a second Hold the Line resets the freeze rather than stacking', () => {
+  const first = reduce(
+    board({ animals: [animal('rat', 0, 0)], charges: abilityCost('hold'), ladder: 6 }),
+    use('hold'),
+  );
+  assert.equal(first.frozen, HOLD_TURNS - 1);
+
+  // The second Hold is dispatched against a board that is ALREADY frozen and
+  // can still afford it. Spending down from a single reserve cannot reach that
+  // — Hold costs 2 and the cap is 3 — and a fixture that could not afford the
+  // second call passed this test while the freeze stacked underneath it.
+  const stillFrozen = board({
+    animals: [animal('rat', 0, 0)],
+    charges: abilityCost('hold'),
+    frozen: HOLD_TURNS - 1,
+    ladder: 6,
+  });
+  assert.ok(stillFrozen.frozen > 0, 'the fixture is not frozen, so nothing is reset');
+  const second = reduce(stillFrozen, use('hold'));
+  // Reset to 3 and then spent down to 2 by this turn's own suppressed arrival
+  // — never 2 + 3. Stacking to six would be a far stronger play and would
+  // weaken AC-1409's self-limiting argument.
+  assert.equal(second.frozen, HOLD_TURNS - 1, 'the freeze stacked');
+});
+
 test('AC-1410 a frozen turn consumes no PRNG and mints no ids', () => {
-  const state = board({ animals: [animal('rat', 0, 0)], charges: 1 });
+  const state = board({ animals: [animal('rat', 0, 0)], charges: abilityCost('hold') });
   const frozenTurn = reduce(state, use('hold'));
   assert.equal(frozenTurn.rng, state.rng, 'a frozen turn advanced the spawner');
   assert.equal(frozenTurn.nextAnimalId, state.nextAnimalId, 'a frozen turn minted ids');
@@ -548,7 +677,7 @@ test('AC-1411 Stampede applies gravity after packing', () => {
   // Row 0 holds one rat far right; row 1 holds a fox and an elephant. Packing
   // puts the rat under the fox and leaves the elephant over nothing.
   const animals = [animal('rat', 8, 0), animal('fox', 0, 1), animal('elephant', 5, 1)];
-  const next = reduce(board({ animals, charges: 1, queue: [] }), use('stampede'));
+  const next = reduce(board({ animals, charges: 3, queue: [] }), use('stampede'));
   const elephant = next.animals.find((a) => a.type === 'elephant');
   assert.equal(elephant.y, 0, 'the elephant was left floating after the pack');
   assert.equal(next.animals.find((a) => a.type === 'fox').y, 1, 'the fox lost its support');
@@ -560,7 +689,7 @@ test('AC-1412 Migrate removes every animal of the species, and never buffalo', (
   const animals = [
     animal('elk', 0, 0), animal('rat', 3, 0), animal('elk', 4, 0), animal('buffalo', 0, 1),
   ];
-  const next = reduce(board({ animals, charges: 1, queue: [] }), use('migrate', 'elk'));
+  const next = reduce(board({ animals, charges: 2, queue: [] }), use('migrate', 'elk'));
   const act = next.lastTurn.events.find((e) => e.type === 'ACTION');
   assert.deepEqual(
     act.removedIds.slice().sort(),
@@ -575,7 +704,7 @@ test('AC-1412 Migrate removes every animal of the species, and never buffalo', (
   assert.equal(isMigratable('buffalo'), false);
   assert.ok(MIGRATE_SPECIES.every(isMigratable));
   assert.equal(
-    abilityFault(board({ animals, charges: 1 }), 'migrate', 'buffalo'),
+    abilityFault(board({ animals, charges: abilityCost('migrate') }), 'migrate', 'buffalo'),
     ABILITY_BAD_TARGET,
   );
 });

@@ -19,11 +19,13 @@
 import React, { memo, useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
+  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 
+import { pipAlpha, pipBloomTone } from '../abilities.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
 import { COLORS, COPY, MOTION, RADIUS, SPACE, TYPE } from '../theme.js';
 import { CHROME_FONT_CAP, useFocusRing } from './Controls.js';
@@ -39,33 +41,46 @@ const TOUCH = 44;
  * expresses state is asserted unconditionally; only a self-terminating
  * announcement may live in one arm of a conditional.
  */
-const Pip = memo(function Pip({ pip, bloom, reduced }) {
-  const rest = pip.filled ? 1 : pip.restAlpha * 0.55;
+const Pip = memo(function Pip({ pip, bloom, tone, reduced }) {
+  // `pipAlpha` is the WHOLE composition, and the component does no arithmetic
+  // on it. It used to multiply by 0.55 here, which quietly took the gold pip's
+  // specified 25% down to 13.75% while the test asserting the 25% passed.
+  const rest = pipAlpha(pip);
+  const restFill = pip.gold ? COLORS.lastStand : pip.filled ? COLORS.pip : COLORS.pipEmpty;
   const on = useSharedValue(rest);
+  // ui.md §13.1: the gold is the EVENT. It rides its own value so the pip can
+  // settle back to its ordinary fill afterwards — a grant is a moment, and
+  // moments are announced rather than stored.
+  const gold = useSharedValue(0);
 
   useEffect(() => {
     on.value = rest;
+    gold.value = 0;
     if (!bloom) return;
-    const dur = bloom.reason === 'lastStand' ? MOTION.lastStandBloom : MOTION.pipBloom;
+    const dur = tone === 'lastStand' ? MOTION.lastStandBloom : MOTION.pipBloom;
     on.value = 0;
     on.value = delay(bloom.at, withTiming(rest, timing(dur, EASE.out, reduced)));
-  }, [rest, bloom, reduced, on]);
+    if (tone !== 'lastStand') return;
+    gold.value = delay(
+      bloom.at,
+      sequence(
+        withTiming(1, timing(dur / 2, EASE.out, reduced)),
+        withTiming(0, timing(dur / 2, EASE.out, reduced)),
+      ),
+    );
+  }, [rest, bloom, tone, reduced, on, gold]);
 
-  const style = useAnimatedStyle(() => ({ opacity: on.value }));
-  return (
-    <Animated.View
-      style={[
-        styles.pip,
-        pip.gold ? styles.pipGold : pip.filled ? styles.pipOn : styles.pipOff,
-        style,
-      ]}
-    />
-  );
+  const style = useAnimatedStyle(() => ({
+    opacity: on.value,
+    backgroundColor: interpolateColor(gold.value, [0, 1], [restFill, COLORS.lastStand]),
+  }));
+  return <Animated.View style={[styles.pip, pip.gold && styles.pipRim, style]} />;
 });
 
 const ChargePips = memo(function ChargePips({ pips, grants, reduced }) {
-  // A grant fills the pip at the index it took the count to. Last Stand's
-  // always lands on the gold one, because it is the only grant that may.
+  // A grant fills the pip at the index it took the count to — WHICHEVER pip
+  // that is. Last Stand at 0 charges lands on pip 1, and the gold has to go
+  // with it: that player is the whole reason the grant exists.
   const bloomFor = (pip) => {
     if (!grants) return null;
     return grants.find((g) => g.charges - 1 === pip.index) || null;
@@ -73,7 +88,13 @@ const ChargePips = memo(function ChargePips({ pips, grants, reduced }) {
   return (
     <View style={styles.pips}>
       {pips.map((pip) => (
-        <Pip key={pip.index} pip={pip} bloom={bloomFor(pip)} reduced={reduced} />
+        <Pip
+          key={pip.index}
+          pip={pip}
+          bloom={bloomFor(pip)}
+          tone={pipBloomTone(pip, grants)}
+          reduced={reduced}
+        />
       ))}
     </View>
   );
@@ -88,7 +109,7 @@ const ChargePips = memo(function ChargePips({ pips, grants, reduced }) {
  * between turns, which is AC-413's principle in a different costume.
  */
 export const AbilityButton = memo(function AbilityButton({
-  button, grants, reduced, onPress, style,
+  button, grants, reduced, showLabel = true, onPress, style,
 }) {
   const ring = useFocusRing();
   const lastStand = grants ? grants.find((g) => g.reason === 'lastStand') : null;
@@ -116,13 +137,18 @@ export const AbilityButton = memo(function AbilityButton({
 
   return (
     <View style={style}>
-      <Animated.Text
-        maxFontSizeMultiplier={CHROME_FONT_CAP}
-        style={[styles.lastStand, labelStyle]}
-        pointerEvents="none"
-      >
-        {COPY.lastStand}
-      </Animated.Text>
+      {/* Rendered only while the beat is playing. It used to sit in the tree
+          permanently at opacity 0, which a screen reader announces at all
+          times — a run-ending warning read out on a board that is fine. */}
+      {lastStand ? (
+        <Animated.Text
+          maxFontSizeMultiplier={CHROME_FONT_CAP}
+          style={[styles.lastStand, labelStyle]}
+          pointerEvents="none"
+        >
+          {COPY.lastStand}
+        </Animated.Text>
+      ) : null}
       <Pressable
         testID="abilities"
         onPress={onPress}
@@ -131,6 +157,7 @@ export const AbilityButton = memo(function AbilityButton({
         accessibilityRole="button"
         accessibilityLabel={`Abilities, ${button.charges} charges`}
         accessibilityState={{ disabled: button.muted }}
+        aria-disabled={button.muted}
         hitSlop={8}
         style={({ pressed }) => [
           styles.button,
@@ -142,9 +169,10 @@ export const AbilityButton = memo(function AbilityButton({
         <Animated.View style={[styles.pulse, pulseStyle]} pointerEvents="none" />
         <Text
           maxFontSizeMultiplier={CHROME_FONT_CAP}
+          numberOfLines={1}
           style={[TYPE.button, styles.label, button.muted && styles.labelMuted]}
         >
-          {COPY.abilities}
+          {showLabel ? COPY.abilities : COPY.abilitiesGlyph}
         </Text>
         <ChargePips pips={button.pips} grants={grants} reduced={reduced} />
       </Pressable>
@@ -194,7 +222,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACE.sm,
-    paddingHorizontal: SPACE.md,
+    paddingHorizontal: SPACE.sm,
     borderRadius: RADIUS.button,
     backgroundColor: COLORS.panel,
     borderWidth: 1,
@@ -232,13 +260,8 @@ const styles = StyleSheet.create({
   },
   pips: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pip: { width: 7, height: 7, borderRadius: RADIUS.pill },
-  pipOn: { backgroundColor: COLORS.pip },
-  pipOff: { backgroundColor: COLORS.pipEmpty },
-  pipGold: {
-    backgroundColor: COLORS.lastStand,
-    borderWidth: 1,
-    borderColor: COLORS.lastStand,
-  },
+  /** The fourth SLOT keeps its rim: it is still reachable only by overflow. */
+  pipRim: { borderWidth: 1, borderColor: COLORS.lastStand },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

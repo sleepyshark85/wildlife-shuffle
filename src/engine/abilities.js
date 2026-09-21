@@ -26,24 +26,46 @@ export const HOLD_TURNS = 3;
  *
  * `target` says what the caller must supply: an animal id, a species, or
  * nothing. `scope` is the ordinal described above.
+ *
+ * `cost` is AC-1405h, and it is a CONSTANT PER ABILITY and not a function of
+ * `scope` — deliberately, and the temptation to derive it is the thing to
+ * resist. Scope follows size; price follows measured value (§13.2d), and the
+ * two ladders do not agree: Hold the Line has the largest scope in the set and
+ * the smallest measured effect on score, because it buys turns rather than
+ * points. Deriving cost from size would charge the most for it.
+ *
+ * These are in `TUNING_SURFACE` (src/ui/session.js) by virtue of being fields
+ * of this object, so a reprice discards every resume written before it — which
+ * it must, because the same moves would otherwise replay into a different
+ * charge count.
  */
 export const ABILITIES = Object.freeze({
   burrow: Object.freeze({
-    id: 'burrow', species: 'rat', scope: 1, target: 'animal',
+    id: 'burrow', species: 'rat', scope: 1, cost: 1, target: 'animal',
   }),
   dart: Object.freeze({
-    id: 'dart', species: 'fox', scope: 2, target: null,
+    id: 'dart', species: 'fox', scope: 2, cost: 1, target: null,
   }),
   migrate: Object.freeze({
-    id: 'migrate', species: 'elk', scope: 3, target: 'species',
+    id: 'migrate', species: 'elk', scope: 3, cost: 2, target: 'species',
   }),
   stampede: Object.freeze({
-    id: 'stampede', species: 'elephant', scope: 4, target: null,
+    id: 'stampede', species: 'elephant', scope: 4, cost: 3, target: null,
   }),
   hold: Object.freeze({
-    id: 'hold', species: 'buffalo', scope: 5, target: null,
+    id: 'hold', species: 'buffalo', scope: 5, cost: 2, target: null,
   }),
 });
+
+/** What this ability costs in charges (AC-1405h). One lookup, no arithmetic. */
+export function abilityCost(ability) {
+  return ABILITIES[ability] ? ABILITIES[ability].cost : 0;
+}
+
+/** The cheapest thing in the set: below this, nothing at all is affordable. */
+export const MIN_ABILITY_COST = Math.min(
+  ...Object.values(ABILITIES).map((a) => a.cost),
+);
 
 /** In scope order, which is species-size order. The sheet renders this list. */
 export const ABILITY_IDS = Object.freeze(
@@ -141,10 +163,14 @@ export function abilityFault(state, ability, target) {
   if (!Object.prototype.hasOwnProperty.call(ABILITIES, ability)) return ABILITY_UNKNOWN;
   if (!state.abilities) return ABILITY_DISABLED;
   if (state.dart > 0) return ABILITY_DART_ACTIVE;
-  if (state.charges <= 0) return ABILITY_NO_CHARGE;
+  // AC-1405h: the price is per ability, so "can I afford this" is now a real
+  // question at the sheet rather than one answer for all five rows.
+  if (state.charges < ABILITIES[ability].cost) return ABILITY_NO_CHARGE;
   const spec = ABILITIES[ability];
-  if (spec.target === 'animal' && !state.animals.some((a) => a.id === target)) {
-    return ABILITY_BAD_TARGET;
+  if (spec.target === 'animal') {
+    const animal = state.animals.find((a) => a.id === target);
+    // AC-1412b: the buffalo is not removable by any ability, Burrow included.
+    if (!animal || !isAbilityRemovable(animal.type)) return ABILITY_BAD_TARGET;
   }
   if (spec.target === 'species') {
     if (!MIGRATE_SPECIES.includes(target)) return ABILITY_BAD_TARGET;
@@ -207,5 +233,19 @@ export function abilitySpecies(ability) {
 
 /** Buffalo is never a Migrate target, and this is the executable form of it. */
 export function isMigratable(type) {
-  return type !== BUFFALO && MIGRATE_SPECIES.includes(type);
+  return isAbilityRemovable(type) && MIGRATE_SPECIES.includes(type);
+}
+
+/**
+ * AC-1412b — no ability removes the buffalo, and the rule is per-OBJECT.
+ *
+ * AC-1412 wrote it as a property of Migrate, so Burrow shipped able to delete
+ * a size-5 buffalo for one rat charge — five clears' worth of work, and the
+ * obstacle the whole of §6.4 is built around. The buffalo is a different KIND
+ * of thing: it refuses to clear, it shrinks rather than leaving, and nothing
+ * in the game removes it in one move. This is that, stated once, for every
+ * ability that removes anything.
+ */
+export function isAbilityRemovable(type) {
+  return type !== BUFFALO;
 }

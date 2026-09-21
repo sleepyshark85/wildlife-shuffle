@@ -2,6 +2,7 @@
 // negotiable and are not re-derived anywhere else.
 
 import { SCORE } from '../engine/constants.js';
+import { HOLD_TURNS } from '../engine/abilities.js';
 
 export const COLORS = Object.freeze({
   bg: '#0D141B',
@@ -365,9 +366,17 @@ export const COPY = Object.freeze({
   // ui.md §13. The count of pips is the whole status, so the button needs no
   // label beyond its name.
   abilities: '\u26A1 ABILITIES',
+  /** The same control where the bar is too narrow for the word (layout.js). */
+  abilitiesGlyph: '\u26A1',
   abilitiesTitle: 'Abilities',
   cancel: 'Cancel',
   lastStand: 'LAST STAND',
-  /** The ability's own announcement, which is the only place 3 is truthful. */
-  holdAnnounce: 'HOLD THE LINE \u00B7 3',
+  /**
+   * AC-1410c. The announce says what was BOUGHT and the tray's counter says
+   * what is LEFT, and they are in different units on purpose: `HOLD THE LINE ·
+   * 3 TURNS` beside `FROZEN · 2` cannot be read as an off-by-one, where "3"
+   * beside "2" in the same unit certainly could. The 3 is derived from
+   * HOLD_TURNS so the copy cannot drift from the rule.
+   */
+  holdAnnounce: `HOLD THE LINE \u00B7 ${HOLD_TURNS} TURNS`,
 });
