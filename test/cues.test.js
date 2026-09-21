@@ -27,7 +27,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ACTIONS, createRun } from '../src/engine/engine.js';
-import { BOARD } from '../src/engine/constants.js';
+import { BOARD, DIFFICULTIES, STATUS } from '../src/engine/constants.js';
 import {
   AUDIO_MODE,
   CHAIN_SEMITONE,
@@ -660,6 +660,121 @@ test('coalesceCues merges a burst of one kind and never merges two kinds', () =>
     Array.from({ length: 10 }, (_, i) => ({ at: i * 40, cue: 'land', rate: 1 })),
   );
   assert.deepEqual(drizzle.map((c) => c.at), [0, 80, 160, 240, 320]);
+});
+
+/**
+ * THE gap that let the Slice 5 crash through, closed from the other side.
+ *
+ * `cues.js` imports nothing so the cue rules can be evaluated in Node — but the
+ * worklet that CONSUMES them lives in `useTurnCues.js`, which imports
+ * Reanimated, so nothing exercised the loop that actually runs on the UI
+ * thread. That loop indexes `schedule[i]` for every `i` the cursor crosses, and
+ * `schedule[i].cue` on an out-of-range index is a TypeError thrown inside the
+ * display-link callback — which is an `abort()`, not a red box.
+ *
+ * So this drives the exact cursor walk `useTurnCues` performs, against every
+ * schedule shape a real turn can actually produce, and asserts the index is
+ * always in range. The worklet's three lines are restated here rather than
+ * imported because importing them would import Reanimated; the hygiene test
+ * `AC-1101 the cue schedule is walked the same way in both places` keeps this
+ * copy and that one identical.
+ */
+function walkLikeTheWorklet(schedule, times) {
+  const fired = [];
+  let cursor = 0;
+  for (const t of times) {
+    const next = dueCount(schedule, cursor, t);
+    assert.ok(Number.isInteger(next), `dueCount returned ${next}`);
+    assert.ok(next >= cursor, `the cursor went backwards: ${cursor} -> ${next}`);
+    assert.ok(
+      next <= schedule.length,
+      `the cursor ran past the end: ${next} > ${schedule.length}`,
+    );
+    if (next === cursor) continue;
+    for (let i = cursor; i < next; i += 1) {
+      const cue = schedule[i];
+      // This is the line that aborts the process if the bound is ever wrong.
+      assert.ok(cue !== undefined, `schedule[${i}] is undefined of ${schedule.length}`);
+      assert.equal(typeof cue.cue, 'string', `schedule[${i}].cue is not a cue id`);
+      assert.ok(Number.isFinite(cue.rate) && cue.rate > 0, `schedule[${i}].rate is ${cue.rate}`);
+      fired.push(cue);
+    }
+    cursor = next;
+  }
+  return { fired, cursor };
+}
+
+test('AC-1101 the cursor stays in range on every schedule a real turn produces', () => {
+  // Real plans, from real runs, rather than schedules invented to be easy: a
+  // bot over three habitats and twelve seeds, plus the hand-built shapes whose
+  // schedules the fixtures above already exercise.
+  const schedules = [];
+  for (const difficulty of Object.keys(DIFFICULTIES)) {
+    for (let s = 0; s < 12; s += 1) {
+      let state = createRun({ seed: `cursor-${s}`, difficulty });
+      for (let turn = 0; turn < 40 && state.status === STATUS.READY; turn += 1) {
+        state = runReducer(state, { type: ACTIONS.PASS });
+        if (state.plan) schedules.push(state.plan.cues);
+      }
+    }
+  }
+  schedules.push(turnOn(cascadeBoard()).plan.cues);                      // a cascade
+  schedules.push(turnOn(fullRow(0)).plan.cues);                          // a perfect clear
+  schedules.push(turnOn([animal('rat', 0, 0)]).plan.cues);               // a quiet turn
+  schedules.push(                                                        // game over, at t=0
+    turnOn(Array.from({ length: BOARD.killLine + 1 }, (_, y) => animal('rat', 0, y))).plan.cues,
+  );
+  schedules.push([]);                                                    // nothing to play
+
+  assert.ok(schedules.length > 200, `only ${schedules.length} schedules — the sweep stopped sweeping`);
+  const longest = Math.max(...schedules.map((c) => c.length));
+  assert.ok(longest >= 3, `the deepest schedule is ${longest}; the sweep is not reaching a cascade`);
+
+  let walked = 0;
+  for (const schedule of schedules) {
+    const end = schedule.length ? schedule[schedule.length - 1].at : 0;
+    // Every sampling shape a display link can deliver: every frame, a dropped
+    // frame, a long stall, and one that overshoots the end of the clock.
+    for (const stride of [1, 16, 17, 33, 100, 400, 2000]) {
+      const times = [];
+      for (let t = 0; t < end + stride; t += stride) times.push(t);
+      times.push(end);            // withTiming always delivers its end value
+      const { fired, cursor } = walkLikeTheWorklet(schedule, times);
+      assert.equal(fired.length, schedule.length, `stride ${stride}: fired ${fired.length}`);
+      assert.equal(cursor, schedule.length);
+      walked += 1;
+    }
+  }
+  assert.ok(walked > 1400, `only ${walked} walks`);
+});
+
+test('AC-1101 the cursor survives the states a re-registered reaction can leave it in', () => {
+  // `useTurnCues` keeps the cursor in a shared value and the schedule in the
+  // worklet's captured closure. The two are written from different places, so
+  // the question is not "does the happy path work" but "is there a pairing of
+  // the two that indexes out of range". There is not, and these are the ones
+  // that would.
+  const schedule = [
+    { at: 0, cue: 'gameOver', rate: 1 },
+    { at: 280, cue: 'clear', rate: 1 },
+    { at: 930, cue: 'chain', rate: 1.0594630943592953 },
+  ];
+
+  // A cursor left behind by a LONGER previous turn, against a shorter schedule.
+  for (const cursor of [3, 4, 99]) {
+    const next = dueCount(schedule, cursor, 99999);
+    assert.equal(next, cursor, 'a stale cursor must not move, so nothing is indexed');
+  }
+  // A cursor mid-way, against an EMPTY schedule — the shape a plan-less turn
+  // leaves when the reaction has re-registered but the clock has not stopped.
+  assert.equal(dueCount([], 2, 99999), 2);
+  assert.equal(dueCount([], 0, 99999), 0);
+  // The clock running backwards, which is what `ms.value = 0` looks like on the
+  // frame a new turn starts.
+  assert.equal(dueCount(schedule, 0, -1), 0);
+  // ...and the ordinary case still advances, so the guards above are not
+  // passing by refusing everything.
+  assert.equal(dueCount(schedule, 0, 930), 3);
 });
 
 test('dueCount fires every cue exactly once and in order, however the clock is sampled', () => {
