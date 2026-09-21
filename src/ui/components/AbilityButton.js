@@ -26,6 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { pipAlpha, pipBloomTone } from '../abilities.js';
+import { plural } from '../format.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
 import { COLORS, COPY, MOTION, RADIUS, SPACE, TYPE } from '../theme.js';
 import { CHROME_FONT_CAP, useFocusRing } from './Controls.js';
@@ -155,7 +156,7 @@ export const AbilityButton = memo(function AbilityButton({
         onFocus={ring.onFocus}
         onBlur={ring.onBlur}
         accessibilityRole="button"
-        accessibilityLabel={`Abilities, ${button.charges} charges`}
+        accessibilityLabel={`Abilities, ${plural(button.charges, 'charge')}`}
         accessibilityState={{ disabled: button.muted }}
         aria-disabled={button.muted}
         hitSlop={8}

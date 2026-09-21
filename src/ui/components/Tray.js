@@ -35,6 +35,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { SPECIES } from '../../engine/constants.js';
+import { plural, trayLabel } from '../format.js';
 import { traySilhouettes, trayMetrics } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
 import { frozenLabel, trayStripOpacity } from '../abilities.js';
@@ -46,7 +47,9 @@ import { COLORS, COPY, MOTION, RADIUS, SILHOUETTE, TYPE } from '../theme.js';
  * about flavour, and taking it away from the one audience that cannot see the
  * strip at all would be removing information rather than withholding
  * decoration. Recorded because AC-902 and AC-315 now describe different
- * amounts of detail, and that is on purpose.
+ * amounts of detail, and that is on purpose. The label itself is built in
+ * `src/ui/format.js`, which imports nothing, so what VoiceOver hears is a value
+ * `node --test` can read rather than one only a phone can (§6.7).
  *
  * The tray's label row is 14 pt at full chrome and 10 at compact, so its 10 pt
  * labels can grow by about a third before the row cannot hold them (AC-910c).
@@ -120,7 +123,7 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
           maxFontSizeMultiplier={TRAY_FONT_CAP}
           style={[TYPE.label, frozenText ? styles.frozenLabel : null]}
         >
-          {frozenText || `${cells} CELLS`}
+          {frozenText || plural(cells, 'CELL', 'CELLS')}
         </Text>
       </View>
       <Animated.View
@@ -151,18 +154,6 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
       <HazardRule width={boardW} height={ruleH} />
     </View>
   );
-}
-
-function trayLabel(queue, cells, frozen) {
-  if (frozen > 0) {
-    return `Nothing arrives for ${frozen} more ${frozen === 1 ? 'turn' : 'turns'}.`;
-  }
-  if (queue.length === 0) return 'Next arrival: nothing queued.';
-  const parts = queue.map((a) => {
-    const where = a.size === 1 ? `column ${a.x + 1}` : `columns ${a.x + 1} to ${a.x + a.size}`;
-    return `${a.type} at ${where}`;
-  });
-  return `Next arrival: ${parts.join(', ')}. ${cells} cells.`;
 }
 
 const styles = StyleSheet.create({

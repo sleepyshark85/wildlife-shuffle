@@ -22,7 +22,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { DIFFICULTIES } from '../../engine/constants.js';
 import { COLORS, SPACE, TYPE } from '../theme.js';
-import { formatDay, formatScore } from '../format.js';
+import { formatDay, formatScore, plural } from '../format.js';
 import { useProgress } from '../progressStore.js';
 import { Card, FullScreen, Line } from './FullScreen.js';
 
@@ -31,7 +31,7 @@ function RunRow({ run }) {
   return (
     <Line
       caption={`${habitat} · ${formatDay(run.day)}`}
-      value={`${formatScore(run.score)} · ${run.turns} turns`}
+      value={`${formatScore(run.score)} · ${plural(run.turns, 'turn')}`}
     />
   );
 }
@@ -55,7 +55,7 @@ export function RecordsScreen({ onBack }) {
         <Card key={id} title={DIFFICULTIES[id].label}>
           <Line caption="Best score" value={formatScore(best[id].score)} />
           <Line caption="Best chain" value={best[id].chain} />
-          <Line caption="Longest run" value={`${best[id].turns} turns`} />
+          <Line caption="Longest run" value={plural(best[id].turns, 'turn')} />
           <Line caption="Most rows" value={best[id].rows} />
         </Card>
       ))}

@@ -40,6 +40,16 @@ export const WIDE_BREAKPOINT = 600;
 export const RAIL_MIN = 96;
 
 /**
+ * The rail card's horizontal padding, on each side (GameScreen's `rail` style).
+ *
+ * It lives here rather than only in the stylesheet because the rail's CONTENT
+ * width — what its controls actually have to fit inside — is `railW` minus two
+ * of these, and `railSlots` below is the thing that has to know it. The style
+ * reads this constant, so there is one number rather than two that agree.
+ */
+export const RAIL_PAD = 12;
+
+/**
  * Chrome budgets, in points of vertical space consumed outside the board.
  * ui.md §3.2: full 163, compact 134, rail 63.
  *
@@ -254,6 +264,37 @@ export function actionBarSlots(screenW) {
     abilityW,
     passW: Math.max(MIN_TOUCH, passFor(statusW, showAbilityLabel ? ABILITY_LABEL_W : 0)),
     gap: ACTION_GAP,
+  };
+}
+
+/**
+ * Stage W's action bar — the same three controls, stacked in the rail.
+ *
+ * SEPARATE FROM `actionBarSlots` BECAUSE THE ARITHMETIC IS DIFFERENT, not
+ * because the rules are. The horizontal bar shares one row between three
+ * controls and subtracts the gaps between them; the rail gives each control the
+ * full content width of a padded card and stacks them. One function pretending
+ * to be both would be the two disagreeing cell formulas of v1 in miniature.
+ *
+ * WHY IT EXISTS. The rail used to pass `showLabel` unconditionally, on the
+ * assumption that a rail is wide — and at the Duo's unfolded width the rail is
+ * 158 pt, which is 134 pt of content against the 156 pt the word needs. The
+ * button rendered `⚡ ABIL…` (Slice 6, `duo-unfolded-01-skyline.png`). ui.md
+ * §13 already specifies the glyph-only variant "where the bar is too narrow for
+ * the word"; nothing was measuring, so nothing chose it. AC-126's rule is that
+ * the ladder derives from the width it is given, and a rail is a width.
+ *
+ * The turn-state line is NOT given a drop here, and that is deliberate: AC-121
+ * requires the rail to carry the same components as the narrow layout with
+ * "no element added or removed", and the sweep in `test/abilities-ui.test.js`
+ * shows `STATUS_W` fits in the narrowest rail the ladder can produce. A branch
+ * that can never be taken is untested code, so there is none.
+ */
+export function railSlots(railW) {
+  const content = Math.max(0, railW - RAIL_PAD * 2);
+  return {
+    content,
+    showAbilityLabel: content >= ABILITY_W + ABILITY_LABEL_W,
   };
 }
 

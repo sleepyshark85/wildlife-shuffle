@@ -3,6 +3,9 @@
 
 import { SCORE } from '../engine/constants.js';
 import { HOLD_TURNS } from '../engine/abilities.js';
+// The one place a count is made to agree with its noun (src/ui/format.js).
+// It imports nothing, so this stays a leaf that Node can load.
+import { plural } from './format.js';
 
 export const COLORS = Object.freeze({
   bg: '#0D141B',
@@ -378,5 +381,5 @@ export const COPY = Object.freeze({
    * beside "2" in the same unit certainly could. The 3 is derived from
    * HOLD_TURNS so the copy cannot drift from the rule.
    */
-  holdAnnounce: `HOLD THE LINE \u00B7 ${HOLD_TURNS} TURNS`,
+  holdAnnounce: `HOLD THE LINE \u00B7 ${plural(HOLD_TURNS, 'TURN', 'TURNS')}`,
 });

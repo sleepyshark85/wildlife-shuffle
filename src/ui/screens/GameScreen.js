@@ -24,7 +24,9 @@ import { needsTarget, targetOf, targetingChip, turnStatus } from '../abilities.j
 import { BEAT } from '../onboarding.js';
 import { CUE } from '../cues.js';
 import { fireCue } from '../cuePlayer.js';
-import { STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap } from '../layout.js';
+import {
+  RAIL_PAD, STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap,
+} from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
 import { useProgress, useAnnouncements } from '../progressStore.js';
 import { useSettings } from '../settings.js';
@@ -517,7 +519,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACE.lg,
     paddingVertical: SPACE.xl,
-    paddingHorizontal: SPACE.md,
+    // The rail's content width is what its controls have to fit in, and
+    // `railSlots` is what reads it, so the padding is ITS constant (AC-126).
+    paddingHorizontal: RAIL_PAD,
     backgroundColor: COLORS.panel,
     borderRadius: RADIUS.card,
     borderWidth: 1,
