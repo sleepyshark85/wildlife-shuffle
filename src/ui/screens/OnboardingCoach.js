@@ -16,7 +16,14 @@
 // Pause button — and Pause is where Settings lives, so a player who needed
 // Reduce Motion could not reach it during the four beats that are their first
 // four minutes with the game. What the card covers instead is the top of the
-// board, which on every beat board is the empty danger band.
+// board, which on every beat board is empty.
+//
+// This used to say "the empty DANGER BAND", and that was wrong: the band plus
+// the ceiling row is four rows, and `docs/v2/layout-sweep.mjs` measures the
+// card at 4.85 rows on a Pro Max, 6.47 on a 393x852 and 9.79 on an SE — over
+// the band on every iPhone in the table and inside it only on an iPad. It
+// costs nothing, because every beat board's top occupied row is y=1 and the
+// card never reaches row 13, but the sweep asserts THAT rather than the band.
 //
 // Two states per beat. Before the gate fires the card asks for the action;
 // after it fires the card confirms and waits for a tap. The wait is the point:
@@ -46,7 +53,10 @@ export function OnboardingCoach({ beat, satisfied, onNext, onSkip, top }) {
   const step = beatIndex(beat.id);
   const last = step === BEATS.length - 1;
   return (
-    <View style={[styles.frame, { paddingTop: top + SPACE.sm }]} testID="onboarding">
+    <View
+      style={[StyleSheet.absoluteFill, styles.frame, { paddingTop: top + SPACE.sm }]}
+      testID="onboarding"
+    >
       <View style={styles.card}>
         <View style={styles.head}>
           <Text style={theme.type.label} testID="onboarding-step">
@@ -84,8 +94,18 @@ export function OnboardingCoach({ beat, satisfied, onNext, onSkip, top }) {
 }
 
 const STYLES = themed((T) => StyleSheet.create({
+  // The fill comes from `StyleSheet.absoluteFill` AT THE CALL SITE, as an
+  // element of the style array, and never by spreading it into this object.
+  // `StyleSheet.absoluteFillObject` — which this used to spread — does not
+  // exist in react-native 0.86; only `react-native-web` still ships it. So
+  // `{...StyleSheet.absoluteFillObject}` spread `undefined` on the device,
+  // silently, and this frame laid out as the LAST FLEX CHILD of the Game
+  // screen's column instead of as an overlay: it took ~300 pt out of the
+  // board's flex slot, the board overflowed its centred container in both
+  // directions, and the card landed at the bottom of the screen under a tray
+  // that was under the action bar. Spreading `absoluteFill` is not the fix
+  // either — on web it is a compiled class handle, not a plain object.
   frame: {
-    ...StyleSheet.absoluteFillObject,
     paddingHorizontal: SPACE.lg,
     // The board keeps the touches. Only the card itself takes them.
     pointerEvents: 'box-none',

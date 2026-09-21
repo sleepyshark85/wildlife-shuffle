@@ -170,7 +170,8 @@ function OriginRecess({ cell, drag, highContrast }) {
     >
       <Animated.View
         style={[
-          { ...StyleSheet.absoluteFillObject, opacity: recess.tintAlpha },
+          StyleSheet.absoluteFill,
+          { opacity: recess.tintAlpha },
           tint,
         ]}
       />

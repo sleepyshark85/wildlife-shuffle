@@ -12,6 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { CUE_IDS, HAPTIC_IDS } from '../src/ui/cues.js';
 import { ORDER } from '../src/ui/stacking.js';
 
+// Reading react-native's own Flow source is the only way to ask what
+// react-native exports without a Metro bundle. §6.9: compile it and look.
+import { parse } from '@babel/parser';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function walk(dir, out = []) {
@@ -166,6 +170,117 @@ function inert(body) {
  * test below asserts separately.
  */
 const STATIC_TRANSFORMS = new Set(['src/ui/components/NaturalGround.js']);
+
+/**
+ * §6.9, in structural form: the app may use only the react-native APIs that
+ * react-native actually exports.
+ *
+ * `StyleSheet.absoluteFillObject` is exported by `react-native-web` and is NOT
+ * exported by `react-native` 0.86, which ships `absoluteFill` alone. So
+ * `{...StyleSheet.absoluteFillObject}` is `{...undefined}` on a device: legal
+ * JavaScript that spreads nothing, throws nothing, warns nothing, and leaves
+ * the style object it was spread into with no `position`, no `top` and no
+ * `bottom`. It shipped in two files.
+ *
+ * In `OnboardingCoach.js` it cost the caption frame its `position: 'absolute'`,
+ * so the frame laid out as the LAST FLEX CHILD of the Game screen's column
+ * instead of as an overlay. It took ~300 pt out of the board's flex slot; the
+ * board overflowed its centred container in BOTH directions, over the HUD and
+ * the status bar above and over the action bar below; and the card sat at the
+ * bottom of the screen under a tray that was under the action bar. That is the
+ * whole of the owner's "the tutorial screen is not in a good shape".
+ *
+ * 475 tests and every browser run passed, because on web the property is there.
+ * This is AC-828's Remote Function again — a property that holds only on a
+ * platform our tiers cannot execute — so it is audited STRUCTURALLY, against
+ * the member list read out of the installed react-native, rather than tested.
+ */
+const RN_STYLESHEET_EXPORTS = path.join(
+  ROOT, 'node_modules/react-native/Libraries/StyleSheet/StyleSheetExports.js',
+);
+
+/** The members `react-native` — not `react-native-web` — puts on StyleSheet. */
+function nativeStyleSheetMembers() {
+  const ast = parse(read(RN_STYLESHEET_EXPORTS), {
+    sourceType: 'module',
+    plugins: ['flow', 'classProperties'],
+  });
+  const names = new Set();
+  for (const node of ast.program.body) {
+    if (node.type !== 'ExportDefaultDeclaration') continue;
+    if (node.declaration.type !== 'ObjectExpression') continue;
+    for (const prop of node.declaration.properties) {
+      if (prop.key && prop.key.name) names.add(prop.key.name);
+    }
+  }
+  // §6.2: a check that cannot fail is not a check. If the export list could not
+  // be read, every member is "missing" and the assertion below would pass
+  // vacuously for an empty usage set — so refuse to run instead.
+  assert.ok(
+    names.has('create') && names.has('flatten') && names.size >= 4,
+    `could not read react-native's StyleSheet members from ${RN_STYLESHEET_EXPORTS}; `
+      + `got ${names.size}: ${[...names].join(', ')}`,
+  );
+  return names;
+}
+
+/** Every `StyleSheet.<member>` read in a file, with the spreads marked. */
+function styleSheetMembersUsed(body) {
+  const out = [];
+  for (const m of body.matchAll(/(\.\.\.\s*)?\bStyleSheet\.([A-Za-z_$][\w$]*)/g)) {
+    out.push({ member: m[2], spread: Boolean(m[1]) });
+  }
+  return out;
+}
+
+test('AC-1302 every StyleSheet member the app uses exists in react-native', () => {
+  const native = nativeStyleSheetMembers();
+  const missing = [];
+  for (const file of SRC) {
+    for (const { member } of styleSheetMembersUsed(code(file))) {
+      if (!native.has(member)) missing.push(`${path.relative(ROOT, file)}: StyleSheet.${member}`);
+    }
+  }
+  assert.deepEqual(
+    missing, [],
+    'these exist in react-native-web and not in react-native, so they are '
+      + `undefined on a device:\n  ${missing.join('\n  ')}\n`
+      + `react-native exports: ${[...native].sort().join(', ')}`,
+  );
+});
+
+test('AC-1302 the StyleSheet audit fires on the member that shipped', () => {
+  // The exact line that was in OnboardingCoach.js, and the exact line that was
+  // in Board.js. Both must be flagged against the REAL export list.
+  const native = nativeStyleSheetMembers();
+  const planted = [
+    '    ...StyleSheet.absoluteFillObject,',
+    '  style={[{ ...StyleSheet.absoluteFillObject, opacity: a }, tint]}',
+  ].join('\n');
+  const caught = styleSheetMembersUsed(planted).filter((u) => !native.has(u.member));
+  assert.equal(caught.length, 2, 'the audit did not flag absoluteFillObject');
+  // And it must not flag the thing the fix uses.
+  assert.equal(
+    styleSheetMembersUsed('[StyleSheet.absoluteFill, styles.frame]')
+      .filter((u) => !native.has(u.member)).length,
+    0,
+    'the audit flags absoluteFill, which react-native does export',
+  );
+});
+
+test('AC-1302 no StyleSheet member is ever object-spread', () => {
+  // `StyleSheet.absoluteFill` is a plain object in react-native and a COMPILED
+  // CLASS HANDLE (`{$$css: true, ...}`) in react-native-web. Spreading it is
+  // correct on at most one of the two platforms, and which one is not visible
+  // from the call site. It composes in a style ARRAY on both.
+  const offenders = [];
+  for (const file of SRC) {
+    for (const { member, spread } of styleSheetMembersUsed(code(file))) {
+      if (spread) offenders.push(`${path.relative(ROOT, file)}: {...StyleSheet.${member}}`);
+    }
+  }
+  assert.deepEqual(offenders, [], `spread StyleSheet members:\n  ${offenders.join('\n  ')}`);
+});
 
 test('AC-828 a transform may read a variable only inside a worklet', () => {
   for (const file of SRC) {
