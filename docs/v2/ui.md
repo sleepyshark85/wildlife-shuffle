@@ -1198,10 +1198,19 @@ the action bar beside Pass — **no new chrome, no board cost.**
 
 - Two buttons, 150 pt each, 44 pt tall, 12 pt gap — both above the 44 pt target.
 - **Charge pips** on the abilities button: **4 dots** — three for the banked cap and a fourth,
-  gold-rimmed, that only ever fills from Last Stand (`gameplay.md` §13.2b). The count is the
-  whole status, so it needs no label. The fourth pip sits at 25% opacity while empty, so the
-  reserve reads as "three, plus one you have not earned" rather than as a four-slot bar the
-  player is failing to fill.
+  gold-rimmed, reachable only by Last Stand overflow (`gameplay.md` §13.2b). The fourth sits at
+  25% opacity while empty, so the reserve reads as "three, plus one you have not earned"
+  rather than as a four-slot bar the player is failing to fill.
+
+- **The gold marks the Last Stand *event*, not a slot.** My earlier wording described the
+  fourth pip as "the Last Stand pip", which conflated the two — and the consequence was that a
+  player at **0 charges**, the AC-1408e player and the entire reason Last Stand exists, saw the
+  grant land on **pip 1** and look exactly like an ordinary ladder charge. The gold appeared
+  only when Last Stand *overflowed* a full reserve, which is the one case that does not need
+  it. So: **whichever pip Last Stand fills blooms gold for the 400 ms of the announce, then
+  settles to the ordinary fill.** Both statements stay true — the fourth *slot* is reachable
+  only by Last Stand, and the *event* is marked wherever it lands. Once banked, a charge is a
+  charge; a grant is a moment, and moments are announced rather than stored.
 - At **zero charges** the button is disabled but **still visible** — layout must not reflow
   (the AC-413 principle). The turn-state text (`YOUR MOVE`) moves into the HUD's spare
   right-hand column, where the pause control already sits.
@@ -1209,8 +1218,13 @@ the action bar beside Pass — **no new chrome, no board cost.**
 ### 13.2 The ability sheet
 
 Tapping opens a bottom sheet (22 pt top radius, the standard treatment): five rows, each a
-species chip at its §4.3 fill, the ability name at 16/600, and its effect in one line at
-13/400. Unaffordable rows sit at 40% opacity with the reason stated rather than implied.
+species chip at its §4.3 fill, the ability name at 16/600, its effect in one line at 13/400,
+and its **cost in charge pips** right-aligned — ●, ●● or ●●● (`gameplay.md` §13.2d).
+
+**Cost renders as pips rather than a numeral** so it reads against the same vocabulary as the
+reserve on the button: the player compares two rows of dots, not a number against a number.
+Unaffordable rows sit at 40% opacity with their cost still legible — *why* a row is
+unavailable must be visible, or the sheet looks broken rather than expensive.
 
 Tapping a row **arms** the ability and dismisses the sheet. **No charge is spent at arming
 time** — it is spent on confirmation (§13.3), so a player who opens the sheet to read what

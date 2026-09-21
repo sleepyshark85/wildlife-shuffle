@@ -1079,6 +1079,9 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D52 | Abilities cost 1–3 charges, priced from measured value | At one flat price the value spread was 24× and Stampede made the other four irrelevant. Scope follows size, price follows value — two ladders, forcing them to agree would be dishonest (§13.2d). |
+| D53 | Burrow is repriced first and its effect change is named but not applied | Two simultaneous changes make the next measurement unattributable. If it is still least-picked at 1 charge, it gains row left-packing (§13.2e). |
+| D54 | The gold pip marks the Last Stand *event*, not a slot | At 0 charges the grant landed on pip 1 and was indistinguishable from an ordinary charge — absent exactly for the player it was invented for (`ui.md` §13.1). |
 | D49 | No ability targets the buffalo — Burrow excluded as well as Migrate | The rule is per-object, not per-ability: the buffalo is a different kind of object, and letting rat's "one animal" reach it inverts §13.1's scope ladder and makes §6.4's premium optional (AC-1412b). |
 | D50 | Hold the Line's freeze starts immediately — three arrivals including the one being stopped | Sparing the current turn lets the batch already in the tray land, which is the batch the player pressed the button to stop (AC-1410). |
 | D51 | The `engineVersion` fingerprint covers anything that can change the meaning of a stored move, not just tuning constants | Changing what an ability does replays every move *successfully* into a different board — worse than a failed replay, because nothing reports it (AC-1016). |
@@ -1140,13 +1143,16 @@ of the game is built on — and a game that only ever gets worse needs something
 
 ### 13.1 The five abilities
 
-| Species | Size | Ability | Effect |
-|---|---:|---|---|
-| Rat 🐀 | 1 | **Burrow** | Remove one animal of your choice from the board |
-| Fox 🦊 | 2 | **Dart** | This turn, make up to **three** moves instead of one |
-| Elk 🦌 | 3 | **Migrate** | Remove **every** animal of one species you choose |
-| Elephant 🐘 | 4 | **Stampede** | Left-pack every row, closing all gaps within each row, then gravity |
-| Buffalo 🐃 | 5 | **Hold the Line** | **No arrivals for 3 turns** |
+| Species | Size | Ability | Effect | **Cost** |
+|---|---:|---|---|---:|
+| Rat 🐀 | 1 | **Burrow** | Remove one animal of your choice from the board | **1** |
+| Fox 🦊 | 2 | **Dart** | This turn, make up to **three** moves instead of one | **1** |
+| Elk 🦌 | 3 | **Migrate** | Remove **every** animal of one species you choose | **2** |
+| Elephant 🐘 | 4 | **Stampede** | Left-pack every row, closing all gaps within each row, then gravity | **3** |
+| Buffalo 🐃 | 5 | **Hold the Line** | **No arrivals for 3 turns** | **2** |
+
+**Costs are priced from measurement, not from size** — §13.2d. Scope scales with size; price
+scales with measured value, and the two ladders deliberately do not agree.
 
 **Scope scales with size, and that is the design.** Rat acts on one animal, fox on one turn's
 actions, elk on one species, elephant on the board's whole layout, buffalo on time itself. The
@@ -1288,6 +1294,82 @@ worth quoting.*
 That is much closer than the 4.7× AC-1405b recorded when the only data came from the
 pre-retune bands, but it is still far too wide to share a ladder: a single table priced for
 Meadow would put the first charge beyond a median Tundra run entirely.
+
+### 13.2d Abilities cost different amounts — priced from measurement
+
+**The diagnosis is about price, so the fix is about price.** Measured on Savanna over 120
+identical seeds per arm with a one-ply-lookahead bot, at one flat charge each:
+
+| ability | species | scope | measured | **cost** | value per charge |
+|---|---|---|---:|---:|---:|
+| **Stampede** | elephant | the board's layout | +194% | **3** | 65 |
+| **Migrate** | elk | one species | +115% | **2** | 58 |
+| **Hold the Line** | buffalo | time | +16% turns, +4% score | **2** | — buys survival, not points |
+| **Burrow** | rat | one animal | +11% | **1** | 11 |
+| **Dart** | fox | one turn's actions | +8% (a floor — see below) | **1** | — |
+
+At a flat price the spread was **24×**. Priced this way it is 8×, and *"five rows at one price,
+four of them a tax on not picking the elephant"* becomes a question about how to spend a
+reserve.
+
+**Scope follows size; price follows value. They are two different ladders and forcing them to
+agree would be dishonest.** §13.1's claim — rat acts on one animal, buffalo on time — is about
+what an ability *reaches*, and it still holds exactly. What it never claimed, and what the
+measurement disproves, is that reach and worth are the same thing: Hold the Line has the
+largest scope in the set and the smallest measured effect on score, because it buys turns
+rather than points. Pricing by size would have charged the most for it.
+
+**The 3-charge cap now does a second job.** A full reserve is *one* Stampede or *three*
+Burrows, so §13.2a's "recovery, not reset" dial also governs breadth against depth:
+
+```
+1 charge   Burrow, Dart
+2 charges  + Migrate, Hold the Line
+3 charges  + Stampede                      — your entire reserve, once
+4 charges  Stampede and change             — only reachable via Last Stand
+```
+
+**Stampede costing the whole reserve is the point.** It was the ability that made the other
+four irrelevant; now taking it costs you the other four, which is the decision the set was
+supposed to contain.
+
+**One caution about the numbers.** Dart's +8% is a **floor, not a verdict** — a one-ply bot
+cannot use three moves as a *plan*, so the measurement understates it in a way that will not
+show up until a human plays. It is priced at 1 on the assumption that the bot is wrong about
+it; if human play shows Dart is strong, it moves to 2 before anything else changes.
+
+### 13.2e Burrow — the revisit condition is already met
+
+AC-1412c said that if Burrow proved dead weight without the buffalo, the fix was to strengthen
+Burrow rather than let it eat the buffalo. **The measurement met that condition on evidence
+that predates the ruling** — Burrow reached only +11% *with* the buffalo in its target set, so
+it was never the buffalo carrying it. The tester's summary is the right one: *"the row you
+pick once and never again."*
+
+Two findings, and they are separable:
+
+1. **Excluding the buffalo cost nothing.** 1,640 with it against 1,680 without, which is
+   noise. The semantics ruling in AC-1412b was free, which is the best available outcome for
+   an argument made on consistency rather than on balance.
+2. **Burrow is weak on its own terms**, and repricing it to 1 charge does not fix that — at 11
+   per charge it is still the worst in the set.
+
+**So repricing is the first lever and not the last.** I am applying one change and naming the
+second rather than doing both, because two simultaneous changes make the next measurement
+unattributable — the discipline §5.7 sets and that §5.6b was written for ignoring.
+
+> **If Burrow is still the least-picked ability at 1 charge in human play, it gains gap
+> closing: *remove one animal, and left-pack the row it was in.*** That is Stampede's effect —
+> the one the measurement shows is most valuable — at the smallest possible scope, one row of
+> the player's choosing. Precision against breadth, which is what rat against elephant should
+> mean.
+
+**A caveat on Burrow's number that the tester's does not cover.** A one-ply bot evaluates
+*"what does removing this animal gain me now"* perfectly and *"what does removing this animal
+let me set up in two turns"* not at all. That is the same blindness the tester correctly
+identifies for Dart, and it may understate Burrow too. It is not a reason to ignore +11%, but
+it is a reason to weigh human play more heavily than the sweep before applying the second
+lever.
 
 ### 13.3 What it does to the difficulty curve
 
