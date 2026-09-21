@@ -8,7 +8,13 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { BOARD, DIFFICULTIES, MAX_BATCH_CELLS, meanDrawnSize } from '../src/engine/constants.js';
-import { bandForTurn, batchCells, generateBatch, isBuffaloTurn } from '../src/engine/spawn.js';
+import {
+  bandFloorViolations,
+  bandForTurn,
+  batchCells,
+  generateBatch,
+  isBuffaloTurn,
+} from '../src/engine/spawn.js';
 import { makeRng, nextFraction, nextInt } from '../src/engine/rng.js';
 
 
@@ -49,41 +55,98 @@ for (const difficulty of Object.keys(DIFFICULTIES)) {
   });
 }
 
-test('AC-306 the Savanna band ramps 3-5 / 4-6 / 5-7 and stops', () => {
-  assert.deepEqual(bandForTurn('savanna', 1), [3, 5]);
-  assert.deepEqual(bandForTurn('savanna', 12), [3, 5]);
-  assert.deepEqual(bandForTurn('savanna', 13), [4, 6]);
-  assert.deepEqual(bandForTurn('savanna', 25), [5, 7]);
-  assert.deepEqual(bandForTurn('savanna', 37), [5, 7], 'the ceiling holds');
-  assert.deepEqual(bandForTurn('savanna', 400), [5, 7]);
+test('AC-306 the Savanna band ramps 2-4 / 3-5 / 4-6 and stops', () => {
+  // Retuned (gameplay.md §5.6a): start and ceiling both dropped by 1 after the
+  // bot measured a median of 35.5 turns against a 60-90 hypothesis.
+  assert.deepEqual(bandForTurn('savanna', 1), [2, 4]);
+  assert.deepEqual(bandForTurn('savanna', 12), [2, 4]);
+  assert.deepEqual(bandForTurn('savanna', 13), [3, 5]);
+  assert.deepEqual(bandForTurn('savanna', 25), [4, 6]);
+  assert.deepEqual(bandForTurn('savanna', 37), [4, 6], 'the ceiling holds');
+  assert.deepEqual(bandForTurn('savanna', 400), [4, 6]);
 });
 
 test('AC-307 Meadow and Tundra bands and ceilings', () => {
+  // Meadow reaches its ceiling one ramp sooner than the others now: 2-4 is its
+  // FLOOR (AC-306b) and 3-5 its ceiling, so there is exactly one step.
   assert.deepEqual(bandForTurn('meadow', 1), [2, 4]);
+  assert.deepEqual(bandForTurn('meadow', 12), [2, 4]);
   assert.deepEqual(bandForTurn('meadow', 13), [3, 5]);
-  assert.deepEqual(bandForTurn('meadow', 25), [4, 6]);
-  assert.deepEqual(bandForTurn('meadow', 500), [4, 6]);
-  assert.deepEqual(bandForTurn('tundra', 1), [4, 6]);
-  assert.deepEqual(bandForTurn('tundra', 13), [5, 7]);
-  assert.deepEqual(bandForTurn('tundra', 25), [6, 8]);
-  // gameplay.md §5.6: 6-8 and not 7-9. The cap is W-1 = 8, so a band reaching
-  // 9 would demand batches invariant 1 forbids.
-  assert.deepEqual(bandForTurn('tundra', 500), [6, 8]);
-  assert.equal(bandForTurn('tundra', 500)[1], MAX_BATCH_CELLS);
+  assert.deepEqual(bandForTurn('meadow', 25), [3, 5], 'the ceiling holds one ramp early');
+  assert.deepEqual(bandForTurn('meadow', 500), [3, 5]);
+  assert.deepEqual(bandForTurn('tundra', 1), [3, 5]);
+  assert.deepEqual(bandForTurn('tundra', 13), [4, 6]);
+  assert.deepEqual(bandForTurn('tundra', 25), [5, 7]);
+  assert.deepEqual(bandForTurn('tundra', 500), [5, 7]);
+  // The W-1 = 8 cap that once forced Tundra's ceiling to 6-8 rather than 7-9
+  // is no longer what binds it — the retune is. The invariant still stands
+  // above it, and this records the headroom rather than pretending the cap is
+  // still doing the work.
+  assert.ok(bandForTurn('tundra', 500)[1] < MAX_BATCH_CELLS,
+    'Tundra now sits UNDER the cap; the cap is a ceiling on the table, not the table');
 });
 
-test('gameplay.md §5.6 every band holds its fraction of the row', () => {
-  // The quantity that sets difficulty is the fraction of a row arriving per
-  // turn, which is what was held constant from the 10-wide design. A 0.9
-  // rescale of the cell counts would NOT have done this.
+test('AC-306b no band asks for less than one animal', () => {
+  // The floor the designer found by trying 1-3 on Meadow: it has a mean of 2.0
+  // on paper and measures 2.41 cells/turn, because §5.2 draws k >= 1 and the
+  // smallest arrival is one whole animal. A band under that floor is not a
+  // band, it is a rounding artefact — which is the whole reason Meadow's
+  // starting band did not move in a retune that moved every other band.
+  assert.deepEqual(bandFloorViolations(), []);
+
+  // And the floor is where Meadow actually SITS, not somewhere far below it:
+  // a table that satisfied AC-306b with room to spare would mean the floor was
+  // never the reason Meadow stayed at 2-4.
+  const [low, high] = bandForTurn('meadow', 1);
+  assert.equal(low, 2, 'the lowest legal low');
+  assert.ok((low + high) / 2 >= meanDrawnSize('meadow'), 'and at the mean-size floor');
+  assert.ok((low + high) / 2 - meanDrawnSize('meadow') < 1,
+    `Meadow's start is ${(low + high) / 2} against a ${meanDrawnSize('meadow')} floor — not a floor at all`);
+});
+
+test('AC-306b the floor is measurable, not just arithmetic', () => {
+  // The claim is that a sub-floor band CANNOT BE DELIVERED, so it measures
+  // high. Proven by generating against one rather than by restating it.
+  const [lo, hi] = [1, 3];
+  let cells = 0;
+  const batches = 20000;
+  for (let seed = 0; seed < batches; seed += 1) {
+    const rng = makeRng(seed * 7919 + 1);
+    // Roll inside the hypothetical 1-3 band and feed the generator directly.
+    const rolled = nextInt(rng, lo, hi);
+    const target = rolled.value;
+    const raw = target / meanDrawnSize('meadow');
+    const carry = nextFraction(rolled.rng);
+    const k = Math.max(1, Math.floor(raw) + (carry.value < raw - Math.floor(raw) ? 1 : 0));
+    cells += k * meanDrawnSize('meadow');
+  }
+  const measured = cells / batches;
+  const onPaper = (lo + hi) / 2;
+  assert.ok(measured > onPaper + 0.3,
+    `a 1-3 band asked for ${onPaper} and delivers ${measured.toFixed(2)}; if these agreed the floor would not exist`);
+  assert.ok(Math.abs(measured - 2.41) < 0.15, `the designer measured 2.41, this measured ${measured.toFixed(2)}`);
+});
+
+test('gameplay.md §5.5 every band holds its fraction of the row', () => {
+  // Fraction-of-row is how the bands were DERIVED for a 9-wide board (§5.6),
+  // and it is no longer how they are SET: §5.6a lowered them against a
+  // measurement, so these numbers now record where the retune landed rather
+  // than reproducing the 10-wide design's 30/60, 40/70, 50/80.
   const fraction = (d, turn) => {
     const [lo, hi] = bandForTurn(d, turn);
     return ((lo + hi) / 2) / BOARD.width;
   };
   const pct = (v) => Math.round(v * 100);
-  assert.deepEqual([pct(fraction('meadow', 1)), pct(fraction('meadow', 500))], [33, 56]);
-  assert.deepEqual([pct(fraction('savanna', 1)), pct(fraction('savanna', 500))], [44, 67]);
-  assert.deepEqual([pct(fraction('tundra', 1)), pct(fraction('tundra', 500))], [56, 78]);
+  assert.deepEqual([pct(fraction('meadow', 1)), pct(fraction('meadow', 500))], [33, 44]);
+  assert.deepEqual([pct(fraction('savanna', 1)), pct(fraction('savanna', 500))], [33, 56]);
+  assert.deepEqual([pct(fraction('tundra', 1)), pct(fraction('tundra', 500))], [44, 67]);
+
+  // Meadow and Savanna now SHARE a starting band, which §5.6a flags as a
+  // consequence to watch: for twelve turns they differ only in species mix.
+  // Asserted so it is a known state rather than a surprise.
+  assert.deepEqual(bandForTurn('meadow', 1), bandForTurn('savanna', 1));
+  assert.notDeepEqual(bandForTurn('meadow', 500), bandForTurn('savanna', 500),
+    'and they must still diverge by the ceiling, or the choice stops mattering');
 });
 
 test('AC-307b the batch SCATTERS around its target, and the mean lands on it', () => {

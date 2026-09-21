@@ -98,6 +98,14 @@ function main() {
           `${String(row.max).padStart(6)}${String(row.medianScore).padStart(15)}`,
       );
     }
+    // AC-318d: the SHAPE, not only the magnitude. Printed here as well as in
+    // test/pacing.test.js so the two remain independent counts of it.
+    const m = rows.meadow.median, sv = rows.savanna.median, t = rows.tundra.median;
+    lines.push('');
+    lines.push(`ratios  meadow/savanna ${(m / sv).toFixed(2)}   savanna/tundra ${(sv / t).toFixed(2)}` +
+      '   (target ~1.8 / ~1.6)');
+    lines.push('A 30-seed median is noisy: across ten independent blocks the meadow/savanna');
+    lines.push('ratio ranged 1.15-1.62. Tune against a wider sample, not against this one.');
     process.stdout.write(`${lines.join('\n')}\n`);
     return;
   }

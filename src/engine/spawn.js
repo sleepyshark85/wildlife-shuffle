@@ -62,6 +62,46 @@ export function bandForTurn(difficultyId, turn) {
   ];
 }
 
+/**
+ * AC-306b — THE BAND FLOOR, as a check rather than as a sentence.
+ *
+ * §5.2 draws `k >= 1`, so the smallest arrival this generator can produce is
+ * ONE ANIMAL: 2.10 cells on Meadow, 2.42 on Savanna, 2.75 on Tundra. A band
+ * asking for less than that cannot be delivered — it measures high, because the
+ * floor rounds it up. The designer found this by trying 1-3 on Meadow: mean
+ * 2.0 on paper, 2.41 cells/turn measured. That is not a band, it is a rounding
+ * artefact, and it is why Meadow's starting band stayed at 2-4 in the retune
+ * while every other band moved.
+ *
+ * Two rules, and the second is the one with teeth:
+ *   - no band's LOW may be below 2;
+ *   - no band's MEAN may sit below that difficulty's mean animal size.
+ *
+ * This walks every band each difficulty actually reaches, start through
+ * ceiling, rather than checking the two endpoints — the ramp moves both ends
+ * together, so an intermediate band cannot violate the floor if the start does
+ * not, but that is an argument and this is a check.
+ *
+ * @returns {string[]} one line per violation; empty means the table is legal.
+ */
+export function bandFloorViolations() {
+  const out = [];
+  for (const id of Object.keys(DIFFICULTIES)) {
+    const floor = meanDrawnSize(id);
+    const ceiling = DIFFICULTIES[id].ceilingBand;
+    for (let turn = 1; ; turn += RAMP_EVERY_TURNS) {
+      const [low, high] = bandForTurn(id, turn);
+      if (low < 2) out.push(`${id} band ${low}-${high}: low ${low} is below 2`);
+      const mean = (low + high) / 2;
+      if (mean < floor) {
+        out.push(`${id} band ${low}-${high}: mean ${mean} is below the ${floor.toFixed(2)} floor`);
+      }
+      if (low === ceiling[0] && high === ceiling[1]) break;
+    }
+  }
+  return out;
+}
+
 /** gameplay.md §5.4: buffalo is scheduled on turn n x buffaloEvery, never turn 0. */
 export function isBuffaloTurn(difficultyId, turn) {
   const difficulty = DIFFICULTIES[difficultyId];
