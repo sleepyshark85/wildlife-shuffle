@@ -576,6 +576,34 @@ abilities for dangerous situations".)*
 record and simply stops buying charges. That pause is **intended pressure to spend**, not a
 gap in the reward curve.
 
+**AC-1405h — ABILITIES COST DIFFERENT AMOUNTS.** Given the ability sheet, Then costs are
+**Burrow 1, Dart 1, Migrate 2, Hold the Line 2, Stampede 3** charges. *(Priced from measured
+value, not from species size: at one flat charge the value spread was 24× and Stampede made
+the other four irrelevant. Scope follows size, price follows value — Hold the Line has the
+largest scope and the smallest score effect, so pricing by size would have charged most for
+it.)*
+
+**AC-1405i** Given a full reserve of 3, Then it buys **one Stampede or three Burrows** — so
+§13.2a's recovery/reset dial also governs breadth against depth. Stampede costing the entire
+reserve is intended: it was the ability that made the other four irrelevant, and taking it now
+costs the other four.
+
+**AC-1405j** Given an ability the player cannot afford, Then its row is shown at 40% opacity
+**with its cost still legible**. *(Why a row is unavailable must be visible, or the sheet looks
+broken rather than expensive.)*
+
+**AC-1412e — BURROW'S SECOND LEVER, NAMED BUT NOT APPLIED.** Given Burrow is still the
+least-picked ability at 1 charge in **human** play, Then it gains gap closing: **remove one
+animal and left-pack the row it was in**. *(Measured +11% at a flat charge — the AC-1412c
+revisit condition was already met on evidence predating the buffalo ruling, and excluding the
+buffalo cost nothing: 1,640 with against 1,680 without. Repricing to 1 charge is the first
+lever; this is the second, named now so it is not open-ended, and withheld so the next
+measurement stays attributable.)*
+
+**AC-1412f** Given Dart's measured +8%, Then it is treated as a **floor rather than a verdict**
+— a one-ply bot cannot use three moves as a plan. If human play shows Dart is strong it moves
+to **2 charges** before anything else in the set changes.
+
 **AC-1406b — BURSTING IS ALREADY IMPOSSIBLE.** Given a player holds three charges, Then they
 can spend **at most one per turn**, because an ability is the turn's action (AC-1406). *(The
 approved text justified the cap as preventing a "dump"; the one-action rule already does that,
@@ -1591,6 +1619,14 @@ turn resolves after the third or when they choose to end it early.
 band (row 11 or above), Then **one charge is granted immediately**, regardless of score and
 **regardless of the cap**, once per run.
 
+**AC-1408c2 — THE GOLD MARKS THE EVENT, NOT THE SLOT.** Given Last Stand fires, Then
+**whichever pip it fills blooms gold for the 400 ms of the announce**, then settles to the
+ordinary fill. *(Verified defect: at **0 charges** — the AC-1408e player, the entire reason
+Last Stand exists — the grant landed on pip 1 and was indistinguishable from an ordinary
+ladder charge. The gold appeared only when Last Stand overflowed a full reserve, which is the
+one case that does not need it. The fourth **slot** remains reachable only by Last Stand; the
+**event** is marked wherever it lands.)*
+
 **AC-1408c** Given Last Stand fires while the player already holds the maximum, Then they hold
 **four**. *(The cap bounds what can be banked by playing well; the fourth charge exists only
 because the player is in trouble.)*
@@ -1609,8 +1645,11 @@ that player.)*
 **AC-1408f** Given a resume, Then whether Last Stand has fired is reconstructed from the
 replay rather than persisted separately — the engine knows when the band was first entered.
 
-**AC-1409 — RUNS STILL ALWAYS END.** Given unlimited skilled play with abilities, Then a run
-still terminates. *(The economy is self-limiting: charges come from score, score from
+**AC-1409 — RUNS STILL ALWAYS END.** *(confirmed by measurement)* Given unlimited skilled play
+with abilities, Then a run still terminates. *(90 runs with a policy that hoards nothing and
+freezes the instant it can afford to: **zero failed to end**, longest 184 turns, most frozen
+turns in one run **10** against a predicted 9–12. A freeze-abusing bot gains **+16% turns and
++4% score** — it buys survival and not points, which is exactly what this AC rests on.)* *(The economy is self-limiting: charges come from score, score from
 clearing, clearing from arrivals. A player cannot freeze their way to an unbounded run because
 freezing stops the supply of the thing that buys freezes.)*
 
