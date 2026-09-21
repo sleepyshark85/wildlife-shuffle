@@ -393,7 +393,7 @@ test('AC-1015 a hand-written "save file" cannot inject a board at all', () => {
     engineVersion: ENGINE_VERSION,
     seed: 'forged',
     difficulty: 'savanna',
-    start: { runIndex: 1, nextAnimalId: 1 },
+    start: { runIndex: 1, nextAnimalId: 1, abilities: true },
     moves: [],
     digest: 'anything',
     // An attacker's board, in every shape the engine would recognise.

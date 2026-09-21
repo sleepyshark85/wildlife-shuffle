@@ -20,6 +20,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { needsTarget, targetOf, targetingChip, turnStatus } from '../abilities.js';
 import { STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap } from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
 import { useProgress, useAnnouncements } from '../progressStore.js';
@@ -38,6 +39,7 @@ import { Tray } from '../components/Tray.js';
 import { GameOverSheet } from './GameOverSheet.js';
 import { PauseSheet } from './PauseSheet.js';
 import { SettingsSheet } from './SettingsSheet.js';
+import { AbilitySheet } from './AbilitySheet.js';
 
 export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
   const { width, height } = useWindowDimensions();
@@ -46,6 +48,18 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
   // Settings sits ON TOP of Pause rather than replacing it, so closing it
   // returns to the sheet the player opened it from.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /**
+   * The abilities flow, and BOTH halves of it live here rather than in the
+   * engine, deliberately (AC-1413/AC-1414).
+   *
+   * `sheetOpen` is reading the menu; `armed` is having chosen a targeted
+   * ability and not yet picked a target. Neither has spent anything — the only
+   * thing that spends is `run.useAbility`, which dispatches to the reducer. So
+   * "cancel is always one tap and always free" is not a rule anybody has to
+   * remember: there is nothing to refund, because nothing was taken.
+   */
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [armed, setArmed] = useState(null);
   const settings = useSettings();
 
   const run = useGameRun({ seed, difficulty, resumed });
@@ -83,6 +97,14 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
   useEffect(() => {
     if (!over) bestRef.current = bestNow;
   }, [over, bestNow]);
+  // An armed ability cannot survive the board it was armed against.
+  useEffect(() => {
+    if (over) {
+      setArmed(null);
+      setSheetOpen(false);
+    }
+  }, [over, runIndex]);
+
   useEffect(() => {
     if (!over) {
       writtenRef.current = null;
@@ -116,7 +138,10 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
   const unsupported = stage === STAGE.UNSUPPORTED;
   const { reduced, sizeNumerals, highContrast, diagnostics } = settings;
 
-  const inputOpen = !run.resolving && !run.view.gameOver && !paused && !unsupported;
+  // A targeting state suspends the drag: the tap the player is about to make
+  // means "this one", not "move this one", and leaving the pan armed would let
+  // a slightly slurred tap commit a move instead of a burrow.
+  const inputOpen = !run.resolving && !run.view.gameOver && !paused && !unsupported && !armed;
   const plan = run.view.plan;
   // AC-808: one clock for every animal's vertical motion, so a stack cannot
   // drift apart and cross itself (src/ui/useTurnClock.js).
@@ -181,6 +206,27 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
       ? plan.moves[run.view.buffalo.id].size
       : null;
 
+  // One status line for the whole screen (src/ui/abilities.js), so the HUD and
+  // the rail cannot disagree about what the player is being asked to do.
+  const status = turnStatus({
+    gameOver: run.view.gameOver,
+    blocked: run.blocked,
+    resolving: run.resolving,
+    arming: Boolean(armed),
+    dart: run.view.charges.dart,
+  });
+  const targeting = armed ? targetingChip(armed) : null;
+  const grants = plan ? plan.grants : null;
+
+  /** A row of the sheet was tapped. NOTHING is spent by this function. */
+  const pickAbility = (row) => {
+    setSheetOpen(false);
+    // ui.md §13.3: Stampede, Dart and Hold the Line resolve immediately on
+    // arming; Burrow and Migrate go to the board and wait for a target.
+    if (needsTarget(row.id)) setArmed(row.id);
+    else run.useAbility(row.id);
+  };
+
   const gap = wide ? SPACE.lg : boardTrayGap(chrome);
   const arrivalLandsAt = arrivals.length ? arrivals[0].plan.at + arrivals[0].plan.dur : 0;
   const board = unsupported ? null : (
@@ -196,6 +242,13 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
       diagnostics={diagnostics}
       onCommit={run.commitMove}
       onIllegal={run.markBlocked}
+      arming={armed}
+      onTarget={(target) => {
+        const ability = armed;
+        setArmed(null);
+        run.useAbility(ability, targetOf(ability, target));
+      }}
+      onCancelTarget={() => setArmed(null)}
     />
   );
   // The board and its flight layer are one stacking context: the flight is
@@ -226,6 +279,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
       compact={compact}
       revealAt={arrivalLandsAt}
       reduced={reduced}
+      frozen={run.view.charges.frozen}
     />
   );
 
@@ -267,10 +321,17 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
           <ActionBar
             column
             chrome={chrome}
-            blocked={run.blocked}
+            screenW={railW}
             resolving={run.resolving}
             gameOver={run.view.gameOver}
             onPass={run.pass}
+            ability={run.view.ability}
+            grants={grants}
+            reduced={reduced}
+            targeting={targeting}
+            status={status}
+            onAbilities={() => setSheetOpen(true)}
+            onCancelTarget={() => setArmed(null)}
           />
         </View>
       </View>
@@ -286,6 +347,8 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
           buffalo={run.view.buffalo}
           buffaloShrink={buffaloShrink}
           reduced={reduced}
+          status={status}
+          statusTone={run.blocked ? COLORS.illegal : null}
           onPause={() => setPaused(true)}
           pauseMuted={!inputOpen}
         />
@@ -297,10 +360,17 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
         </View>
         <ActionBar
           chrome={chrome}
-          blocked={run.blocked}
+          screenW={width}
           resolving={run.resolving}
           gameOver={run.view.gameOver}
           onPass={run.pass}
+          ability={run.view.ability}
+          grants={grants}
+          reduced={reduced}
+          targeting={targeting}
+          status={status}
+          onAbilities={() => setSheetOpen(true)}
+          onCancelTarget={() => setArmed(null)}
         />
       </>
     );
@@ -328,6 +398,14 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
         />
       ) : null}
       {settingsOpen ? <SettingsSheet onClose={() => setSettingsOpen(false)} /> : null}
+      {sheetOpen && !paused && !run.view.gameOver ? (
+        <AbilitySheet
+          rows={run.view.abilityRows}
+          reduced={reduced}
+          onPick={pickAbility}
+          onClose={() => setSheetOpen(false)}
+        />
+      ) : null}
       {run.view.gameOver && outcome ? (
         <GameOverSheet
           record={run.view.record}

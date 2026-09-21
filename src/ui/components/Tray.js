@@ -37,6 +37,7 @@ import Animated, {
 import { SPECIES } from '../../engine/constants.js';
 import { traySilhouettes, trayMetrics } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
+import { frozenLabel } from '../abilities.js';
 import { COLORS, COPY, MOTION, RADIUS, SILHOUETTE, TYPE } from '../theme.js';
 
 /**
@@ -75,8 +76,14 @@ function HazardRule({ width, height }) {
   return <View style={{ width, height, overflow: 'hidden' }}>{bars}</View>;
 }
 
-function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced }) {
+function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, frozen = 0 }) {
   const { labelH, stripH, ruleH, bodyH } = trayMetrics(cell, compact);
+  // AC-1410, and it is load-bearing rather than decoration. The tray's whole
+  // contract is that it shows what is coming (§6); while Hold the Line is up,
+  // nothing is coming, and a strip still showing a batch would be promising an
+  // arrival that will not happen — which is v1's defect exactly, in reverse.
+  // So the strip greys out and SAYS SO for as long as the freeze lasts.
+  const frozenText = frozenLabel(frozen);
 
   // The batch on screen while an arrival is in flight is the NEXT one: the
   // engine advanced the queue in the same reducer call that emptied it. So the
@@ -98,15 +105,28 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced }) {
   return (
     <View
       style={{ width: boardW }}
-      accessibilityLabel={trayLabel(queue, cells)}
+      accessibilityLabel={trayLabel(queue, cells, frozen)}
       accessible
     >
       <View style={[styles.labelRow, { height: labelH }]}>
         <Text maxFontSizeMultiplier={TRAY_FONT_CAP} style={TYPE.label}>{COPY.trayLabel}</Text>
-        <Text maxFontSizeMultiplier={TRAY_FONT_CAP} style={TYPE.label}>{cells} CELLS</Text>
+        <Text
+          testID="tray-right"
+          maxFontSizeMultiplier={TRAY_FONT_CAP}
+          style={[TYPE.label, frozenText ? styles.frozenLabel : null]}
+        >
+          {frozenText || `${cells} CELLS`}
+        </Text>
       </View>
-      <Animated.View style={[styles.strip, { width: boardW, height: stripH }, revealStyle]}>
-        {traySilhouettes(queue, cell, SILHOUETTE.gap).map((shape) => {
+      <Animated.View
+        style={[
+          styles.strip,
+          { width: boardW, height: stripH },
+          frozenText ? styles.frozenStrip : null,
+          revealStyle,
+        ]}
+      >
+        {(frozenText ? [] : traySilhouettes(queue, cell, SILHOUETTE.gap)).map((shape) => {
           const buffalo = shape.type === SPECIES.buffalo.type;
           return (
             <View
@@ -133,7 +153,10 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced }) {
   );
 }
 
-function trayLabel(queue, cells) {
+function trayLabel(queue, cells, frozen) {
+  if (frozen > 0) {
+    return `Nothing arrives for ${frozen} more ${frozen === 1 ? 'turn' : 'turns'}.`;
+  }
   if (queue.length === 0) return 'Next arrival: nothing queued.';
   const parts = queue.map((a) => {
     const where = a.size === 1 ? `column ${a.x + 1}` : `columns ${a.x + 1} to ${a.x + a.size}`;
@@ -144,6 +167,8 @@ function trayLabel(queue, cells) {
 
 const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  frozenLabel: { color: COLORS.inkMuted },
+  frozenStrip: { opacity: 0.45 },
   strip: {
     backgroundColor: COLORS.panelSunken,
     borderWidth: 1,

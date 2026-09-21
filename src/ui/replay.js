@@ -18,7 +18,7 @@
 
 import { BOARD } from '../engine/constants.js';
 import { MOTION } from './theme.js';
-import { turnTimeline } from './timeline.js';
+import { stampedeBeats, turnTimeline } from './timeline.js';
 
 /**
  * Turn the keys into an absolute schedule: when each one actually starts.
@@ -96,7 +96,11 @@ function compact(keys, startY) {
 export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   /** Identity for this turn: the announcement layer and the shared clock
    *  both key off it, and so does every animal's own schedule. */
-  const planKey = `${lastTurn.turn}.${lastTurn.action}`;
+  // `seq` and not `turn`: a Dart resolves up to three times inside one turn
+  // (AC-1407), and this key is what the shared clock and every animal's own
+  // schedule are matched against. Two resolutions sharing it would leave the
+  // second reading a clock that thought it was still playing the first.
+  const planKey = `${lastTurn.seq}.${lastTurn.turn}.${lastTurn.action}`;
   const timeline = turnTimeline(lastTurn.events, lastTurn.action, Math.max(0, reservedMs));
   const { scale } = timeline;
   const fallMs = MOTION.fall * scale;
@@ -106,6 +110,7 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   const board = new Map(prevAnimals.map((a) => [a.id, { ...a }]));
   const motion = new Map();
   const departures = [];
+  const grants = [];
   const flashes = [];
   const shards = [];
   const floats = [];
@@ -121,7 +126,7 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   const entry = (id, startY) => {
     let found = motion.get(id);
     if (!found) {
-      found = { keys: [], size: null, arrival: null, startY };
+      found = { keys: [], size: null, arrival: null, slide: null, startY };
       motion.set(id, found);
     }
     return found;
@@ -138,12 +143,56 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   for (const event of lastTurn.events) {
     switch (event.type) {
       case 'ACTION': {
-        // The body is already at the target column — the gesture worklet put it
-        // there on the frame the finger lifted. This only keeps the replayed
-        // board honest for everything that reads a position off it below.
-        if (event.action !== 'MOVE') break;
-        const mover = board.get(event.id);
-        if (mover) mover.x = event.toX;
+        if (event.action === 'MOVE') {
+          // The body is already at the target column — the gesture worklet put
+          // it there on the frame the finger lifted. This only keeps the
+          // replayed board honest for everything that reads a position off it
+          // below.
+          const mover = board.get(event.id);
+          if (mover) mover.x = event.toX;
+          break;
+        }
+        if (event.action !== 'ABILITY') break;
+
+        // ui.md §13.4. Burrow's target dissolves; Migrate's species flashes
+        // once in unison and then leaves together. Both are departures — the
+        // same treatment the board already uses for an animal that leaves —
+        // scheduled at the head of the turn so gravity falls into the hole
+        // afterwards rather than through the animal still standing in it.
+        const unison = event.ability === 'migrate' ? MOTION.lead * scale : 0;
+        for (const id of event.removedIds) {
+          const animal = board.get(id);
+          if (!animal) continue;
+          departures.push({
+            ...animal,
+            flashAt: 0,
+            collapseAt: unison,
+            key: `${animal.id}@${event.ability}`,
+          });
+          board.delete(id);
+          motion.delete(id);
+        }
+
+        // Stampede: rows slide left, staggered from the bottom up. The slide is
+        // HORIZONTAL, which is the one kind of motion this plan did not carry
+        // before — every previous x change came from a gesture that had already
+        // moved the body on the UI thread. Nothing had moved this one, so
+        // without a key here the whole board would teleport left while every
+        // position check still passed (§6.7).
+        if (event.moved.length > 0) {
+          const beats = stampedeBeats(event.moved);
+          for (const slid of event.moved) {
+            const animal = board.get(slid.id);
+            if (!animal) continue;
+            animal.x = slid.toX;
+            entry(slid.id, animal.y).slide = {
+              at: (beats.get(slid.y) || 0) * scale,
+              dur: MOTION.snap * scale,
+              fromX: slid.fromX,
+              toX: slid.toX,
+            };
+          }
+        }
         break;
       }
 
@@ -291,6 +340,24 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
         break;
       }
 
+      case 'CHARGE': {
+        // ui.md §13.4: the pip blooms, and Last Stand's blooms differently
+        // because it fires at the worst moment of the run and must not read as
+        // an ordinary threshold crossing.
+        //
+        // It is scheduled at the moment the push-up LANDS, which is also the
+        // moment the danger band first lights — so "you are in trouble, here is
+        // one more thing you can do about it" reads as one event rather than as
+        // a reward arriving inexplicably beside a warning.
+        grants.push({
+          key: `charge-${lastTurn.seq}.${grants.length}`,
+          at: timeline.arrivalAt + arrivalMs,
+          reason: event.reason,
+          charges: event.charges,
+        });
+        break;
+      }
+
       case 'PERFECT_CLEAR': {
         const units = event.phase === 'SETTLE' ? settleUnits : arrivalUnits;
         const unit = units[units.length - 1];
@@ -358,6 +425,12 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
       keys,
       size: record.size,
       arrival: record.arrival,
+      /**
+       * AC-1411's slide. Present only on a Stampede, and null everywhere else,
+       * because every other x change in this game arrives already applied by
+       * the gesture that caused it.
+       */
+      slide: record.slide,
       landAt: fell && last ? last.start + last.dur : null,
     };
   }
@@ -367,6 +440,8 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   let clockMs = 0;
   for (const id of Object.keys(moves)) {
     for (const key of moves[id].keys) clockMs = Math.max(clockMs, key.start + key.dur);
+    const slid = moves[id].slide;
+    if (slid) clockMs = Math.max(clockMs, slid.at + slid.dur);
   }
 
   return {
@@ -382,6 +457,8 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
     // commit that applied the turn. No extra render, and no timer (AC-828).
     moves,
     departures,
+    /** AC-1405/AC-1408b: the charges this turn granted, and why. */
+    grants,
     flashes,
     shards,
     floats,
@@ -389,9 +466,4 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
     anticipate,
     score,
   };
-}
-
-/** True when any animal stands in rows 11-13, which is what the pulse tracks. */
-export function inDangerBand(animals) {
-  return animals.some((a) => a.y >= BOARD.dangerBandLow && a.y <= BOARD.dangerBandHigh);
 }
