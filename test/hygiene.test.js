@@ -184,20 +184,56 @@ test('AC-829/AC-1304 babel.config.js lists the reanimated plugin LAST', () => {
   assert.equal(list[list.length - 1], 'react-native-reanimated/plugin');
 });
 
-test('AC-1302 every dependency in package.json is imported by the source', () => {
+test('AC-1302 every dependency in package.json is imported or is a live config plugin', () => {
   const pkg = JSON.parse(read(path.join(ROOT, 'package.json')));
   // react-dom and react-native-web are the Expo web target's peers: Metro
   // resolves them for the platform, no source file imports them by name.
   // Dropping web support is the only way to drop them.
   const platformPeers = new Set(['react-dom', 'react-native-web']);
+  // There are three ways a dependency can be USED, not one, and the rule is
+  // widened rather than relaxed — each of these is still a use that something
+  // checkable depends on:
+  //
+  //  1. imported by the source, which is the ordinary case;
+  //  2. listed in `app.json`'s `plugins` — a config plugin is used by being
+  //     named. Nothing in `src/` will ever `import 'expo-splash-screen'`, and
+  //     the native splash (AC-1205) is built from that entry alone;
+  //  3. named below, with the manifest key it turns on. `expo-system-ui` is
+  //     autolinked and imported by nothing, and without it `expo prebuild`
+  //     says so out loud — "ios.backgroundColor: Install expo-system-ui to
+  //     enable this feature" — and drops the key on the floor. With it,
+  //     `RCTRootViewBackgroundColor` comes out as 0xFF0D141B, which is
+  //     AC-1205's "no white flash between splash and first frame".
+  //
+  // The third category is not an exception list: each entry names the key it
+  // enables, and that key must be present. Remove `backgroundColor` from
+  // app.json and the dependency becomes dead weight and this fails.
+  const MANIFEST_ONLY = { 'expo-system-ui': 'backgroundColor' };
+  const app = JSON.parse(read(path.join(ROOT, 'app.json'))).expo;
+  const plugins = new Set(
+    (app.plugins || []).map((entry) => (Array.isArray(entry) ? entry[0] : entry)),
+  );
   const joined = SRC.map(read).join('\n');
   const unused = [];
   for (const dep of Object.keys(pkg.dependencies)) {
-    if (platformPeers.has(dep)) continue;
+    if (platformPeers.has(dep) || plugins.has(dep)) continue;
+    if (MANIFEST_ONLY[dep] && app[MANIFEST_ONLY[dep]] !== undefined) continue;
     const re = new RegExp(`from '${dep}(/[^']*)?'`);
     if (!re.test(joined)) unused.push(dep);
   }
   assert.deepEqual(unused, [], `unused dependencies: ${unused.join(', ')}`);
+
+  // ...and a manifest-only dependency that is not installed is a manifest key
+  // that silently does nothing, which is how this one was found.
+  for (const [dep, key] of Object.entries(MANIFEST_ONLY)) {
+    if (app[key] === undefined) continue;
+    assert.ok(pkg.dependencies[dep], `app.json sets ${key} but ${dep} is not installed`);
+  }
+
+  // ...and the other direction, which is the half that lets a manifest point at
+  // a package nobody installed: every plugin named in app.json is a dependency.
+  const missing = [...plugins].filter((name) => !pkg.dependencies[name]);
+  assert.deepEqual(missing, [], `config plugins with no dependency: ${missing.join(', ')}`);
 });
 
 test('AC-1303 every module under src/ is reachable from the entry point', () => {

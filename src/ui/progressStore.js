@@ -42,6 +42,7 @@ import {
   serialiseSave,
   withAnnounced,
   withApplied,
+  withOnboarded,
   withSettings,
 } from './progress.js';
 import { atRest, buildResume, restoreResume, serialiseResume } from './session.js';
@@ -59,6 +60,7 @@ const ProgressContext = createContext({
   setSetting: () => {},
   announce: () => {},
   applyCosmetic: () => {},
+  finishOnboarding: () => {},
 });
 
 /**
@@ -161,6 +163,15 @@ export function ProgressProvider({ children }) {
     commit(withApplied(saveRef.current, slot, id));
   }, [commit]);
 
+  /**
+   * AC-1207. Completed, skipped, or abandoned by walking out of it — all three
+   * end here, and the save records only that it happened. One write, from an
+   * event handler, like every other write in this file.
+   */
+  const finishOnboarding = useCallback(() => {
+    commit(withOnboarded(saveRef.current));
+  }, [commit]);
+
   const value = useMemo(
     () => ({
       loaded,
@@ -172,8 +183,10 @@ export function ProgressProvider({ children }) {
       setSetting,
       announce,
       applyCosmetic,
+      finishOnboarding,
     }),
-    [loaded, save, resume, finishRun, saveResume, discardResume, setSetting, announce, applyCosmetic],
+    [loaded, save, resume, finishRun, saveResume, discardResume, setSetting, announce,
+      applyCosmetic, finishOnboarding],
   );
 
   const { unlocks, lifetime, best } = save;
