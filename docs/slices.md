@@ -17,7 +17,7 @@ exists).
 | **1** | Rules engine, headless | 2xx–7xx | **Merged** · PR #2, re-landed #3 |
 | **2** | React state layer and board | 1xx, 4xx, 13xx | **Merged** · PR #5 |
 | **3** | Motion, visual states, accessibility | 5xx, 8xx, 9xx | **Merged** · PR #9 |
-| **4** | Meta progression and persistence | 10xx | Not started |
+| **4** | Meta progression and persistence | 10xx | **Built, awaiting independent verification** |
 | **5** | Polish — sound, haptics, juice | 11xx | Not started |
 | **6** | App Store readiness | 12xx | Not started |
 
@@ -158,11 +158,62 @@ viewing (AC-824c carries the full list).
 
 ---
 
-## Slices 4–6, not started
+## Slice 4 — Meta progression and persistence
+
+*Built by the developer; **not yet independently verified**.* AsyncStorage returns
+(`@react-native-async-storage/async-storage`, added with `npx expo install`), and with it high
+scores per habitat, lifetime stats, the last-ten-runs list, the daily streak, four cosmetic
+unlocks, the Records and Collection screens, and session resume.
+
+**New modules.** `src/ui/progress.js` (the save schema, its validator, the daily streak),
+`src/ui/session.js` (the resume replay), `src/ui/cosmetics.js` (the four unlocks),
+`src/ui/storage.js` (the only module that imports AsyncStorage), `src/ui/progressStore.js`
+(the React layer that owns every write), `src/ui/useAppState.js`, and the two screens.
+
+**Session resume is a replay, not a snapshot.** `{schemaVersion, engineVersion, seed,
+difficulty, start, moves[], digest}` — under a kilobyte for a 30-turn run — reconstructed by
+re-running the engine from turn 1. *A replay can only ever reconstruct a legal board, because
+the engine produced it.* A snapshot could inject a board the rules cannot reach, which is the
+exact condition AC-504b's chain guard exists to catch. A 3,000-mutation fuzz asserts that
+every tampered blob is either discarded or replays to a board that satisfies the engine's own
+invariants.
+
+**`engineVersion` is a fingerprint of the tuning surface, not a hand-maintained string.** It
+is `fnv1a` over `BOARD`, `DIFFICULTIES`, `SCORE`, `SPECIES` and the ramp constants, so the
+band retune now sitting in `docs/v2/` invalidates every replay written before it the moment it
+reaches `constants.js` — automatically, with nobody to remember. AC-1016 is the load-bearing
+clause: losing a run to an app update is acceptable, silently resuming the wrong one is not.
+
+**The design was underspecified in one place, and it matters.** gameplay.md §9 lists the
+record as `{schemaVersion, engineVersion, seed, difficulty, moves[], digest}` with
+`moves[] = [{t:'M', id, x}|{t:'P'}]`. That is not replayable on its own: animal ids are
+namespaced by `runIndex` and numbered from `nextAnimalId` (AC-214), both carried across a
+RESTART, so a run reached by **Play Again** mints ids a fresh `createRun` cannot reproduce and
+a stored move names an animal that does not exist. The record carries a `start:
+{runIndex, nextAnimalId}` field for that. Planting the design's literal shape and watching the
+Play Again test fail is in the developer's report.
+
+**Two defects the tests found while being written**, both in code written the same hour:
+`DIFFICULTIES[id]` is not a membership test — `DIFFICULTIES['__proto__']` is
+`Object.prototype` and truthy, so a tampered save could name it; and a `daysBetween` built on
+local midnight and truncated breaks a streak across a 23-hour spring-forward day. This
+machine is `Asia/Saigon`, which has had no DST since 1975, so that test sets its own timezone.
+
+**AC-1002 is kept structural.** AsyncStorage is reachable from exactly one module, that module
+from exactly one more, and the in-progress run is written from exactly one call site inside the
+`AppState` transition. The app still owns exactly two timers, both in `useGameRun.js`. v1
+serialised the whole board on a 1 Hz `setInterval` whose `[store]` dependency rebuilt the
+interval on every render (`GameScreen.js:53-72`); the trade-off taken instead is that a hard
+crash loses the run, which the design states and accepts.
+
+Tests 220 → 263 (43 new). 50 planted faults, all caught.
+
+---
+
+## Slices 5–6, not started
 
 | | Contents |
 |---|---|
-| **4 — Meta progression** | High scores per difficulty, stats, recent-run list, streaks, unlocks, persistence. Includes **session resume**, which v1 had and the v2 design initially dropped — ported as a replay `{seed, difficulty, moves[], digest}` rather than a board snapshot, because a replay can only reconstruct a legal board. |
 | **5 — Polish** | Sound and haptics. `expo-haptics` was dropped in Slice 2 when its only consumer was deleted, and returns here alongside `expo-audio` — v1's `useSoundManager` played no audio at all despite the name. |
 | **6 — Store readiness** | Icon, splash, onboarding, screenshots, privacy. `assets/` still does not exist. |
 
@@ -207,7 +258,8 @@ node docs/v2/layout-sweep.mjs     # must be 0 overflowing
 **`git fetch` before trusting anything.** A session-start snapshot is a snapshot, not the
 truth — `docs/development-process.md` §6.4 records the time that cost a whole review.
 
-Test counts locate the slice: **118** = Slice 1, **161** = Slice 2, **194** = Slice 3.
+Test counts locate the slice: **118** = Slice 1, **161** = Slice 2, **194** = Slice 3,
+**263** = Slice 4.
 
 ### 2. Know the shape of the work
 

@@ -43,6 +43,8 @@ export const ACTIONS = Object.freeze({
 const EMPTY_STATS = Object.freeze({
   rowsCleared: 0,
   longestChain: 0,
+  /** Widest single CLEAR_STEP — the Golden Herd unlock's condition (AC-1009). */
+  mostRowsInStep: 0,
   buffaloRetired: 0,
   buffaloShrinks: 0,
   perfectClears: 0,
@@ -274,6 +276,7 @@ function resolveTurn(state, action) {
   const stats = {
     rowsCleared: state.stats.rowsCleared + turnSummary.rowsCleared,
     longestChain: Math.max(state.stats.longestChain, turnSummary.longestChain),
+    mostRowsInStep: Math.max(state.stats.mostRowsInStep, turnSummary.mostRowsInStep),
     buffaloRetired: state.stats.buffaloRetired + turnSummary.buffaloRetired,
     buffaloShrinks: state.stats.buffaloShrinks + turnSummary.buffaloShrinks,
     perfectClears: state.stats.perfectClears + turnSummary.perfectClears,
@@ -370,7 +373,13 @@ export function streakPill(state) {
   return { raw: state.streak, mult, show: mult > 1 };
 }
 
-/** Everything the Game Over sheet and the run record need (AC-706, AC-1308). */
+/**
+ * Everything the Game Over sheet and the run record need (AC-706, AC-1308).
+ *
+ * `chainGuardTrips` rides along because AC-504e refuses to persist the score of
+ * a run whose crash guard fired, and the thing that decides that must be able
+ * to see it without reaching past this selector into `state.stats`.
+ */
 export function runRecord(state) {
   return {
     seed: state.seed,
@@ -379,9 +388,11 @@ export function runRecord(state) {
     turns: state.turn,
     rowsCleared: state.stats.rowsCleared,
     longestChain: state.stats.longestChain,
+    mostRowsInStep: state.stats.mostRowsInStep,
     buffaloRetired: state.stats.buffaloRetired,
     perfectClears: state.stats.perfectClears,
     // The raw count of consecutive clearing turns, not the multiplier (AC-607c).
     longestStreak: state.stats.longestStreak,
+    chainGuardTrips: state.stats.chainGuardTrips,
   };
 }

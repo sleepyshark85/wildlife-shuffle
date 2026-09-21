@@ -34,6 +34,7 @@ import { BOARD, SPECIES } from '../../engine/constants.js';
 import { ROWS } from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
 import { COLORS, MOTION, MOTION_SIZE, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE } from '../theme.js';
+import { useCosmetics } from '../progressStore.js';
 
 const rowTop = (y, cell) => (ROWS - 1 - y) * cell;
 const BAND_LOW = BOARD.dangerBandLow;
@@ -170,7 +171,8 @@ const FlashRow = memo(function FlashRow({ row, at, cell, boardW, reduced }) {
  * it was standing at the step that took it (src/ui/replay.js).
  */
 const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) {
-  const style = SPECIES_STYLE[dep.type] || SPECIES_STYLE.rat;
+  const cosmetics = useCosmetics();
+  const style = cosmetics.species[dep.type] || cosmetics.species.rat;
   const buffalo = dep.type === SPECIES.buffalo.type;
   const flash = useFlash(dep.flashAt, MOTION_SIZE.flashPeak, reduced);
   const go = useSharedValue(0);
@@ -240,7 +242,7 @@ const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) 
         allowFontScaling={false}
         style={{ fontSize: glyph, lineHeight: glyph * 1.2, color: style.glyph }}
       >
-        {(SPECIES[dep.type] || SPECIES.rat).emoji}
+        {cosmetics.glyph(dep.type)}
       </Text>
       <Animated.View
         style={[

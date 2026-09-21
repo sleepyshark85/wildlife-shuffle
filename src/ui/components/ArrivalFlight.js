@@ -40,10 +40,12 @@ import { SPECIES } from '../../engine/constants.js';
 import { ROWS, trayMetrics } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
 import { handoverWindow } from '../timeline.js';
-import { HANDOVER_MS, SEAM, SEAM_BUFFALO, SILHOUETTE, SPECIES_STYLE } from '../theme.js';
+import { HANDOVER_MS, SEAM, SEAM_BUFFALO, SILHOUETTE } from '../theme.js';
+import { useCosmetics } from '../progressStore.js';
 
 const Flier = memo(function Flier({ animal, plan, cell, fromTop, bodyH, reduced }) {
-  const style = SPECIES_STYLE[animal.type] || SPECIES_STYLE.rat;
+  const cosmetics = useCosmetics();
+  const style = cosmetics.species[animal.type] || cosmetics.species.rat;
   const buffalo = animal.type === SPECIES.buffalo.type;
   const toTop = (ROWS - 1) * cell;
 
@@ -138,7 +140,7 @@ const Flier = memo(function Flier({ animal, plan, cell, fromTop, bodyH, reduced 
           detailStyle,
         ]}
       >
-        {(SPECIES[animal.type] || SPECIES.rat).emoji}
+        {cosmetics.glyph(animal.type)}
       </Animated.Text>
     </Animated.View>
   );

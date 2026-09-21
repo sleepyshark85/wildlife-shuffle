@@ -1045,6 +1045,7 @@ test('AC-706b/e no statistic is computed anywhere but summariseEvents', () => {
     'chainGuardTrips',
     'longestChain',
     'longestStreak',
+    'mostRowsInStep',
     'perfectClears',
     'rowsCleared',
   ]);

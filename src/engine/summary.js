@@ -11,11 +11,18 @@
  * `step` in any event, `buffaloRetired` the count of retirements carried by
  * those same events, and `longestStreak` the settled streak the ADVANCE event
  * carries (AC-706e). There is no statistic that comes from anywhere else.
+ *
+ * `mostRowsInStep` is the Golden Herd unlock's condition — "clear 4 rows in a
+ * single step" (gameplay.md §9). It is the widest CLEAR_STEP the stream
+ * carries, and it is folded HERE rather than counted at the unlock's own site
+ * for the reason §6.3 records: a statistic incremented at a second site is a
+ * defect even while it happens to agree.
  */
 export function summariseEvents(events) {
   let score = 0;
   let rowsCleared = 0;
   let longestChain = 0;
+  let mostRowsInStep = 0;
   let buffaloShrinks = 0;
   let buffaloRetired = 0;
   let clearSteps = 0;
@@ -29,6 +36,7 @@ export function summariseEvents(events) {
         score += event.score;
         rowsCleared += event.clearedRows.length;
         longestChain = Math.max(longestChain, event.step);
+        mostRowsInStep = Math.max(mostRowsInStep, event.clearedRows.length);
         buffaloShrinks += event.shrunk.length;
         buffaloRetired += event.retiredIds.length;
         clearSteps += 1;
@@ -53,6 +61,7 @@ export function summariseEvents(events) {
     score,
     rowsCleared,
     longestChain,
+    mostRowsInStep,
     buffaloShrinks,
     buffaloRetired,
     clearSteps,

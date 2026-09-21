@@ -23,3 +23,21 @@ export function formatScore(value) {
   }
   return out;
 }
+
+/**
+ * A `YYYY-MM-DD` day key as `21 Sep`, for the recent-runs list (AC-1011b).
+ *
+ * Written out for the same reason `formatScore` does its own digit grouping:
+ * Hermes' Intl support varies by build, and a date that silently loses its
+ * month name on one engine is exactly the kind of thing nobody tests. It also
+ * keeps this module importing nothing, so the Records screen's one piece of
+ * arithmetic stays checkable in `node --test`.
+ */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatDay(day) {
+  const parts = String(day).split('-');
+  const month = MONTHS[Number(parts[1]) - 1];
+  if (parts.length !== 3 || !month || !Number(parts[2])) return String(day);
+  return `${Number(parts[2])} ${month}`;
+}

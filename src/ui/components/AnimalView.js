@@ -33,8 +33,9 @@ import { registerProbe, releaseProbe } from '../diagnostics.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
 import { EASE, delay, sequence, spring, timing } from '../motion.js';
 import { rowAt } from '../trajectory.js';
+import { useCosmetics } from '../progressStore.js';
 import {
-  COLORS, MOTION, MOTION_SIZE, NUMERAL, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, brighten,
+  COLORS, MOTION, MOTION_SIZE, NUMERAL, RADIUS, SEAM, SEAM_BUFFALO, brighten,
 } from '../theme.js';
 
 /**
@@ -85,7 +86,11 @@ function AnimalViewImpl({
   diagnostics, onCommit, onIllegal,
 }) {
   const { id, type, x, y, size } = animal;
-  const style = SPECIES_STYLE[type] || SPECIES_STYLE.rat;
+  // AC-1011: an applied unlock substitutes the species' appearance here and
+  // changes nothing else. The value is a stable object from one context, so
+  // reading it costs no commit during a drag (src/ui/progressStore.js).
+  const cosmetics = useCosmetics();
+  const style = cosmetics.species[type] || cosmetics.species.rat;
   const buffalo = type === SPECIES.buffalo.type;
   const width = size * cell;
   const edgeLit = useMemo(() => brighten(style.edge, MOTION_SIZE.edgeBrighten), [style.edge]);
@@ -470,7 +475,7 @@ function AnimalViewImpl({
           allowFontScaling={false}
           style={{ fontSize: glyph, lineHeight: glyph * 1.2, color: style.glyph }}
         >
-          {(SPECIES[type] || SPECIES.rat).emoji}
+          {cosmetics.glyph(type)}
         </Text>
         {sizeNumerals ? (
           // ui.md §10, AC-905 / AC-905b: the optional fifth size cue, on its

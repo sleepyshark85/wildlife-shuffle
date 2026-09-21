@@ -492,3 +492,118 @@ test('AC-808 the trajectory module stays loadable in Node', () => {
     .map((f) => path.relative(ROOT, f));
   assert.deepEqual(others, [], `a second copy of the trajectory: ${others.join(', ')}`);
 });
+
+// ---- AC-10xx · persistence is a new failure surface ----------------------
+
+/**
+ * AC-1002, kept checkable as the app grows.
+ *
+ * "No storage write during a turn or from the render path" is not a property a
+ * grep can read off an expression, so this constrains the thing that makes it
+ * true instead: AsyncStorage is reachable from exactly one module, and that
+ * module is reachable from exactly one more. v1's defect was the opposite
+ * shape — the whole board serialised on a 1 Hz `setInterval` rebuilt by a
+ * `[store]` dependency array on every render (`GameScreen.js:53-72` at v1
+ * HEAD) — and it was possible because the screen could reach storage directly.
+ */
+test('AC-1002 AsyncStorage is reachable from exactly one module', () => {
+  const importers = SRC.filter((f) => /@react-native-async-storage/.test(code(f)))
+    .map((f) => path.relative(ROOT, f));
+  assert.deepEqual(importers, ['src/ui/storage.js']);
+
+  const consumers = SRC.filter((f) => /from '\.[^']*storage\.js'/.test(code(f)))
+    .map((f) => path.relative(ROOT, f));
+  assert.deepEqual(consumers, ['src/ui/progressStore.js']);
+});
+
+test('AC-1002 nothing on the turn path or in a component can write to disk', () => {
+  // The engine, the state layer and every board component. A write from any of
+  // them would be a write during a turn or from a render, by construction.
+  const forbidden = SRC.filter((f) => {
+    const rel = path.relative(ROOT, f);
+    return rel.startsWith('src/engine/')
+      || rel === 'src/ui/useGameRun.js'
+      || rel === 'src/ui/replay.js'
+      || rel === 'src/ui/trajectory.js'
+      || (rel.startsWith('src/ui/components/') && rel !== 'src/ui/components/Controls.js');
+  });
+  assert.ok(forbidden.length > 10, 'the file selection stopped selecting anything');
+  for (const file of forbidden) {
+    const body = code(file);
+    assert.ok(
+      !/\b(writeText|removeText|readText|AsyncStorage|saveResume|finishRun)\b/.test(body),
+      `${path.relative(ROOT, file)} touches storage`,
+    );
+  }
+});
+
+/**
+ * AC-1013. The in-progress run is written on the AppState transition and
+ * nowhere else, so there is exactly one call site and it is inside the
+ * AppState hook's own callback.
+ */
+test('AC-1013 the resume is written from the AppState transition and nowhere else', () => {
+  const appState = SRC.filter((f) => /\bAppState\b/.test(code(f))).map((f) => path.relative(ROOT, f));
+  assert.deepEqual(appState, ['src/ui/useAppState.js']);
+
+  const calls = SRC.map(code).join('\n').match(/\.saveResume\s*\(/g) || [];
+  assert.equal(calls.length, 1, `saveResume is called from ${calls.length} places`);
+
+  const screen = code(path.join(ROOT, 'src/ui/screens/GameScreen.js'));
+  const at = screen.indexOf('useOnBackground(');
+  assert.ok(at !== -1, 'GameScreen no longer registers an AppState handler');
+  const handler = blockAt(screen, at);
+  assert.ok(handler && /saveResume\(/.test(handler.text),
+    'the resume write is not inside the AppState callback any more');
+
+  // ...and the thing v1 did is absent: no interval anywhere, and the AppState
+  // subscription has no dependency array that could rebuild it per render.
+  const hook = code(path.join(ROOT, 'src/ui/useAppState.js'));
+  assert.ok(!/setInterval/.test(hook));
+  assert.match(hook, /addEventListener\('change'[\s\S]*?\}, \[\]\);/);
+  assert.match(hook, /subscription\.remove/);
+});
+
+/**
+ * AC-1011: an unlock "changes only appearance and has no effect on any rule,
+ * spawn, or score". Structural, not promised — the engine has no import path
+ * to the module that knows what an unlock is, and does not name one.
+ */
+test('AC-1011 the engine cannot see a cosmetic', () => {
+  const engine = SRC.filter((f) => path.relative(ROOT, f).startsWith('src/engine/'));
+  assert.ok(engine.length >= 8, 'the engine file list is empty');
+  const ids = ['nightSavanna', 'tundraPalette', 'ratKing', 'goldenHerd'];
+  for (const file of engine) {
+    const body = code(file);
+    assert.ok(!/from '\.\.\/ui\//.test(body), `${path.relative(ROOT, file)} imports from the UI`);
+    for (const id of ids) {
+      assert.ok(!body.includes(id), `${path.relative(ROOT, file)} names the unlock ${id}`);
+    }
+  }
+  // The cosmetics module itself imports no state and no storage: it is a pure
+  // function of the save, so nothing it returns can become a rule.
+  const cosmetics = code(path.join(ROOT, 'src/ui/cosmetics.js'));
+  const imports = [...cosmetics.matchAll(/from '([^']+)'/g)].map((m) => m[1]).sort();
+  assert.deepEqual(imports, ['../engine/constants.js', './theme.js']);
+});
+
+/**
+ * AC-1005/AC-1006 live in a module that must stay loadable by `node --test`,
+ * for the same reason `trajectory.js` does: a corrupt save is only checkable
+ * off-device if the parser can be handed a corrupt string in Node. A single
+ * `react-native` import here would move AC-1005 out of reach and into the
+ * hands of somebody with a phone and a file editor.
+ */
+test('AC-1005 the persistence rules stay loadable in Node', () => {
+  for (const rel of ['src/ui/progress.js', 'src/ui/session.js', 'src/ui/cosmetics.js']) {
+    const body = code(path.join(ROOT, rel));
+    const imports = [...body.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
+    for (const source of imports) {
+      assert.ok(
+        source.startsWith('.'),
+        `${rel} imports the package '${source}', which takes AC-1005 off Node`,
+      );
+    }
+    assert.ok(!/\bDate\.now\(|Math\.random\(/.test(body), `${rel} reads a clock or a die`);
+  }
+});

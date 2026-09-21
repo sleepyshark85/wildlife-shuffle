@@ -3,9 +3,11 @@
 // v1's SettingsMenu — grid-width and grid-height steppers in front of the game —
 // is deleted (ui.md §2). The board is a rules parameter, not a preference.
 //
-// The toggles are session-scoped in this slice. Persisting them is AsyncStorage,
-// which is AC-10xx and lands with Slice 4; §10 says "all persisted" and that is
-// the one part of the sentence this slice does not keep yet.
+// AC-906b: the three toggles are persisted now, in the same save blob as the
+// records — `useSettings()` reads them from the progress context rather than
+// holding a copy (src/ui/settings.js). The diagnostic log's own switch stays
+// session-scoped: `diagnosticsAvailable()` removes it from a release build, so
+// persisting it would persist something the player could never turn off.
 
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';

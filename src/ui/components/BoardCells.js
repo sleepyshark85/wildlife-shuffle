@@ -35,7 +35,7 @@ function HazardStripes({ width, height, pitch, color, thickness }) {
   return <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>{bars}</View>;
 }
 
-function BoardCellsImpl({ cell, highContrast }) {
+function BoardCellsImpl({ cell, highContrast, colors = COLORS }) {
   const boardW = cell * COLS;
   const cells = useMemo(() => {
     const out = [];
@@ -52,20 +52,24 @@ function BoardCellsImpl({ cell, highContrast }) {
               top: (ROWS - 1 - y) * cell,
               width: cell,
               height: cell,
-              backgroundColor: kill ? COLORS.bg : danger ? COLORS.dangerBand : COLORS.cell,
+              backgroundColor: kill ? COLORS.bg : danger ? COLORS.dangerBand : colors.cell,
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: danger || kill
                 ? COLORS.dangerCellLine
                 : highContrast
                   ? COLORS.cellLineHigh
-                  : COLORS.cellLine,
+                  : colors.cellLine,
             }}
           />,
         );
       }
     }
     return out;
-  }, [cell, highContrast]);
+    // `colors` is in the dependency list, not just read: a board theme that
+    // repainted the animals but left the 135 memoized cells at the old palette
+    // would be the right state rendered wrong, which is the failure shape
+    // §6.7 of the process doc is about.
+  }, [cell, highContrast, colors]);
 
   return (
     <View
