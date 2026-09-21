@@ -9,7 +9,13 @@ They are ordered by how expensive they are to reverse later.
 
 ---
 
-## Q1 · The bundle identifier — **now actively blocking Slice 6**
+## Q1 · The bundle identifier — **DECIDED 2026-09-21**
+
+> **The owner chose the new name.** `slug: wildlife-shuffle`,
+> `bundleIdentifier: com.sleepyshark.wildlifeshuffle`, Android package to match. Landed before
+> any build, so the identifier was never burned. Kept below for the record.
+
+### Original question — resolved
 
 > **Status, 2026-09-21:** Slice 6 (store readiness) is building and **this is the one thing
 > stopping it**. The identifier is still `com.sleepyshark.animalrun`. The developer has been

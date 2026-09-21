@@ -1,14 +1,14 @@
 {
   "expo": {
     "name": "Wildlife Shuffle",
-    "slug": "animal-run",
+    "slug": "wildlife-shuffle",
     "version": "1.0.0",
     "assetBundlePatterns": [
       "**/*"
     ],
     "icon": "./assets/icon.png",
     "ios": {
-      "bundleIdentifier": "com.sleepyshark.animalrun",
+      "bundleIdentifier": "com.sleepyshark.wildlifeshuffle",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -16,7 +16,7 @@
       "supportsTablet": false
     },
     "android": {
-      "package": "com.sleepyshark.animalrun",
+      "package": "com.sleepyshark.wildlifeshuffle",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#16212C"
