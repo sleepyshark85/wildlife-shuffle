@@ -1,3 +1,24 @@
+> ## ⚠️ SUPERSEDED — this describes v1, which no longer exists
+>
+> **The live specification is `docs/v2/`** — `gameplay.md` for rules, `ui.md` for layout and
+> motion, `acceptance-criteria.md` for the numbered contract. This file is kept for history.
+>
+> **Do not take any number in this document as current.** It is wrong about, among other
+> things: the board is not 10 × 20 (v2 fixed it at 10 × 15, and the owner has since called for
+> 9 × 15 — `docs/v2/gameplay.md` §3 is authoritative); the game ends at the kill line, not
+> row 19; the
+> clear flash is 320 ms, not 1200; and "all rows advance upward by 1" is not what v1 actually
+> did — gravity pulled the pile straight back down except where an arrival propped it up,
+> which is the behaviour v2 kept and describes honestly.
+>
+> **It is also actively misleading about animal sizes, and that already cost us.** The
+> "V2.1 Animal Balance Changes" section below records elephant going 4 → 5 and buffalo 5 → 4.
+> That change was made on 8 July and **reverted on 11 July** in `2ff0eab`; this document was
+> never updated. Combined with a review taken from a stale commit, it is why v2 was built with
+> the sizes backwards. See `docs/development-process.md` §6.4.
+>
+> The code v1 described was deleted in Slice 2. See `docs/slices.md`.
+
 # Wildlife Shuffle Game - Specification
 
 ## Overview
