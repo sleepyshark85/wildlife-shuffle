@@ -1219,8 +1219,18 @@ things do never loses anything.
 ### 13.3 Targeting, and getting out of it
 
 **Burrow** and **Migrate** need a target, so the board enters a **targeting state**: everything
-dims to 45% except valid targets, a chip at the top reads `Tap an animal to burrow` with a
-**Cancel** action, and the action bar is replaced by that chip for the duration.
+dims to 45% except valid targets, a chip at the top carries the prompt and a **Cancel** action,
+and the action bar is replaced by that chip for the duration.
+
+| Ability | Prompt |
+|---|---|
+| Burrow | `Tap an animal to burrow` |
+| Migrate | `Tap an animal — its whole species leaves` |
+
+Migrate's prompt **explains the mechanic in the act of asking**, because its target is a
+species but the thing the player taps is an animal, and a prompt that said "tap a species"
+would name something not on the board. **The buffalo is never a valid target for either**
+(AC-1412, AC-1412b) and stays dimmed with the rest.
 
 **Cancel must always be one tap and must never spend the charge.** A player who arms the wrong
 ability and cannot back out of it has been punished for exploring the system, which is the
@@ -1238,8 +1248,8 @@ over an ordinary structural resolution:
 | **Burrow** | The target dissolves downward — the rat's own vanishing act, 260 ms |
 | **Dart** | The action bar shows `2 MOVES LEFT`, counting down; the board stays live |
 | **Migrate** | Every animal of that species flashes once in unison, then leaves together |
-| **Stampede** | Rows slide left in a 120 ms stagger from the bottom up — the herd moving as one |
-| **Hold the Line** | The tray greys out and shows `FROZEN · 3`, counting down each turn |
+| **Stampede** | Rows slide left bottom-up, staggered over the rows that **actually move**, capped at **4 beats / 480 ms** with the tail folded — the herd moving as one |
+| **Hold the Line** | Announce `HOLD THE LINE · 3 TURNS`; the tray then greys out and shows **arrivals remaining** — `FROZEN · 2`, `FROZEN · 1` — the freeze having started immediately (AC-1410) |
 
 **Hold the Line's tray treatment is load-bearing, not decoration.** The tray's whole contract
 is that it shows what is coming (§6); when nothing is coming it must say so, or the contract
