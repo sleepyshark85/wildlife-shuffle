@@ -30,6 +30,8 @@ export const EASE = Object.freeze({
   cubicOut: Easing.out(Easing.cubic),
   /** The danger pulse, and the flash's decay. */
   inOut: Easing.inOut(Easing.ease),
+  /** The turn clock is a ramp of milliseconds; it must not be shaped. */
+  linear: Easing.linear,
 });
 
 /** ui.md §8.4: under Reduce Motion no single transform outlives 120 ms. */
@@ -84,3 +86,4 @@ export function spring(ms, dampingRatio, reduced) {
     reduceMotion: ReduceMotion.Never,
   };
 }
+

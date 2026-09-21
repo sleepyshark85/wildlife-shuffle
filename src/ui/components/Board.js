@@ -59,7 +59,7 @@ function Ghost({ cell, drag }) {
 }
 
 function BoardImpl({
-  animals, cell, drag, plan, reduced, sizeNumerals, highContrast, diagnostics,
+  animals, cell, drag, clock, plan, reduced, sizeNumerals, highContrast, diagnostics,
   onCommit, onIllegal,
 }) {
   // Recomputed when the board changes — never during a drag, because a drag
@@ -105,6 +105,7 @@ function BoardImpl({
           cell={cell}
           range={ranges[animal.id]}
           drag={drag}
+          clock={clock}
           motion={plan ? plan.moves[animal.id] : null}
           reduced={reduced}
           sizeNumerals={sizeNumerals}

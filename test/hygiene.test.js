@@ -357,37 +357,61 @@ test('AC-808/AC-809 a resting property is asserted, not restored in one arm', ()
   const effectStart = body.indexOf('useEffect(() => {', body.indexOf('homeX.value = x * cell') - 400);
   const effect = blockAt(body, effectStart);
   assert.ok(effect, 'could not find the position effect');
-  assert.ok(effect.text.includes('const keys ='), 'found the wrong effect');
+  assert.ok(effect.text.includes('tx.value'), 'found the wrong effect');
 
-  const branchStart = effect.text.indexOf('if (!keys');
-  assert.ok(branchStart > -1, 'the movement branch has been renamed; re-read this test');
-  const thenArm = blockAt(effect.text, branchStart);
-  const elseArm = blockAt(effect.text, effect.text.indexOf('else', thenArm.to));
-  assert.ok(elseArm, 'the movement branch no longer has an else arm');
+  const assigns = (text, name) => new RegExp(`\\b${name}\\.value\\s*=`).test(text);
 
-  const topLevel =
-    effect.text.slice(0, thenArm.from) + effect.text.slice(elseArm.to);
+  /**
+   * The set of values this text assigns on EVERY path through it: top-level
+   * statements, plus — for an `if`/`else` — only what both arms assign. A
+   * one-armed `if` contributes nothing, because it might not run.
+   */
+  function alwaysAssigned(text, names) {
+    let rest = '';
+    const both = new Set();
+    let i = 0;
+    while (i < text.length) {
+      const at = text.indexOf('if (', i);
+      if (at === -1) { rest += text.slice(i); break; }
+      rest += text.slice(i, at);
+      const thenArm = blockAt(text, at);
+      if (!thenArm) { rest += text.slice(at); break; }
+      const after = text.slice(thenArm.to, thenArm.to + 12);
+      if (/^\s*else\b/.test(after)) {
+        const elseArm = blockAt(text, text.indexOf('else', thenArm.to));
+        for (const n of names) {
+          if (alwaysAssigned(thenArm.text, names).has(n)
+            && alwaysAssigned(elseArm.text, names).has(n)) both.add(n);
+        }
+        i = elseArm.to;
+      } else {
+        i = thenArm.to;   // a one-armed if promises nothing
+      }
+    }
+    const out = new Set(both);
+    for (const n of names) if (assigns(rest, n)) out.add(n);
+    return out;
+  }
 
-  /** Self-terminating announcements: if they never run, the value is at rest. */
+  const names = [...new Set(
+    [...effect.text.matchAll(/\b(\w+)\.value\s*=/g)].map((m) => m[1]),
+  )];
+  assert.ok(names.includes('alpha'), 'the visibility value has been renamed');
+
+  /**
+   * Self-terminating ANNOUNCEMENTS. If they never run, the value is already at
+   * rest, so a one-armed `if` is honest for them and only for them. Everything
+   * else expresses engine state and must be asserted on every path — the rule
+   * the owner's invisible-animals bug broke.
+   */
   const ANNOUNCEMENTS = new Set(['squash']);
 
-  const assigned = new Set(
-    [...effect.text.matchAll(/\b(\w+)\.value\s*=/g)].map((m) => m[1]),
-  );
-  assert.ok(assigned.has('alpha'), 'the visibility value has been renamed');
-
-  const offenders = [];
-  for (const name of assigned) {
-    if (ANNOUNCEMENTS.has(name)) continue;
-    const assigns = (text) => new RegExp(`\\b${name}\\.value\\s*=`).test(text);
-    if (assigns(topLevel)) continue;
-    if (assigns(thenArm.text) && assigns(elseArm.text)) continue;
-    offenders.push(name);
-  }
+  const covered = alwaysAssigned(effect.text, names);
+  const offenders = names.filter((n) => !ANNOUNCEMENTS.has(n) && !covered.has(n));
   assert.deepEqual(
     offenders.sort(), [],
-    `set in only one arm of the movement branch, so an animal that does not ` +
-      `move never gets it: ${offenders.join(', ')}`,
+    `assigned on only some paths through the position effect, so an animal ` +
+      `that takes the other path never gets it: ${offenders.join(', ')}`,
   );
 });
 
@@ -444,4 +468,27 @@ test('AC-215 no hook is called after a conditional return', () => {
       }
     });
   }
+});
+
+/**
+ * `src/ui/trajectory.js` is the one module `node --test` can sweep the
+ * rendered motion with, and it can only do that because it imports nothing.
+ *
+ * Reanimated cannot be loaded in Node — its package `main` resolves to a file
+ * that is not there — so a single import here would make the trajectory
+ * untestable off a device again. That is not a hypothetical: the animals were
+ * crossing each other on screen for a whole round with every test green,
+ * precisely because nothing could evaluate the path they took.
+ */
+test('AC-808 the trajectory module stays loadable in Node', () => {
+  const body = read(path.join(ROOT, 'src/ui/trajectory.js'));
+  const imports = [...body.matchAll(/^\s*import\s.+$/gm)].map((m) => m[0].trim());
+  assert.deepEqual(imports, [], `trajectory.js must import nothing: ${imports.join(' | ')}`);
+
+  // ...and it is the only definition of the path, so the UI thread and the
+  // test cannot diverge. A second `rowAt` anywhere is the two-sources bug.
+  const others = SRC.filter((f) => !f.endsWith('trajectory.js'))
+    .filter((f) => /function\s+rowAt\b|function\s+bezierAt\b/.test(code(f)))
+    .map((f) => path.relative(ROOT, f));
+  assert.deepEqual(others, [], `a second copy of the trajectory: ${others.join(', ')}`);
 });

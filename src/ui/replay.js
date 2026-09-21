@@ -21,6 +21,24 @@ import { MOTION } from './theme.js';
 import { turnTimeline } from './timeline.js';
 
 /**
+ * Turn the keys into an absolute schedule: when each one actually starts.
+ *
+ * A key wants to start at its own `at`, but a key cannot start before the one
+ * before it has finished — the cascade pipeline overlaps STEPS, not one
+ * animal's own successive moves. Resolving that here, once, is what lets every
+ * animal read a single shared clock instead of each one counting from its own
+ * first frame (src/ui/motion.js `rowAt`).
+ */
+function absolute(keys) {
+  let cursor = 0;
+  return keys.map((key) => {
+    const start = Math.max(key.at, cursor);
+    cursor = start + key.dur;
+    return { ...key, start };
+  });
+}
+
+/**
  * Which columns of `row` are held by a body that was already on the board.
  *
  * Not "which columns are full" — by the time this row is examined the engine
@@ -76,6 +94,9 @@ function compact(keys, startY) {
  * @returns {object} the plan; see the shape returned at the bottom
  */
 export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
+  /** Identity for this turn: the announcement layer and the shared clock
+   *  both key off it, and so does every animal's own schedule. */
+  const planKey = `${lastTurn.turn}.${lastTurn.action}`;
   const timeline = turnTimeline(lastTurn.events, lastTurn.action, Math.max(0, reservedMs));
   const { scale } = timeline;
   const fallMs = MOTION.fall * scale;
@@ -320,7 +341,7 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   // ---- per-animal: tidy the keys and decide which landings squash ---------
   const moves = {};
   for (const [id, record] of motion) {
-    const keys = compact(record.keys, record.startY);
+    const keys = absolute(compact(record.keys, record.startY));
     const last = keys[keys.length - 1];
     // AC-807: the squash is what a FALL lands with. `applyGravity` only ever
     // moves an animal down, so a 'fall' key is a landing by construction; a
@@ -328,16 +349,31 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
     // nothing.
     const fell = Boolean(last) && last.kind === 'fall';
     moves[id] = {
+      /** The turn these keys belong to: an animal reading the shared clock has
+       *  to know whether the clock is still talking about its own schedule. */
+      key: planKey,
+      /** Where the animal stood when the turn began: the row every key below
+       *  departs from, and without it the plan cannot be replayed on paper. */
+      startY: record.startY,
       keys,
       size: record.size,
       arrival: record.arrival,
-      landAt: fell && last ? last.at + last.dur : null,
+      landAt: fell && last ? last.start + last.dur : null,
     };
+  }
+
+  // The shared clock has to outlast the last scheduled movement, or an animal
+  // would freeze a few milliseconds short of where the engine put it.
+  let clockMs = 0;
+  for (const id of Object.keys(moves)) {
+    for (const key of moves[id].keys) clockMs = Math.max(clockMs, key.start + key.dur);
   }
 
   return {
     /** Identity for the announcement layer: a new turn is a new layer. */
-    key: `${lastTurn.turn}.${lastTurn.action}`,
+    key: planKey,
+    /** AC-808: one clock for the whole board, so nothing can drift (motion.js). */
+    clockMs,
     lockMs: timeline.lockMs,
     reservedMs: Math.max(0, reservedMs),
     scale,

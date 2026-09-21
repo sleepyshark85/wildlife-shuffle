@@ -201,7 +201,31 @@ symbol immediately afterwards.
 **Rule:** agents restore a planted fault from a scratchpad copy, never from git. Fault
 injection happens on files whose committed state is by definition not the state you want back.
 
-### 6.7 The stacked-branch merge
+### 6.7 Right state, wrong appearance — twice
+
+Two consecutive bugs shipped through every check we had, and the owner found both by playing.
+Arriving animals rendered at opacity 0 for a whole run. Animals visually crossed each other
+while falling. In both cases the engine was correct, the final positions were correct, and
+**every harness we owned compared positions.**
+
+The second has a sharper lesson than the first. Position was not a value anyone could
+evaluate: each animal ran its own `withDelay`, which anchors to *that animation's own first
+frame*, so twenty animations built across a vsync boundary started up to one frame apart. One
+frame is a quarter of a row and a stack has no slack. Nothing could be swept, because where an
+animal was depended on which frame it happened to start on.
+
+The fix made position arithmetic — one clock per turn, and `rowAt(startY, keys, t)` as a pure
+function — which is what made a 500-turn sweep possible at all.
+
+**Rules:**
+- Before writing presentation code, ask *what would this look like wrong while the state is
+  right?* A position-only check cannot answer it.
+- **Anything that must be checkable off-device must import nothing that only runs on-device.**
+  Reanimated cannot load in Node, so a single import moves a property out of `node --test`'s
+  reach and into the hands of a human with a phone. `src/ui/trajectory.js` imports nothing, and
+  a hygiene test enforces it.
+
+### 6.8 The stacked-branch merge
 
 Slice 1's PR was based on Slice 0's branch. Both were merged within nine seconds — Slice 0
 into `main` first, then Slice 1 into the already-merged Slice 0 branch. Slice 1's code never
@@ -224,7 +248,7 @@ result is on `main` afterwards.
   numbers rather than adjectives.
 - **Before pushing, run the suite against what was committed**, not the working tree — a
   detached worktree at HEAD, or a `git stash` around the test run (§6.5).
-- **After merging, verify the code is actually on `main`** (§6.7).
+- **After merging, verify the code is actually on `main`** (§6.8).
 
 **Merge authority:** when the owner says *"go for it"*, that carries through to merging the
 PR. The orchestrator still opens the PR and reports what is in it; it does not wait for a
