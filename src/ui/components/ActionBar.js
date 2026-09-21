@@ -41,7 +41,7 @@ import { AbilityButton, TargetingChip } from './AbilityButton.js';
 import { Button, CHROME_FONT_CAP } from './Controls.js';
 
 export const ActionBar = memo(function ActionBar({
-  chrome, screenW, blocked, resolving, gameOver, onPass, column,
+  chrome, screenW, resolving, gameOver, onPass, column,
   ability, grants, reduced, targeting, onAbilities, onCancelTarget, status,
 }) {
   const theme = useTheme();
@@ -74,7 +74,7 @@ export const ActionBar = memo(function ActionBar({
       maxFontSizeMultiplier={CHROME_FONT_CAP}
       accessibilityLiveRegion="polite"
       numberOfLines={1}
-      style={[theme.type.label, blocked && styles.blocked]}
+      style={theme.type.label}
     >
       {status}
     </Text>
@@ -147,5 +147,4 @@ const STYLES = themed((T) => StyleSheet.create({
   wideButton: { height: 48 },
   wideSlot: { alignSelf: 'stretch' },
   chipCopy: { color: T.colors.ink },
-  blocked: { color: T.colors.illegal },
 }));

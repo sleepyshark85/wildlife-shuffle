@@ -313,11 +313,14 @@ test('AC-1407 the bar counts the Dart down, and says MOVE in the singular', () =
 });
 
 test('one status line, and the arming state outranks the idle one', () => {
-  const base = { gameOver: false, blocked: false, resolving: false, arming: false, dart: 0 };
+  const base = { gameOver: false, resolving: false, arming: false, dart: 0 };
   assert.equal(turnStatus(base), 'YOUR MOVE');
   assert.equal(turnStatus({ ...base, dart: 2 }), '2 MOVES LEFT');
   assert.equal(turnStatus({ ...base, arming: true }), 'CHOOSE A TARGET');
-  assert.equal(turnStatus({ ...base, blocked: true }), 'BLOCKED');
+  // AC-406: there is no BLOCKED state left to rank. A release can no longer be
+  // illegal, so nothing can raise the announcement and the branch is gone
+  // rather than unreachable.
+  assert.equal(turnStatus({ ...base, blocked: true }), 'YOUR MOVE');
   assert.equal(turnStatus({ ...base, resolving: true }), 'RESOLVING…');
   assert.equal(turnStatus({ ...base, gameOver: true }), 'RUN OVER');
   // Game over outranks everything, including an arming state left behind.

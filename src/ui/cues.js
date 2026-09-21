@@ -53,7 +53,6 @@ export const HAPTIC = Object.freeze({
   medium: 'medium',
   heavy: 'heavy',
   success: 'success',
-  error: 'error',
 });
 
 export const HAPTIC_IDS = Object.freeze(Object.keys(HAPTIC));
@@ -69,6 +68,14 @@ export const HAPTIC_IDS = Object.freeze(Object.keys(HAPTIC));
  * `chain` carries the clear's medium impact because a chain step IS a row
  * clear — AC-1102 says row clears fire medium, and a cascade is rows clearing.
  *
+ * `illegal` fires at CONTACT now rather than on release (AC-407g/AC-1101e), so
+ * its haptic dropped from `notificationError` to a light impact: a three-tap
+ * pattern half a second long was sized for a once-per-mistake announcement and
+ * would still be playing after a player who had already moved on. It matches
+ * `land` on purpose — a contact is a landing, sideways. Nothing asks for
+ * `notificationError` any longer, so the name is gone from the alphabet rather
+ * than left in it for a caller that does not exist.
+ *
  * `drop` and `newBest` carry no haptic. AC-1101 gives them a sound and AC-1102
  * does not give them a feel, and inventing one is exactly the silent
  * reinterpretation the developer brief forbids. Both are flagged in the report.
@@ -77,7 +84,7 @@ export const CUES = Object.freeze({
   grab: Object.freeze({ sound: 'grab', haptics: Object.freeze([HAPTIC.selection]) }),
   drop: Object.freeze({ sound: 'drop', haptics: Object.freeze([]) }),
   land: Object.freeze({ sound: 'land', haptics: Object.freeze([HAPTIC.light]) }),
-  illegal: Object.freeze({ sound: 'illegal', haptics: Object.freeze([HAPTIC.error]) }),
+  illegal: Object.freeze({ sound: 'illegal', haptics: Object.freeze([HAPTIC.light]) }),
   clear: Object.freeze({ sound: 'clear', haptics: Object.freeze([HAPTIC.medium]) }),
   chain: Object.freeze({ sound: 'chain', haptics: Object.freeze([HAPTIC.medium]) }),
   shrink: Object.freeze({ sound: 'shrink', haptics: Object.freeze([HAPTIC.medium]) }),

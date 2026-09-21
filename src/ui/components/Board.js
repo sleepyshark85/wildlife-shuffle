@@ -2,8 +2,8 @@
 // announcements, one ghost, and the animals.
 //
 // Nothing in here re-renders during a drag (AC-831). The ghost is driven
-// entirely by shared values the gesture worklet writes, so the legal/illegal
-// feedback updates at touch rate with zero React involvement (AC-832).
+// entirely by shared values the gesture worklet writes, so the destination and
+// the blocker's rim update at touch rate with zero React involvement (AC-832).
 //
 // The clear layer is painted BEFORE the animals, so it sits under them: a row
 // flash that outlived its own collapse must not haze over the animals falling
@@ -28,24 +28,35 @@ import { BoardCells } from './BoardCells.js';
 import { ClearLayer, DangerPulse } from './ClearLayer.js';
 import { NaturalGround } from './NaturalGround.js';
 
+/**
+ * AC-408 — the destination, and it is never red.
+ *
+ * The ghost used to carry a legal and an illegal treatment. Under AC-407 the
+ * body is clamped to the legal slide range, so `onFinalize` reads a column the
+ * engine will accept and a release ALWAYS commits: a red ghost would promise a
+ * rejection that can no longer happen, which is the owner's own complaint
+ * pointing the other way. It would also be invisible — `maxX × cell` is
+ * grid-aligned, so at a limit the ghost sits exactly under the body that is
+ * covering it, and the only frames it could be seen in are frames where it is
+ * lying. What it used to do — stop an illegal target from looking legal, so
+ * the player does not spend a turn finding out — is discharged by there being
+ * no illegal target left to reach.
+ */
 function Ghost({ cell, drag }) {
-  // Read on the JS thread and captured as four scalars, because a worklet may
+  // Read on the JS thread and captured as two scalars, because a worklet may
   // only close over values that existed before it ran — handing it the whole
   // palette would make every ghost frame depend on an object the theme owns.
-  const { accent, illegal, ghostFill, illegalFill } = useTheme().colors;
-  const style = useAnimatedStyle(() => {
-    const legal = drag.ghostLegal.value === 1;
-    return {
-      opacity: drag.ghostVisible.value,
-      width: drag.ghostSize.value * cell,
-      transform: [
-        { translateX: drag.ghostX.value * cell },
-        { translateY: drag.ghostY.value },
-      ],
-      borderColor: legal ? accent : illegal,
-      backgroundColor: legal ? ghostFill : illegalFill,
-    };
-  });
+  const { accent, ghostFill } = useTheme().colors;
+  const style = useAnimatedStyle(() => ({
+    opacity: drag.ghostVisible.value,
+    width: drag.ghostSize.value * cell,
+    transform: [
+      { translateX: drag.ghostX.value * cell },
+      { translateY: drag.ghostY.value },
+    ],
+    borderColor: accent,
+    backgroundColor: ghostFill,
+  }));
 
   return (
     <Animated.View
@@ -169,7 +180,7 @@ function OriginRecess({ cell, drag, highContrast }) {
 
 function BoardImpl({
   animals, cell, seed, drag, clock, plan, reduced, sizeNumerals, highContrast, diagnostics,
-  onCommit, onIllegal, arming = null, onTarget, onCancelTarget,
+  onCommit, arming = null, onTarget, onCancelTarget,
 }) {
   const theme = useTheme();
   const styles = STYLES[theme.name];
@@ -262,7 +273,6 @@ function BoardImpl({
           highContrast={highContrast}
           diagnostics={diagnostics}
           onCommit={onCommit}
-          onIllegal={onIllegal}
         />
       ))}
     </View>

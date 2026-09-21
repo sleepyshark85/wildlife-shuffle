@@ -212,7 +212,13 @@ test('AC-1102 each moment fires exactly the haptics the design names', () => {
     shrink: ['medium'],
     retire: ['heavy'],
     perfect: ['heavy', 'success'],
-    illegal: ['error'],
+    // AC-1102/AC-407g: the cue moved from release to CONTACT, so its haptic
+    // moved with it. `notificationError` is a three-tap pattern about half a
+    // second long, sized for a once-per-mistake announcement; fired mid-drag
+    // it would still be playing after the player had moved on. A light impact
+    // is the bump a boundary makes, and it matches `land` on purpose — a
+    // contact is a landing, sideways.
+    illegal: ['light'],
     gameOver: ['heavy'],
     // Specified with a sound and no feel. Flagged in the slice report rather
     // than invented.

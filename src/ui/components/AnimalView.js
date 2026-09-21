@@ -5,8 +5,9 @@
 // (docs/v1-review.md D3, ui.md §8.3 ¶2). Here the gesture is a Gesture.Pan()
 // writing to Reanimated shared values on the UI thread. React learns the result
 // on release only, through one runOnJS call carrying the final column (AC-830,
-// AC-831). The legal/illegal ghost is computed in the gesture worklet from an
-// occupancy snapshot taken at gesture start (AC-832).
+// AC-831). The body's clamp, its destination ghost and the blocker's rim are
+// all computed in the gesture worklet from an occupancy snapshot taken at
+// gesture start (AC-832), by `src/ui/dragClamp.js` (AC-407c).
 //
 // The motion half is the same principle from the other side. `motion` is this
 // animal's slice of the turn plan (src/ui/replay.js) — a list of already-decided
@@ -30,6 +31,7 @@ import Animated, {
 
 import { BOARD, SPECIES } from '../../engine/constants.js';
 import { CUE } from '../cues.js';
+import { clampDrag } from '../dragClamp.js';
 import { fireCue } from '../cuePlayer.js';
 import { registerProbe, releaseProbe } from '../diagnostics.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
@@ -51,12 +53,6 @@ import { MOTION, MOTION_SIZE, RADIUS, edgeLit, themed } from '../theme.js';
  */
 const grabConfig = spring(MOTION.grab, 0.64, false);
 const snapConfig = timing(MOTION.snap, EASE.out, false);
-const shakeIn = timing(MOTION.illegal / 6, EASE.illegal, false);
-const shakeMid = timing(MOTION.illegal / 3, EASE.illegal, false);
-/** AC-907: Reduce Motion replaces the shake with a static 400 ms red rim. */
-const REJECT_RIM_REDUCED = 400;
-/** The rim is a state, not a movement: it switches, it does not travel. */
-const rimOn = timing(1, EASE.out, false);
 
 /** ui.md §5.2 cue 2: the body counts out its own footprint in `size` panels. */
 function Panels({ size, cell, buffalo, highContrast }) {
@@ -88,7 +84,7 @@ function Panels({ size, cell, buffalo, highContrast }) {
 
 function AnimalViewImpl({
   animal, cell, range, drag, clock, motion, reduced, sizeNumerals, highContrast,
-  diagnostics, onCommit, onIllegal, targeting = null, onTarget, onCancelTarget,
+  diagnostics, onCommit, targeting = null, onTarget, onCancelTarget,
 }) {
   const { id, type, x, y, size } = animal;
   // AC-1011: an applied unlock substitutes the species' appearance here and
@@ -122,9 +118,7 @@ function AnimalViewImpl({
   const homeX = useSharedValue(x * cell);
   const homeCol = useSharedValue(x);
   const grab = useSharedValue(0);
-  const shake = useSharedValue(0);
   const squash = useSharedValue(0);
-  const reject = useSharedValue(0);
   const bodyW = useSharedValue(width);
   // AC-809: an arriving animal is in flight over the tray until it lands; the
   // board's copy of it is invisible until the flight hands over (ArrivalFlight).
@@ -178,6 +172,15 @@ function AnimalViewImpl({
   const sMax = useSharedValue(0);
   const sLeft = useSharedValue('');
   const sRight = useSharedValue('');
+  /**
+   * AC-407d/AC-407e: which limit the UNCLAMPED finger is pushing past, carried
+   * frame to frame because the hysteresis is a function of the previous state
+   * rather than of a timer. -1, 0 or +1.
+   *
+   * It is per animal and per drag, exactly as the snapshot is: two fingers on
+   * two animals press two different walls (AC-409).
+   */
+  const pressed = useSharedValue(0);
 
   // ---- engine -> presentation, never the other way (ui.md §8.3 ¶3) ------
   //
@@ -336,8 +339,8 @@ function AnimalViewImpl({
           drag.ghostSize.value = size;
           drag.ghostY.value = ty.value;
           drag.ghostX.value = homeCol.value;
-          drag.ghostLegal.value = 1;
           drag.ghostVisible.value = 1;
+          pressed.value = 0;
 
           // THE ORIGIN RECESS (ui.md §5.5, AC-420/AC-423). Written once, here,
           // in the same worklet frame as the lift — and deliberately NOT
@@ -355,40 +358,56 @@ function AnimalViewImpl({
           'worklet';
           if (armed.value !== 1) return;
           if (startEpoch.value !== drag.epoch.value) return; // AC-129
-          // The body is clamped to the board: a slide is along a row, and a
-          // piece that visibly leaves its own board reads as a bug. Collisions
-          // are NOT clamped — pushing into a neighbour is how the player finds
-          // out it is there, and the red ghost says why (AC-407).
-          const maxPx = (COLS - size) * cell;
-          let px = startPx.value + event.translationX;
-          if (px < 0) px = 0;
-          if (px > maxPx) px = maxPx;
-          tx.value = px;
-
-          // 0 ms smoothing: the ghost is decided by the same UI-thread frame
-          // that delivered the touch.
-          let col = Math.round(px / cell);
-          if (col < 0) col = 0;
-          if (col > COLS - size) col = COLS - size;
-          const legal = col >= sMin.value && col <= sMax.value;
-          drag.ghostX.value = col;
-          drag.ghostLegal.value = legal ? 1 : 0;
-          drag.blockedId.value = legal ? '' : col < sMin.value ? sLeft.value : sRight.value;
+          // THE CLAMP (AC-407, AC-407b). The body is held inside the legal
+          // slide range and is never drawn over another animal — the owner
+          // played the unclamped version on a device and reported the overlap
+          // as broken, and they are right: two animals sharing a cell is not a
+          // legal state of this game at any instant, so drawing one is the
+          // presentation asserting something the engine would refuse
+          // (ui.md §5.6).
+          //
+          // ONE clamp, not two. `slideRange` initialises minX = 0 and
+          // maxX = width - size, so the board's edges and the neighbours are
+          // the same arithmetic and AC-404 is true by the same line as AC-403.
+          //
+          // The arithmetic lives in `src/ui/dragClamp.js`, which imports
+          // nothing, so `node --test` sweeps the very function this frame runs
+          // (AC-407c, §6.7). 0 ms smoothing: the body and the ghost are decided
+          // by the same UI-thread frame that delivered the touch.
+          const next = clampDrag(
+            startPx.value, event.translationX, cell, sMin.value, sMax.value, pressed.value,
+          );
+          tx.value = next.px;
+          drag.ghostX.value = next.col;
+          // AC-407d: the rim is derived from the UNCLAMPED finger, not from the
+          // body. The body sits on the limit whether or not anyone is pushing
+          // it there, so a rim driven from the body would light for a player
+          // who simply slid to the end of a free row. It is the only red on the
+          // board during a drag and the answer to "why did it stop?" — without
+          // it a hard stop reads as a dropped touch.
+          drag.blockedId.value =
+            next.pressed === -1 ? sLeft.value : next.pressed === 1 ? sRight.value : '';
+          // AC-407g: ONE fire per press. Gated on the transition out of 0, so
+          // leaning on the wall costs a single tick rather than one per frame,
+          // and the 6/2 pt band (AC-407e) is what stops a finger resting on the
+          // boundary from re-arming it sixty times a second.
+          if (next.pressed !== 0 && pressed.value === 0) runOnJS(fireCue)(CUE.illegal, 1);
+          pressed.value = next.pressed;
         })
         .onFinalize(() => {
           'worklet';
           if (armed.value !== 1) return;
           armed.value = 0;
+          pressed.value = 0;
           grab.value = withSpring(0, grabConfig);
           drag.ghostVisible.value = 0;
           drag.blockedId.value = '';
           // AC-421/AC-422: ONE rule for all three outcomes — accepted,
-          // rejected, cancelled — and it is the body's own 110 ms, so the two
-          // converge to nothing together. On a rejection it must not outlive
-          // the shake: a recess still showing under a body that has come home
-          // marks "where this came from" as the place it now is, which is
-          // meaningless and reads as a second piece. The shake then plays on
-          // the body alone.
+          // released at the origin, cancelled — and it is the body's own
+          // 110 ms, so the two converge to nothing together. A recess still
+          // showing under a body that has come home marks "where this came
+          // from" as the place it now is, which is meaningless and reads as a
+          // second piece.
           //
           // Reduce Motion keeps it (AC-424). Only the fade is motion, and
           // 110 ms is already inside the 120 ms cross-fade ceiling — so
@@ -404,54 +423,38 @@ function AnimalViewImpl({
             return;
           }
 
-          let col = Math.round(tx.value / cell);
-          if (col < 0) col = 0;
-          if (col > COLS - size) col = COLS - size;
+          // AC-406: TWO outcomes, because the body cannot be anywhere illegal.
+          // The column is read from the same function that put the body there,
+          // rather than rounded again here — a second copy of the rule is a
+          // second source for it, and the copy that ships is the one that
+          // decides where the animal goes (§6.3). Zero translation: the body
+          // has already been clamped, this only names the column it is in.
+          const end = clampDrag(tx.value, 0, cell, sMin.value, sMax.value, 0);
 
-          if (col === homeCol.value) {
+          if (end.col === homeCol.value) {
             tx.value = withTiming(homeX.value, snapConfig);
             return;
           }
-          if (col >= sMin.value && col <= sMax.value) {
-            tx.value = withTiming(col * cell, snapConfig);
-            runOnJS(fireCue)(CUE.drop, 1);
-            runOnJS(onCommit)(id, col); // the one that carries the column (AC-831)
-            return;
-          }
-          // AC-406/AC-819: 3 x 6 pt shake, 260 ms. Pure announcement — it locks
-          // nothing, so the next drag can begin on the following frame.
-          tx.value = withTiming(homeX.value, snapConfig);
-          // AC-907: Reduce Motion replaces the shake with a static red rim,
-          // held for 400 ms instead of the shake's 260.
-          reject.value = sequence(
-            withTiming(1, rimOn),
-            delay(reduced ? REJECT_RIM_REDUCED : MOTION.illegal, withTiming(0, rimOn)),
-          );
-          if (!reduced) {
-            shake.value = sequence(
-              withTiming(-MOTION_SIZE.illegalShake, shakeIn),
-              withTiming(MOTION_SIZE.illegalShake, shakeMid),
-              withTiming(-MOTION_SIZE.illegalShake, shakeMid),
-              withTiming(0, shakeIn),
-            );
-          }
-          // ui.md §8's motion table names the haptic on this row explicitly:
-          // `notificationError` (AC-1102).
-          runOnJS(fireCue)(CUE.illegal, 1);
-          runOnJS(onIllegal)(id);
+          // AC-407j, stated where it happens: a release past a blocker commits
+          // the packed-against move and spends the turn. Releasing back on the
+          // origin recess is the cancel (AC-402, AC-416).
+          tx.value = withTiming(end.col * cell, snapConfig);
+          runOnJS(fireCue)(CUE.drop, 1);
+          runOnJS(onCommit)(id, end.col); // the one that carries the column (AC-831)
         }),
     [
-      cell, size, id, reduced, onCommit, onIllegal, drag, armed, startPx, startEpoch,
+      cell, size, id, onCommit, drag, armed, startPx, startEpoch,
       sMin, sMax, sLeft, sRight, rangeMin, rangeMax, blockLeft, blockRight,
-      grab, shake, reject, tx, ty, homeX, homeCol, speciesFill,
+      grab, pressed, tx, ty, homeX, homeCol, speciesFill,
     ],
   );
 
   // ---- animated styles: all read on the UI thread ------------------------
   const dim = targeting && !targeting.valid ? TARGET_DIM : 1;
   const bodyStyle = useAnimatedStyle(() => {
-    // AC-407 mid-drag, ui.md §5.4 on release — both without a render.
-    const blocked = drag.blockedId.value === id || reject.value > 0.5;
+    // AC-407d, without a render. The rim is on the BLOCKER, never on the body:
+    // the body's own red rim went with the rejection it announced (AC-406).
+    const blocked = drag.blockedId.value === id;
     const rim = highContrast ? 2.5 : buffalo ? 2 : 1.5;
     return {
       width: bodyW.value,
@@ -460,7 +463,7 @@ function AnimalViewImpl({
       // asserted on every path and nothing can leave an animal faded.
       opacity: alpha.value * dim,
       transform: [
-        { translateX: tx.value + shake.value },
+        { translateX: tx.value },
         { translateY: ty.value - MOTION_SIZE.grabLift * grab.value },
         { scaleX: 1 + (MOTION_SIZE.grabScale - 1) * grab.value },
         {

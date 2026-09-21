@@ -274,7 +274,6 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
   // the rail cannot disagree about what the player is being asked to do.
   const status = turnStatus({
     gameOver: run.view.gameOver,
-    blocked: run.blocked,
     resolving: run.resolving,
     arming: Boolean(armed),
     dart: run.view.charges.dart,
@@ -308,7 +307,6 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
       highContrast={highContrast}
       diagnostics={diagnostics}
       onCommit={run.commitMove}
-      onIllegal={run.markBlocked}
       arming={armed}
       onTarget={(target) => {
         const ability = armed;
@@ -394,7 +392,6 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
             column
             chrome={chrome}
             screenW={railW}
-            blocked={run.blocked}
             resolving={run.resolving}
             gameOver={run.view.gameOver}
             onPass={run.pass}
@@ -432,7 +429,6 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
         <ActionBar
           chrome={chrome}
           screenW={width}
-          blocked={run.blocked}
           resolving={run.resolving}
           gameOver={run.view.gameOver}
           onPass={run.pass}

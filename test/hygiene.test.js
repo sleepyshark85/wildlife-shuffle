@@ -9,7 +9,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CUE_IDS } from '../src/ui/cues.js';
+import { CUE_IDS, HAPTIC_IDS } from '../src/ui/cues.js';
 import { ORDER } from '../src/ui/stacking.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -63,11 +63,15 @@ test('AC-828/AC-211 the only timers in the app are the two the state layer owns'
     const hits = (body.match(/\b(setTimeout|setInterval|requestAnimationFrame)\s*\(/g) || []).length;
     if (hits) offenders.push([path.relative(ROOT, file), hits]);
   }
-  assert.deepEqual(offenders, [['src/ui/useGameRun.js', 2]],
+  // ONE, since AC-406: the BLOCKED announcement's timer went with the
+  // announcement — a release can no longer be illegal, so nothing could start
+  // it. What is left is the input lock, which is the one timer this game has a
+  // reason to own.
+  assert.deepEqual(offenders, [['src/ui/useGameRun.js', 1]],
     `timers found: ${JSON.stringify(offenders)}`);
-  // ...and each one is cleared by its own effect's cleanup.
+  // ...and it is cleared by its own effect's cleanup.
   const layer = read(path.join(ROOT, 'src/ui/useGameRun.js'));
-  assert.equal((layer.match(/clearTimeout\(timer\)/g) || []).length, 2);
+  assert.equal((layer.match(/clearTimeout\(timer\)/g) || []).length, 1);
 });
 
 /**
@@ -570,6 +574,32 @@ test('AC-808 the trajectory module stays loadable in Node', () => {
 });
 
 /**
+ * AC-407c · the drag clamp is the trajectory's rule applied to the one
+ * function that now decides where a dragged body may be.
+ *
+ * It runs in the gesture worklet on every touch frame and it is the only thing
+ * standing between the player and the overlap the owner reported from a device
+ * (ui.md §5.6). If it imported Reanimated — or `occupancy.js`, which imports
+ * the engine's constants — the sweep in test/presentation.test.js would be
+ * checking a copy of the arithmetic rather than the arithmetic itself.
+ */
+test('AC-407c the drag clamp stays loadable in Node, and is the only clamp', () => {
+  const file = path.join(ROOT, 'src/ui/dragClamp.js');
+  const body = read(file);
+  const imports = [...body.matchAll(/^\s*import\s.+$/gm)].map((m) => m[0].trim());
+  assert.deepEqual(imports, [], `dragClamp.js must import nothing: ${imports.join(' | ')}`);
+  assert.match(code(file), /'worklet';/, 'the UI thread runs this, so it must be one');
+
+  // One definition, as with `rowAt`. A second copy is the two-sources bug, and
+  // here it is worse than a drift: the copy the gesture runs would be the one
+  // no test ever executed.
+  const others = SRC.filter((f) => !f.endsWith('dragClamp.js'))
+    .filter((f) => /function\s+clampDrag\b/.test(code(f)))
+    .map((f) => path.relative(ROOT, f));
+  assert.deepEqual(others, [], `a second copy of the clamp: ${others.join(', ')}`);
+});
+
+/**
  * AC-11xx · sound and haptics, which is the same rule as the trajectory's.
  *
  * `expo-audio` and `expo-haptics` cannot load in Node, so every import of them
@@ -858,24 +888,28 @@ test('AC-1101 every cue is fired from the thing that knows the moment', () => {
   }
 
   // The three that belong to the gesture, in the worklet that decides them:
-  // grab on the lift (ui.md §5.4), drop and illegal on release. None of them
-  // can be scheduled, because React never learns a drag began.
+  // grab on the lift (ui.md §5.4), drop on release, and illegal at CONTACT —
+  // in onUpdate since AC-407g, because the moment it reports now happens
+  // mid-drag. None of them can be scheduled, because React never learns a drag
+  // began.
   const view = code(byPath.get('src/ui/components/AnimalView.js'));
   const begin = view.slice(view.indexOf('.onBegin('), view.indexOf('.onUpdate('));
+  const update = view.slice(view.indexOf('.onUpdate('), view.indexOf('.onFinalize('));
   const finalize = view.slice(view.indexOf('.onFinalize('));
   assert.ok(begin.length > 0 && finalize.length > 0, 'the gesture no longer has these phases');
   assert.match(begin, /runOnJS\(fireCue\)\(CUE\.grab/);
   assert.match(finalize, /runOnJS\(fireCue\)\(CUE\.drop/);
-  assert.match(finalize, /runOnJS\(fireCue\)\(CUE\.illegal/);
+  assert.match(update, /runOnJS\(fireCue\)\(CUE\.illegal/);
+  assert.ok(!/CUE\.illegal/.test(finalize), 'the contact cue still fires on release too');
   // ...and a drag that lands where it started is a cancel, not a drop.
-  const home = finalize.slice(finalize.indexOf('if (col === homeCol.value)'));
+  const home = finalize.slice(finalize.indexOf('if (end.col === homeCol.value)'));
   assert.ok(home.length > 0, 'the zero-distance branch is gone');
   // `CUE.drop` and not `fireCue(CUE.drop`: the call site is
   // `runOnJS(fireCue)(CUE.drop, 1)`, so the tighter pattern matches nothing
   // anywhere and the check could only ever pass. (§6.2 — found by planting
   // exactly this fault and watching it escape.)
   assert.ok(
-    !/CUE\.drop/.test(home.slice(0, home.indexOf('if (col >= sMin'))),
+    !/CUE\.drop/.test(home.slice(0, home.indexOf('return;'))),
     'a drag that never moved plays the drop cue',
   );
 
@@ -901,8 +935,17 @@ test('AC-1101 every cue is fired from the thing that knows the moment', () => {
   const map = player.slice(player.indexOf('const HAPTICS = {'));
   assert.ok(map.length > 0, 'the haptic mapping is gone');
   const mapped = map.slice(0, map.indexOf('};'));
-  for (const id of ['selection', 'light', 'medium', 'heavy', 'success', 'error']) {
+  // Driven off the alphabet rather than a second copy of it: these are two
+  // different files, so a name added to `cues.js` with no mapping here is the
+  // failure, and a list typed twice would hide it (§6.3).
+  assert.ok(HAPTIC_IDS.length >= 5, 'the haptic alphabet has collapsed');
+  for (const id of HAPTIC_IDS) {
     assert.match(mapped, new RegExp(`\\b${id}:`), `no mapping for the ${id} haptic`);
+  }
+  // ...and nothing maps a name the alphabet no longer has. AC-406 removed the
+  // notification-error haptic with the rejection it announced.
+  for (const m of mapped.matchAll(/^\s{2}(\w+):/gm)) {
+    assert.ok(HAPTIC_IDS.includes(m[1]), `cuePlayer maps ${m[1]}, which no cue asks for`);
   }
 
   // The scheduled half comes off the plan and nowhere else.

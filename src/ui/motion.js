@@ -24,8 +24,6 @@ export const EASE = Object.freeze({
   fall: Easing.bezier(0.55, 0, 1, 0.45),
   /** Clear collapse: cubic-bezier(.4,0,1,.4). */
   collapse: Easing.bezier(0.4, 0, 1, 0.4),
-  /** Illegal shake: cubic-bezier(.36,.07,.19,.97). */
-  illegal: Easing.bezier(0.36, 0.07, 0.19, 0.97),
   /** Score count-up and the floating +N: ease-out cubic. */
   cubicOut: Easing.out(Easing.cubic),
   /** The danger pulse, and the flash's decay. */

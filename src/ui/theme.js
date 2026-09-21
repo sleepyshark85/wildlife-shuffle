@@ -139,7 +139,6 @@ const COLORS_DARK = Object.freeze({
    */
   flashRow: '#FFFFFF',
   dangerWash: '#E05260',
-  illegalFill: 'rgba(255,92,92,.10)',
   scrim: 'rgba(5,9,13,.72)',
   /** ui.md §13.3's dim of the board ground under a targeting state. */
   targetScrim: 'rgba(13,20,27,.55)',
@@ -206,7 +205,6 @@ const COLORS_LIGHT = Object.freeze({
   flash: '#FFFFFF',
   flashRow: '#975C0F',
   dangerWash: '#A32B36',
-  illegalFill: 'rgba(179,40,46,.12)',
   scrim: 'rgba(40,33,22,.42)',
   targetScrim: 'rgba(40,33,22,.38)',
   floatChip: 'rgba(255,250,240,.92)',
@@ -532,7 +530,6 @@ export const MOTION = Object.freeze({
 
   // --- announcements: these never gate input ---------------------------
   grab: 90,
-  illegal: 260,
   squash: 140,
   flashAttack: FLASH_ATTACK,
   flashDecay: FLASH_DECAY,
@@ -610,7 +607,6 @@ export const MOTION_SIZE = Object.freeze({
   anticipateFilled: 0.05,
   floatRise: 46,
   shakeAmplitude: 4,
-  illegalShake: 6,
   dangerPulseLow: 0.05,
   dangerPulseHigh: 0.13,
   /** AC-907: Reduce Motion replaces the pulse with a static wash. */
@@ -656,7 +652,6 @@ export function hudScale(fontScale, compact) {
 export const COPY = Object.freeze({
   idle: 'YOUR MOVE',
   resolving: 'RESOLVING…',
-  blocked: 'BLOCKED',
   pass: 'Pass',
   trayLabel: 'NEXT ARRIVAL',
   buffaloShrink: 'BUFFALO −1',
