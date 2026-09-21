@@ -478,36 +478,66 @@ distinction than two different bands. If the difficulty choice feels indistinct 
 fix is to restore Savanna to 3–5 and take the magnitude back out of its **ramp interval**
 instead, not to re-lower Meadow past its floor.
 
-### 5.6b The shape is wrong too, and the ramp is the lever for it
+### 5.6b WITHDRAWN — the shape diagnosis was made on noise
 
-The magnitude is not the only problem. Median ratios between adjacent difficulties:
+**This section previously argued that the difficulties were badly spaced and queued a
+per-difficulty ramp change to fix it. Both the diagnosis and its stated mechanism were wrong.**
 
-```
-Meadow / Savanna  =  73 / 35.5  =  2.06
-Savanna / Tundra  =  35.5 / 27  =  1.31
-```
+**The diagnosis was a 30-seed artefact.** AC-318 mandated seeds 1–30. Across ten independent
+30-seed blocks of the same table, Meadow/Savanna ranged **1.15–1.62** and Savanna/Tundra
+**1.32–1.78** — and seeds 1–30 is the highest block on both. At **300 seeds** the pre-retune
+table gives **1.59 / 1.44**, not the 2.06 / 1.31 I diagnosed from. The true shape was already
+near target and the compression was about half the size recorded.
 
-**Savanna sits far too close to Tundra.** The cause is structural: the difficulties are spaced
-**linearly in cells** while run length is **nonlinear in cells** — as arrivals approach the
-rate a player can clear, run length collapses. Equal cell-spacing therefore produces unequal
-run-length spacing, compressed at the hard end, which is exactly the measured shape.
+**The mechanism was backwards.** I wrote that *"a slower ramp stretches long runs much more
+than short ones"*. It is the opposite, and the arithmetic is not subtle — a delayed ramp step
+is a large fraction of a short run and a small fraction of a long one:
 
-**Lowering every band uniformly does not fix this** — it moves all three without changing their
-ratios. Spacing needs a different lever, and the right one is the **ramp interval per
-difficulty** (e.g. Meadow 16 / Savanna 12 / Tundra 10), because a slower ramp stretches long
-runs much more than short ones and therefore widens the easy end where the compression is
-worst.
+| | run length | ramp 12 | ramp 20 | Δ cells/turn |
+|---|---:|---:|---:|---:|
+| Meadow | 69 | 3.78 | 3.67 | **−0.11** |
+| Savanna | 47 | 4.22 | 3.74 | −0.48 |
+| Tundra | 31 | 4.74 | 4.30 | −0.44 |
 
-**I have deliberately not changed both at once.** §5.7's ordering — bands first, ramp second,
-weights last — exists so that a measurement can attribute a change to a cause. This pass moves
-bands only. **If the re-measurement shows the magnitude fixed and the ratios still near
-2.0 / 1.3, the ramp intervals are the next and only change.** Target ratios are roughly
-1.8 / 1.6, which for medians near 110 / 60 / 38 is an even progression.
+So the ramp is the **weakest** lever on the difficulty I proposed it for, and my suggested
+assignment — Meadow 16 / Savanna 12 / Tundra 10 — pointed the weak end at the difficulty that
+needed most help. **For a long run the ceiling sets the length; the ramp only shapes the
+opening.**
 
-**Not acting on: within-difficulty spread.** Meadow's 31–282 range is 9×. Some of that is
-genuine (a light band is sustainable when the sequence is kind) and some is 30 seeds making a
-single lucky run the maximum. Worth watching across a larger sample; not worth tuning against
-one number.
+**What survives:** the structural claim that equal cell-spacing produces unequal run-length
+spacing. The developer separated that from the confound by measurement rather than argument —
+running a genuinely uniform ceiling-only easing through the real code path left the ratios
+unchanged (2.06 / 1.31 → 2.15 / 1.47) exactly as predicted, with Meadow identical in both as
+an internal control. The claim is sound; it just was not the problem here.
+
+### 5.6c The targets were the stale thing, not the bands
+
+The queued ramp change would now be justified on **magnitude** rather than shape: at 300 seeds
+the medians are **69 / 47 / 31** against targets of 110 / 60 / 38, and Meadow's bands are
+exhausted — its start is pinned at the AC-306b floor and its ceiling is one ramp step above.
+
+**I am not making that change, because the target it is measured against was never derived
+from the design's actual goal.** §0 states the intent in **minutes**: *"Target session: 3–5
+minutes."* The 110 / 60 / 38 turn counts came from a chain of reasoning about a 10-wide board
+and were never re-derived against it. Converting at ~4 s per turn:
+
+| | measured | as minutes | target 110/60/38 as minutes |
+|---|---:|---:|---:|
+| Meadow | 69 | **4.6** | 7.3 — **outside §0's 3–5** |
+| Savanna | 47 | **3.1** | 4.0 |
+| Tundra | 31 | **2.1** | 2.5 |
+
+**Chasing Meadow to 110 turns would take it to 7.3 minutes and overshoot the stated design
+goal.** The shipped build already sits inside §0's window on Meadow and Savanna, and Tundra at
+2.1 minutes matches §5.5's original "≈2 minutes" intent for a short, tense difficulty.
+
+So the honest conclusion is that **the turn-count targets, not the bands, are what needs
+correcting** — and the correct unit is the one §0 already uses. The pacing gate becomes
+minutes, which requires measuring real per-turn duration rather than assuming 4 s.
+
+**No further band, ramp or weight change until that measurement exists.** This would have been
+my fourth consecutive attempt to predict pacing from reasoning; the first three were wrong,
+and the fourth would have been chasing a target that contradicts the goal above it.
 
 ### 5.7 What the developer should measure
 
@@ -862,12 +892,34 @@ shows both.
 **Unlocks.** Four, cosmetic only, no gameplay effect. Kept deliberately small — four things
 that certainly ship beats twelve that half-ship.
 
-| Unlock | Requirement |
-|---|---|
-| **Night Savanna** board theme | Retire 10 buffalo |
-| **Tundra** palette | Score 25,000 in a single run |
-| **Rat King** animal set | Clear 500 rows lifetime |
-| **Golden Herd** animal set | Clear 4 rows in a single step |
+| Unlock | Requirement | Priced from |
+|---|---|---|
+| **Night Savanna** board theme | Retire 10 buffalo | cumulative — prices fine |
+| **Tundra** palette | **Score 2,500 in a single Tundra run** | ≈p92 of Tundra's measured scores |
+| **Rat King** animal set | Clear 500 rows lifetime | cumulative — prices fine |
+| **Golden Herd** animal set | Clear 4 rows in a single step | **unpriceable by the harness** |
+
+**Tundra palette was repriced from 25,000, which was unreachable.** Over 900 bot runs on the
+shipped bands — perfect information, so a human does worse — the best single run anywhere was
+**18,995**, on *Meadow*. On Tundra, whose palette it is, the best run scored **5,930**: a
+4.2× shortfall. The condition could not be met by anyone.
+
+It is now **Tundra-specific**, which it thematically always should have been — it is the one
+unlock that sends you to the hard difficulty — and 2,500 sits near p92 of Tundra's measured
+distribution: a genuinely strong run rather than a grind.
+
+> **All score-priced content is specified as a percentile of the measured distribution for its
+> difficulty, with the absolute figure recorded "as of" a named measurement.** A retune then
+> re-derives it instead of silently stranding it. This is AC-1405b's rule, which I wrote for
+> the ability thresholds and failed to apply to the unlocks already priced in the same
+> currency.
+
+**Golden Herd cannot be priced by measurement and must not be lowered on the strength of one.**
+It was never observed — best 2 rows — but the greedy bot **takes every clear the moment it is
+available**, so it structurally cannot stack rows for a simultaneous clear. The harness is
+**blind** to this condition, not reporting it as hard. It needs a human or a stacking-policy
+bot before ship; if that shows 4 is genuinely impossible on a 9×15 board, lower it to 3 — but
+not on evidence that cannot see it.
 
 Progress toward every unlock is visible on the Collection screen with an explicit counter
 (`7 / 10 buffalo retired`) — a locked item that does not tell you how close you are is not a
@@ -1016,6 +1068,9 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D46 | §5.6b's shape diagnosis withdrawn; its ramp mechanism was backwards | 30 seeds cannot carry a ratio — ten blocks spanned 1.15–1.62 and the mandated block was the highest. The ramp is the *weakest* lever on the longest runs, not the strongest (§5.6b). |
+| D47 | Pacing is gated in minutes, not turns; no further tuning until per-turn duration is measured | The 110/60/38 turn targets imply 7.3 minutes on Meadow against §0's stated 3–5, so they contradict the goal they serve (§5.6c). |
+| D48 | Tundra palette repriced 25,000 → 2,500 and made Tundra-specific | Unreachable: best of 900 bot runs was 18,995, and 5,930 on Tundra itself (§9). |
 | D44 | The resume record carries `start: {runIndex, nextAnimalId}` | Ids carry across a restart, so a run reached by Play Again cannot be reproduced from seed and difficulty alone. The record must carry every input `createRun` consumes (§9). |
 | D45 | The resume record is written whenever the player leaves the run, including quitting to Home | "Only on backgrounding" read literally means the feature never works for a player who quits instead (§9). |
 | D42 | The 3-charge cap is justified as the recovery/reset dial, not as burst prevention | Bursting is already impossible — an ability is the turn's action — so the approved rationale credited the cap for the one-action rule's work, and framed as a failure mode the behaviour the owner asked for (§13.2a). |
@@ -1104,10 +1159,8 @@ Your score never goes down.
 
 - Charges accumulate; **at most 3 may be held** — see §13.2a for why 3, and why the reason I
   first gave for it was wrong.
-- Thresholds **escalate**, so early charges teach the system and late ones are earned:
-  roughly 1,500 / 4,000 / 8,000 / 14,000 / 22,000 / 32,000. **All six numbers are provisional
-  pending AC-318b** — they are placed against a guess at the score curve, and a guess is not
-  good enough for the mechanic's entire pacing.
+- Thresholds **escalate**, so early charges teach the system and late ones are earned. They
+  are **priced from measured score percentiles, per difficulty** — the full ladder is §13.2c.
 - **Using an ability is your action for the turn** — move, pass, or ability. The one-action
   rule (§6.2) is a Layer F invariant and abilities do not get an exemption. Fox's Dart is
   consistent with this: your action *is* the ability, and the ability happens to be moves.
@@ -1183,6 +1236,44 @@ This is a defect in the economy rather than in its wording, so it gets a fix:
   less self-limiting.
 - Resume needs nothing new: whether Last Stand has fired is reconstructible from the replay,
   since the engine knows when the band was first entered.
+
+### 13.2c The threshold ladder — priced
+
+Measured over 300 bot runs per difficulty on the shipped bands. **Each charge is a percentile
+of that difficulty's own final-score distribution**, so a retune re-derives the ladder rather
+than stranding it (AC-1405b).
+
+| charge | percentile | **Meadow** | **Savanna** | **Tundra** |
+|---|---|---:|---:|---:|
+| 1 | p35 | 2,100 | 1,200 | 600 |
+| 2 | p50 | 2,600 | 1,550 | 840 |
+| 3 | p75 | 4,500 | 2,550 | 1,500 |
+| 4 | p90 | 6,100 | 3,500 | 2,250 |
+| 5 | p90 × 1.6 | 9,800 | 5,600 | 3,600 |
+| 6 | p90 × 2.4 | 14,700 | 8,400 | 5,400 |
+
+*Absolute figures as of the 300-seed measurement on the shipped bands. Charges 5–6 extrapolate
+past the measured range because p90 is the last percentile with enough runs behind it to be
+worth quoting.*
+
+**What the ladder produces, by design:**
+
+- A **median run earns two charges** (p35, p50), plus Last Stand if it reaches the danger
+  band — so a typical run uses the mechanic two or three times and never bumps the cap.
+- A **p90 run earns four** and therefore **must spend to keep earning**, which is exactly the
+  pressure §13.2a describes. Saturation is reachable by good play and unreachable by average
+  play, which is the right way round.
+- **Six charges is near the observed maximum** — Tundra's best run across 900 was 5,930 against
+  a sixth charge at 5,400 — so the top of the ladder is a genuine rarity rather than dead
+  content.
+- Charges 1 and 2 are **deliberately close**; the gaps then widen sharply. Early charges exist
+  to teach the mechanic, and a player who has never seen an ability fire cannot plan around
+  one.
+
+**Three ladders, not one.** The medians are 2,655 / 1,580 / 860 — ratios of **1.68 and 1.84**.
+That is much closer than the 4.7× AC-1405b recorded when the only data came from the
+pre-retune bands, but it is still far too wide to share a ladder: a single table priced for
+Meadow would put the first charge beyond a median Tundra run entirely.
 
 ### 13.3 What it does to the difficulty curve
 

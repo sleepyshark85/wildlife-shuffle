@@ -403,9 +403,21 @@ Meadow 100–150 / Savanna 60–90 / Tundra 35–55 and measured **73 / 35.5 / 2
 Savanna worst at −41%. Ordering held, so the shape was right and the magnitude was not. The
 bands in `gameplay.md` §5.5 are the retune; these ranges are the target they aim at again.
 
-**AC-318 — PACING, RE-MEASUREMENT REQUIRED.** Given 30 seeds per difficulty played by the
-deterministic greedy bot with perfect information, Then median turns-per-run are **measured
-and reported before any band is changed**. The previously approved ranges — Meadow 100–150,
+**AC-318 — PACING.** *(amended — 30 seeds cannot support a ratio, and the mandated block
+produced a false diagnosis)* Given **300 seeds** per difficulty (fixed, seeds 1–300, for
+comparability across tables) played by the deterministic greedy bot with perfect information,
+Then median turns-per-run are **measured and reported before any band is changed**.
+
+**AC-318e — THE SAMPLE MUST SHOW ITS OWN NOISE.** Given the pacing run, Then it splits the 300
+seeds into **ten blocks of 30** and reports the **min and max of every statistic across
+blocks** alongside the aggregate. *(Across ten such blocks of one shipped table, Meadow/Savanna
+ranged 1.15–1.62 and Savanna/Tundra 1.32–1.78. Seeds 1–30 — the block the approved AC
+mandated — was the highest on both, and a design decision was taken on it.)*
+
+**AC-318f — A RATIO MAY NOT DRIVE A CHANGE UNLESS THE SPREAD EXCLUDES THE TARGET.** Given a
+proposed tuning change justified by a ratio, Then it is **not made** if the target value lies
+inside the ten-block min–max spread for that ratio. A statistic whose blocks straddle the
+target has not been shown to be wrong. The previously approved ranges — Meadow 100–150,
 Savanna 60–90, Tundra 35–55 — were measured on a **10-wide board with the biased species
 mix** and both of those premises are now false, so they are a starting hypothesis rather than
 an acceptance gate until re-measured.
@@ -420,14 +432,27 @@ run, maximum batch occupancy (AC-309), and the **median and 90th-percentile fina
 the last of which nothing needs yet, but which is what the §13 ability thresholds must be
 priced against rather than guessed.
 
-**AC-318d — THE SHAPE, NOT ONLY THE MAGNITUDE.** Given the re-measurement, Then the **ratios
-between adjacent medians** are reported alongside the medians. Target roughly **1.8 and 1.6**;
-first measurement gave **2.06 and 1.31**, i.e. Savanna sitting far too close to Tundra. *(The
-difficulties are spaced linearly in cells while run length is nonlinear in cells, so equal
-cell-spacing compresses the hard end. Lowering every band uniformly cannot fix this — it moves
-all three without changing their ratios. If magnitude lands and the ratios stay near 2.0/1.3,
-the **per-difficulty ramp interval** is the next and only change: a slower ramp stretches long
-runs far more than short ones.)*
+**AC-318d — THE SHAPE.** *(amended — the approved version's diagnosis and its stated mechanism
+were both wrong; see `gameplay.md` §5.6b)* Given the re-measurement, Then the **ratios between
+adjacent medians** are reported alongside the medians, subject to AC-318f. At 300 seeds the
+shipped table gives **1.47 / 1.52** against a rough target of 1.8 / 1.6 — close, and on
+Meadow/Savanna the error has **changed sign** from the 30-seed reading.
+
+*(The approved text claimed "a slower ramp stretches long runs far more than short ones". The
+opposite is true: a delayed ramp step is a large fraction of a short run and a small fraction
+of a long one, so the ramp is the **weakest** lever on the longest difficulty. For a long run
+the ceiling sets the length and the ramp only shapes the opening.)*
+
+**AC-318g — PACING IS GATED IN MINUTES, NOT TURNS.** Given the pacing gate, Then it is
+expressed against §0's stated intent — **a 3–5 minute session** — using **measured** per-turn
+duration, not assumed. *(The 110 / 60 / 38 turn targets were derived for a 10-wide board and
+never checked against §0. At ~4 s/turn they mean 7.3 / 4.0 / 2.5 minutes, so the Meadow target
+overshoots the design goal it was meant to serve, while the shipped build's 69 / 47 / 31 turns
+— 4.6 / 3.1 / 2.1 minutes — already sits inside it.)*
+
+**AC-318h** Given no measured per-turn duration exists, Then **no further band, ramp or weight
+change is made**. Three successive attempts to predict pacing from reasoning were wrong; a
+fourth against an unvalidated target is not a tuning step.
 
 **AC-318c** Given the pacing ranges are missed, Then tuning proceeds **bands first, ramp
 interval second, species weights last**. The weights now do exactly what they say
@@ -1335,6 +1360,18 @@ tile and `No runs yet.` in the list, without an error state or an apology.
 **AC-1009** Given each of the four unlock conditions is met, Then that unlock becomes
 available and a notification is shown once.
 
+**AC-1009b — TUNDRA PALETTE REPRICED.** Given the Tundra palette, Then its condition is
+**score 2,500 in a single Tundra run** (≈p92 of Tundra's measured distribution), not 25,000.
+*(Across 900 bot runs with perfect information the best single run anywhere was 18,995, on
+Meadow; the best Tundra run was 5,930. The approved condition was unreachable by 4.2×.)*
+
+**AC-1009c — GOLDEN HERD CANNOT BE PRICED BY THE CURRENT HARNESS.** Given the greedy bot takes
+every clear the moment it is available, Then it **structurally cannot stack rows** for a
+simultaneous clear, so a measurement of 0 occurrences is the harness being **blind** to the
+condition, not evidence that it is too hard. **Do not lower it to 3 on that evidence.** It
+requires a human or a stacking-policy bot before ship; lower it only if *that* shows 4 is
+impossible on a 9×15 board.
+
 **AC-1010** Given the Collection screen, Then every locked item shows an explicit numeric
 progress counter toward its condition.
 
@@ -1493,8 +1530,29 @@ leaderboard would reward never using the mechanic.)*
 they describe the difficulty curve, and a curve containing an optional player intervention is
 not a curve. Abilities are measured separately.
 
-**AC-1405** Given a player crosses a score threshold, Then one charge is granted, **at most 3
-are held at once**, and thresholds escalate. **Thresholds are still unpriced.**
+**AC-1405** *(amended — thresholds are now priced from measurement)* Given a player crosses a
+score threshold, Then one charge is granted, **at most 3 are held at once**, and thresholds
+escalate per the ladder in `gameplay.md` §13.2c — **per difficulty**, priced as percentiles of
+that difficulty's measured final-score distribution:
+
+| charge | p | Meadow | Savanna | Tundra |
+|---|---|---:|---:|---:|
+| 1 | p35 | 2,100 | 1,200 | 600 |
+| 2 | p50 | 2,600 | 1,550 | 840 |
+| 3 | p75 | 4,500 | 2,550 | 1,500 |
+| 4 | p90 | 6,100 | 3,500 | 2,250 |
+| 5 | ×1.6 | 9,800 | 5,600 | 3,600 |
+| 6 | ×2.4 | 14,700 | 8,400 | 5,400 |
+
+**AC-1405e** Given the ladder, Then a **median run earns two charges** and a **p90 run earns
+four** — so saturation at the cap is reachable by good play and not by average play.
+
+**AC-1405f** Given any content priced in score — ability thresholds **and unlocks** — Then it
+is specified as a **percentile of the measured distribution for its difficulty**, with the
+absolute figure recorded "as of" a named measurement. *(AC-1405b's rule, which was written for
+the thresholds and not applied to the unlocks already priced in the same currency — which is
+how "score 25,000 in a single run" survived into a build where the best of 900 runs was
+18,995.)*
 
 *(A score distribution now exists — Meadow median 3,290 / p90 8,130; Savanna 1,385 / 5,275;
 Tundra 692.5 / 2,100 — but it was measured on the pre-retune bands and **must not be priced
