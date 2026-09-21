@@ -328,6 +328,11 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
         <ArrivalFlight
           key={plan.key}
           arrivals={arrivals}
+          // AC-808/AC-809: the flight reads the SAME clock the board's push-up
+          // reads, so the arrival and the room being made for it cannot come
+          // apart by a frame (src/ui/trajectory.js `flightAt`).
+          turn={plan}
+          clock={clock}
           cell={cell}
           boardH={boardH}
           gap={gap}
