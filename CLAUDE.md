@@ -17,14 +17,26 @@ plays end to end — pick a habitat, drag an animal, resolve a turn, reach Game 
 of it, and — in *Resuming this project in a fresh session* — exactly what to run and read if
 you are picking this up with no conversation history.
 
-Shipped: the rules engine, the state layer and the board, and the motion table, visual
-states and accessibility — Slices 1–3, on Expo SDK 57. `npm test` is 194 passing.
-Not started: Slice 4 (meta progression and persistence, including session resume), Slice 5
-(sound and haptics), Slice 6 (App Store readiness).
+**All slices are merged**, on Expo SDK 57: the rules engine; the state layer and board;
+motion, visual states and accessibility; meta progression and persistence; abilities;
+sound and haptics; and store readiness. `npm test` on `main` is **431 passing**.
+
+The app has been through TestFlight once. **That build crashed on the very first row clear**
+— a plain function called from three worklets, which no tier below 4 could see. Fixed in
+PR #34; read `docs/development-process.md` §6.9 before trusting a green suite to mean a
+working build.
+
+In flight, not yet merged: **the light theme** (AC-1501–1514, designed in PR #33). Light is
+to become the default, with a natural texture on the board and Home.
 
 **Owed to the owner: a device review.** The clear timings and the anticipation wash are
 marked provisional in AC-824c, which carries the full list of what only a phone can settle —
-including Dynamic Type, which `react-native-web` cannot observe at all.
+including Dynamic Type, which `react-native-web` cannot observe at all. Also owed: real
+screenshots, icon sign-off, and the support and privacy URLs in `store/metadata.md`.
+
+**Identity is permanent.** The bundle identifier is `com.sleepyshark.wildlifeshuffle`, fixed
+by the first TestFlight submission. The Expo slug is `wildlife-shuffle` — immutable, but
+cosmetic. These are not the same thing.
 
 **Always `git fetch` and compare against `origin/<branch>` before reviewing anything.** A
 session-start snapshot is a snapshot, not the truth (`docs/development-process.md` §6.4).
@@ -36,13 +48,14 @@ session-start snapshot is a snapshot, not the truth (`docs/development-process.m
 | `docs/slices.md` | **What each slice contains, and how to resume with no history. Start here.** |
 | `docs/development-process.md` | The team, the procedure, and the rules each incident produced. Read §6. |
 | `docs/v1-review.md` | Engineering review of v1. Carries a correction — it was written against a stale commit. |
-| `docs/v2/` | The approved v2 design: gameplay, UI, 249 acceptance criteria, open questions. |
+| `docs/v2/` | The approved v2 design: gameplay, UI, ~400 acceptance criteria, open questions. |
 | `docs/v2/layout-sweep.mjs` | The continuous viewport sweep (AC-119). Must report 0 overflowing. |
 | `docs/v2/check-ac-refs.mjs` | The documents lint (AC-1310). Dangling or duplicate AC references fail it. |
 | `src/engine/` | The rules engine. Pure, seeded, no React, no timers. Slice 1. |
 | `src/ui/` | React state layer, presentation and layout. Slice 2. |
 | `test/` | `node --test`. Engine unit and property tests, layout sweep, presentation, hygiene greps. |
 | `tools/play.mjs` | Headless CLI: play a seeded run, or `--pacing` for the difficulty table. |
+| `store/metadata.md` | App Store listing. `[YOU]` marks what only the owner can supply. |
 | `spec.md` | **v1's spec. Historical — it describes code that no longer exists.** |
 
 v1's `src/components/`, `src/data/` and `src/hooks/` were deleted in Slice 2. Do not look for

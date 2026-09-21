@@ -19,15 +19,20 @@ exists).
 | **3** | Motion, visual states, accessibility | 5xx, 8xx, 9xx | **Merged** · PR #9 |
 | **4** | Meta progression and persistence | 10xx | **Merged** · PR #18 |
 | **D** | Abilities — a layer, not a slice | 14xx | **Merged** · PR #22, #25 |
-| **5** | Polish — sound, haptics | 11xx | In progress |
-| **6** | App Store readiness | 12xx | Not started |
+| **5** | Polish — sound, haptics | 11xx | **Merged** · PR #27, spec #28 |
+| **6** | App Store readiness | 12xx | **Code merged** · PR #29, #30, #31 · *needs a human, see below* |
 
 Slices 1–3 are a complete, shippable game. 4–6 are layers the owner can approve or defer
 independently (`docs/v2/gameplay.md` §0).
 
+**All slices are merged.** `npm test` on `main` is **431 passing**. What remains is not
+slices — it is the light-theme round (in flight) and the things only the owner can do.
+
 Out-of-band work merged alongside: PR #4 (process doc, v1 review correction), PR #6 (Expo
 SDK 57 — Expo Go for iOS only ships the latest SDK, so SDK 56 could not run on a phone),
-PR #7 (README rewrite), PR #8 (clear timing revised after the owner's first viewing).
+PR #7 (README rewrite), PR #8 (clear timing revised after the owner's first viewing),
+PR #32 (pluralisation and the rail label), PR #33 (the light theme design),
+**PR #34 (the worklet crash — see `docs/development-process.md` §6.9)**.
 
 ---
 
@@ -247,16 +252,29 @@ tap instead.
 
 ---
 
-## Slices 5–6, not started
+## Slices 5–6, merged
 
 | | Contents |
 |---|---|
-| **5 — Polish** | Sound and haptics. `expo-haptics` was dropped in Slice 2 when its only consumer was deleted, and returns here alongside `expo-audio` — v1's `useSoundManager` played no audio at all despite the name. |
-| **6 — Store readiness** | Icon, splash, onboarding, screenshots, privacy. `assets/` still does not exist. |
+| **5 — Polish** | Sound and haptics. Eleven generated WAVs (`tools/make-sounds.mjs`), an injectable cue engine so `node --test` can watch the audio session get configured before any player exists, and cues fired off the board's own clock rather than a timer. |
+| **6 — Store readiness** | Icon, splash, onboarding, `store/metadata.md`, and the EAS project. |
 
-**Blocking question, on a clock:** the bundle identifier is `com.sleepyshark.animalrun` while
-the app is called Wildlife Shuffle. It becomes permanent at the first TestFlight submission.
-`docs/v2/open-questions.md` Q1.
+**Q1 is settled.** The bundle identifier is **`com.sleepyshark.wildlifeshuffle`** and it is
+now **permanent** — the first TestFlight build has been submitted under it. The Expo *slug*
+is `wildlife-shuffle`; slugs are immutable too, but they are cosmetic. Do not confuse the
+two (PR #30, #31).
+
+### What is actually left
+
+| | |
+|---|---|
+| **The light theme** | AC-1501–1514. Designed and merged (PR #33); the build round was in flight at the end of the last session. Light is to be the default, with a natural texture on the board and Home. |
+| **The device review** | AC-824c. Owed since Slice 3 and still owed. Only the owner can do it. |
+| **Store assets from a device** | Real screenshots, icon sign-off, support and privacy URLs. |
+
+**The first TestFlight build crashed** on the very first row clear, every time — a plain
+function called from three worklets (PR #34). It is fixed on `main`. The owner needs to
+rebuild and confirm, and that build is also the first time anyone will *hear* Slice 5.
 
 ---
 
@@ -275,6 +293,13 @@ real, a pass is a strong signal and not proof.
 **Known to need a device:** `hitSlop` is ignored entirely by react-native-web, so touch targets
 are untested on iOS; real safe-area insets (everything has been measured at 0/0); the snap;
 the grabbed state; and the provisional clear timings.
+
+**And one class of defect no tier below 4 can even represent.** Anything that differs between
+a `.native` and a `.web` module — worklet serialization above all — cannot fail on web,
+because on web a worklet is an ordinary closure. That is how the first TestFlight build
+shipped a guaranteed crash past 375 green tests. Such properties are now audited
+*structurally* in Tier 1 (`AC-828 a worklet calls only worklets`); see
+`docs/development-process.md` §6.9 before assuming a green suite means a working build.
 
 ---
 
@@ -296,7 +321,8 @@ node docs/v2/layout-sweep.mjs     # must be 0 overflowing
 truth — `docs/development-process.md` §6.4 records the time that cost a whole review.
 
 Test counts locate the slice: **118** = Slice 1, **161** = Slice 2, **194** = Slice 3,
-**263** = Slice 4, **344** = Layer D.
+**263** = Slice 4, **344** = Layer D, **431** = everything merged, including the worklet
+audit that came out of the crash (§6.9).
 
 ### 2. Know the shape of the work
 
