@@ -18,7 +18,7 @@
 //   - per-animal outlines (AC-315b). A fox at column 3 and two rats at columns
 //     3 and 4 must paint as one 2-wide shadow and two 1-wide ones. Merging
 //     them would state a footprint the batch does not have, which is back to
-//     misrepresenting. SILHOUETTE.gap is what keeps them apart.
+//     misrepresenting. theme.silhouette.gap is what keeps them apart.
 //   - the buffalo's gold rim (AC-315c). A buffalo refuses to clear, so hiding
 //     one withholds a RULE rather than a flavour.
 //
@@ -39,7 +39,8 @@ import { plural, trayLabel } from '../format.js';
 import { traySilhouettes, trayMetrics } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
 import { frozenLabel, trayStripOpacity } from '../abilities.js';
-import { COLORS, COPY, MOTION, RADIUS, SILHOUETTE, TYPE } from '../theme.js';
+import { COPY, MOTION, RADIUS, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 
 /**
  * AC-902 is deliberately NOT narrowed to match the silhouettes: VoiceOver
@@ -59,6 +60,7 @@ const TRAY_FONT_CAP = 1.3;
 
 /** 45 degree accent stripes: "these push up from here" (ui.md §6). */
 function HazardRule({ width, height }) {
+  const rule = useTheme().colors.hazardRule;
   const bars = [];
   for (let i = 0, x = -height; x < width + height; i += 1, x += 10) {
     bars.push(
@@ -70,7 +72,7 @@ function HazardRule({ width, height }) {
           top: -height,
           width: 3,
           height: height * 3,
-          backgroundColor: 'rgba(255,194,75,.45)',
+          backgroundColor: rule,
           transform: [{ rotate: '45deg' }],
         }}
       />,
@@ -80,6 +82,8 @@ function HazardRule({ width, height }) {
 }
 
 function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, frozen = 0 }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const { labelH, stripH, ruleH, bodyH } = trayMetrics(cell, compact);
   // AC-1410, and it is load-bearing rather than decoration. The tray's whole
   // contract is that it shows what is coming (§6); while Hold the Line is up,
@@ -117,11 +121,11 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
       accessible
     >
       <View style={[styles.labelRow, { height: labelH }]}>
-        <Text maxFontSizeMultiplier={TRAY_FONT_CAP} style={TYPE.label}>{COPY.trayLabel}</Text>
+        <Text maxFontSizeMultiplier={TRAY_FONT_CAP} style={theme.type.label}>{COPY.trayLabel}</Text>
         <Text
           testID="tray-right"
           maxFontSizeMultiplier={TRAY_FONT_CAP}
-          style={[TYPE.label, frozenText ? styles.frozenLabel : null]}
+          style={[theme.type.label, frozenText ? styles.frozenLabel : null]}
         >
           {frozenText || plural(cells, 'CELL', 'CELLS')}
         </Text>
@@ -129,7 +133,7 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
       <Animated.View
         style={[styles.strip, { width: boardW, height: stripH }, revealStyle]}
       >
-        {(frozenText ? [] : traySilhouettes(queue, cell, SILHOUETTE.gap)).map((shape) => {
+        {(frozenText ? [] : traySilhouettes(queue, cell, theme.silhouette.gap)).map((shape) => {
           const buffalo = shape.type === SPECIES.buffalo.type;
           return (
             <View
@@ -140,12 +144,12 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
                 top: (stripH - bodyH) / 2,
                 width: shape.width,
                 height: bodyH,
-                borderRadius: SILHOUETTE.radius,
-                backgroundColor: buffalo ? SILHOUETTE.buffaloFill : SILHOUETTE.fill,
-                borderWidth: buffalo ? SILHOUETTE.buffaloRimWidth : 0,
-                borderColor: buffalo ? SILHOUETTE.buffaloRim : 'transparent',
-                borderTopWidth: buffalo ? SILHOUETTE.buffaloRimWidth : 1,
-                borderTopColor: buffalo ? SILHOUETTE.buffaloRim : SILHOUETTE.edge,
+                borderRadius: theme.silhouette.radius,
+                backgroundColor: buffalo ? theme.silhouette.buffaloFill : theme.silhouette.fill,
+                borderWidth: buffalo ? theme.silhouette.buffaloRimWidth : 0,
+                borderColor: buffalo ? theme.silhouette.buffaloRim : 'transparent',
+                borderTopWidth: buffalo ? theme.silhouette.buffaloRimWidth : 1,
+                borderTopColor: buffalo ? theme.silhouette.buffaloRim : theme.silhouette.edge,
               }}
             />
           );
@@ -156,16 +160,16 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  frozenLabel: { color: COLORS.inkMuted },
+  frozenLabel: { color: T.colors.inkMuted },
   strip: {
-    backgroundColor: COLORS.panelSunken,
+    backgroundColor: T.colors.panelSunken,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
     borderRadius: RADIUS.tray,
     overflow: 'hidden',
   },
-});
+}));
 
 export const Tray = memo(TrayImpl);

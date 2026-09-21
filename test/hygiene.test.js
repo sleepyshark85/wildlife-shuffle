@@ -140,14 +140,51 @@ function auditTransforms(body) {
   return violations;
 }
 
+/**
+ * A file with nothing in it that can change a value after mount.
+ *
+ * No state, no reducer, no shared value, no effect, no timer — so a transform
+ * in it is computed once and is then as static as a literal. This is the
+ * PROPERTY that makes AC-1510's natural background safe to rotate outside a
+ * worklet, rather than an opinion about it: the background is drawn from the
+ * run's seed and never moves, and the moment somebody gives that file a
+ * `useState` it stops being inert and the audit takes it back.
+ */
+function inert(body) {
+  return !/\buse(State|Reducer|SharedValue|Effect|AnimatedStyle|DerivedValue)\b/.test(body)
+    && !/\b(setTimeout|setInterval|requestAnimationFrame)\s*\(/.test(body);
+}
+
+/**
+ * The one file allowed a non-literal transform outside a worklet, and it is
+ * named rather than pattern-matched so the exemption cannot spread quietly.
+ * Being on this list is not enough: the file still has to BE inert, which the
+ * test below asserts separately.
+ */
+const STATIC_TRANSFORMS = new Set(['src/ui/components/NaturalGround.js']);
+
 test('AC-828 a transform may read a variable only inside a worklet', () => {
   for (const file of SRC) {
+    const rel = path.relative(ROOT, file);
+    if (STATIC_TRANSFORMS.has(rel)) {
+      // AC-1510: the natural background never moves, and this is the check
+      // that it cannot. The exemption is the inertness, not the name.
+      assert.ok(inert(code(file)),
+        `${rel} is exempt from AC-828 because it holds no state, and it now does`);
+      continue;
+    }
     const violations = auditTransforms(code(file));
     assert.deepEqual(
       violations, [],
-      `${path.relative(ROOT, file)} drives a transform from outside a useAnimatedStyle: ` +
+      `${rel} drives a transform from outside a useAnimatedStyle: ` +
         violations.join(' | '),
     );
+  }
+  // The exemption list is checked in the other direction too: a file on it
+  // that no longer has a transform to exempt is a stale hole in the audit.
+  for (const rel of STATIC_TRANSFORMS) {
+    assert.ok(transforms(read(path.join(ROOT, rel))).length > 0,
+      `${rel} is exempt from AC-828 and has no transform to exempt`);
   }
   // The property is only worth asserting if the app actually has animated
   // transforms to constrain. Four: the animal body, the ghost, and the sheet's

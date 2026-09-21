@@ -31,12 +31,31 @@ const OUT = path.join(ROOT, 'assets');
 // These five values also live in `src/ui/theme.js`, and a test asserts they
 // agree (test/assets.test.js). They are NOT imported: this script must run
 // against a plain Node with no bundler, and `theme.js` is React Native source.
-const GROUND = '#16212C'; // COLORS.board
-const SPLASH_BG = '#0D141B'; // COLORS.bg
+const GROUND = '#16212C'; // THEME.dark.colors.board
 const BARS = [
   { fill: '#5B6E88', edge: '#3F4F66', cells: 4 }, // elephant
   { fill: '#5FA45C', edge: '#427A40', cells: 3 }, // elk
   { fill: '#F58A47', edge: '#C96A2C', cells: 2 }, // fox
+];
+
+/**
+ * AC-1501/AC-1513 moved the splash, and only the splash.
+ *
+ * The app now OPENS bright, and AC-1205's rule is that the splash ground and
+ * the app ground are one colour — the seam between the splash storyboard and
+ * React's first frame is invisible only while that holds. So the splash is
+ * drawn on the light app ground with the light ramp, and the mark is the same
+ * mark.
+ *
+ * The ICON is not moved. An icon is a mark on a home screen rather than a
+ * surface of the app, ui.md §11.1 specifies its ground as `#16212C`, and a
+ * theme the player can change is not a reason to restyle a brand mark.
+ */
+const SPLASH_BG = '#F2EDE3'; // THEME.light.colors.bg
+const SPLASH_BARS = [
+  { fill: '#3E4F66', edge: '#26303F', cells: 4 }, // elephant
+  { fill: '#3F7A3E', edge: '#284E27', cells: 3 }, // elk
+  { fill: '#D4712F', edge: '#94430F', cells: 2 }, // fox
 ];
 
 // ---- a minimal PNG encoder, truecolour only -------------------------------
@@ -150,7 +169,7 @@ function crc32(buf) {
  * silhouette climbs. Panel seams sit on the cell boundaries (ui.md §5.2 cue 2),
  * which is what makes the widths countable rather than merely different.
  */
-function drawMark(c, { x, y, w }) {
+function drawMark(c, { x, y, w, bars = BARS }) {
   const cell = w / 6;
   const barH = cell * BAR_H;
   const gap = cell * BAR_GAP;
@@ -158,9 +177,9 @@ function drawMark(c, { x, y, w }) {
   const seamW = Math.max(1, Math.round(cell * 0.028));
   const seamInset = barH * 0.11;
 
-  BARS.forEach((bar, i) => {
+  bars.forEach((bar, i) => {
     // Bottom bar is the widest; index 0 is drawn lowest.
-    const row = BARS.length - 1 - i;
+    const row = bars.length - 1 - i;
     const bx = x + i * 2 * cell;
     const by = y + row * (barH + gap);
     const bw = bar.cells * cell;
@@ -223,11 +242,11 @@ function adaptiveIcon() {
   return c;
 }
 
-/** `resizeMode: "contain"` on `#0D141B`, mark centred at 42% of height. */
+/** `resizeMode: "contain"` on the light app ground, mark centred at 42%. */
 function splash() {
   const c = canvas(1284, 2778, SPLASH_BG);
   const w = 780;
-  drawMark(c, { x: (1284 - w) / 2, y: 2778 * 0.42 - markHeight(w) / 2, w });
+  drawMark(c, { x: (1284 - w) / 2, y: 2778 * 0.42 - markHeight(w) / 2, w, bars: SPLASH_BARS });
   return c;
 }
 

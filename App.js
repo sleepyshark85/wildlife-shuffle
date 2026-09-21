@@ -19,16 +19,29 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
-import { COLORS } from './src/ui/theme.js';
+import { DEFAULT_THEME, THEME } from './src/ui/theme.js';
 import { BEATS, ONBOARDING_DIFFICULTY, beatRun, nextBeat } from './src/ui/onboarding.js';
 import { hasPlayed } from './src/ui/progress.js';
-import { ProgressProvider, useProgress } from './src/ui/progressStore.js';
+import { ProgressProvider, useProgress, useTheme } from './src/ui/progressStore.js';
 import { SettingsProvider } from './src/ui/settings.js';
 import { newSeed } from './src/ui/useGameRun.js';
 import { CollectionScreen } from './src/ui/screens/CollectionScreen.js';
 import { HomeScreen } from './src/ui/screens/HomeScreen.js';
 import { GameScreen } from './src/ui/screens/GameScreen.js';
 import { RecordsScreen } from './src/ui/screens/RecordsScreen.js';
+
+/**
+ * AC-1501. The status bar's CONTENT takes the ground's opposite.
+ *
+ * It is read from the theme rather than pinned in `app.json`, because the app
+ * renders the theme the PLAYER chose regardless of the device's own setting —
+ * and `style="light"` over a bone screen is a row of white glyphs on white.
+ * Its own component so it can sit inside the provider that holds the theme
+ * without every screen having to carry it.
+ */
+function ThemedStatusBar() {
+  return <StatusBar style={useTheme().name === 'light' ? 'dark' : 'light'} />;
+}
 
 function Shell() {
   // The seed is minted in an event handler, never during render, and is carried
@@ -143,7 +156,7 @@ export default function App() {
       <SafeAreaProvider>
         <ProgressProvider>
           <SettingsProvider>
-            <StatusBar style="light" />
+            <ThemedStatusBar />
             <Shell />
           </SettingsProvider>
         </ProgressProvider>
@@ -152,6 +165,13 @@ export default function App() {
   );
 }
 
+/**
+ * The one ground that cannot come from the context, because it is outside the
+ * provider that holds it. It takes the DEFAULT theme's — which is the theme
+ * the app opens in, and the colour `app.json` and the splash are set to, so
+ * the seam between the splash and the first React frame stays invisible
+ * (AC-1205). Every screen paints its own ground over this on the first frame.
+ */
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: THEME[DEFAULT_THEME].colors.bg },
 });

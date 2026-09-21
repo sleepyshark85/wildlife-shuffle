@@ -1829,7 +1829,13 @@ ability animation in `ui.md` §13.4 is an announcement over an ordinary structur
 than deleted.
 
 **AC-1501 — BOTH THEMES SHIP.** Given the app, Then it supports a **dark** and a **light**
-theme, following the device setting with a manual override in Settings.
+theme, **light by default**, chosen in Settings and persisted in the save.
+
+The app renders the **chosen** theme regardless of the device setting. An earlier draft of
+this AC said "following the device setting with a manual override"; that was never built and
+is not what the owner asked for. The theme is a preference the player sets once, not a thing
+that changes under them when the phone crosses into night mode. Recorded here because the
+superseded wording would otherwise read as a defect.
 
 **AC-1502 — THE SIZE→LIGHTNESS RAMP KEEPS ITS DIRECTION IN BOTH THEMES.** Given either theme,
 Then fill lightness **descends monotonically with size** across the four drawable species,
@@ -1843,10 +1849,14 @@ theme, Then it is separable from its board ground at **≥ 3:1** by its fill **o
 1.68:1 on fill alone and 4.05:1 on edge; the edge is what makes it visible, which is why the
 floor is specified against the better of the two rather than against the fill.)*
 
-**AC-1504 — THE SCRIPT IS THE QA SURFACE.** Given `node docs/v2/theme-contrast.mjs`, Then it
-exits 0: every species clears AC-1503 in both themes, both ramps satisfy AC-1502, and both
-textures clear AC-1507. *(§1 objected that a second theme doubles the visual QA surface. It
-does. This is what pays for it — re-run it after any palette change.)*
+**AC-1504 — THE SCRIPT IS THE QA SURFACE.** *(amended — its scope now includes the accent and
+the cosmetics)* Given `node docs/v2/theme-contrast.mjs`, Then it exits 0: every species clears
+AC-1503 in both themes, both ramps satisfy AC-1502, both textures clear AC-1507, both accents
+satisfy AC-1515 and AC-1517, and every combination in AC-1521's product clears AC-1503.
+*(§1 objected that a second theme doubles the visual QA surface. It does. This is what pays for
+it — re-run it after any palette change. It was widened because it passed while two measured
+failures were in the build: a check whose scope stops short of the defect is §6.2's check that
+could only pass.)*
 
 **AC-1505** Given the light theme, Then the buffalo keeps its rim at **`#9C6D14`**, not
 `#E8B44A`, which reads at 1.9:1 on bone and would look like a smudge. It remains the **only
@@ -1886,8 +1896,91 @@ opposite** — white on dark, `#14201A` on light — and the same applies to §5
 (AC-425) and §5.2's numeral chip, which flips to a bone chip with dark ink. *(2.5 pt white
 borders vanish on bone.)*
 
-**AC-1513** Given `app.json`, Then `userInterfaceStyle` is **not** `"dark"` and AC-1211 is
-superseded: the app follows the device setting.
+**AC-1513** Given `app.json`, Then `userInterfaceStyle` is `"light"` and AC-1211 is
+superseded.
+
+`"light"` rather than `"automatic"`, and the distinction is load-bearing: the app does not
+follow the device (AC-1501), so letting the iOS-drawn chrome follow it would put dark system
+surfaces under a bright app on a phone set to dark. `"light"` matches the default theme, the
+splash and the root view. A player who switches to dark gets light system chrome — the
+honest cost of a preference the manifest cannot read. The status bar's own content does
+follow the theme, which is where it can.
 
 **AC-1514** Given the App Store screenshots (AC-1210), Then they are **reshot** after the
 theme lands, and the set shows the theme the app opens in by default.
+
+---
+
+## AC-15xx (continued) · the accent, and cosmetics across themes
+
+`ui.md` §16.2 and §16.4. Both of these are palette decisions forced by measurement during the
+implementation of AC-1501–AC-1514: the light accent could not carry a label, and the Tundra
+unlock broke the rat on bone.
+
+**AC-1515 — THE ACCENT CARRIES THE LABEL DRAWN ON IT.** Given a primary button in either theme,
+Then the accent beneath the label clears **4.5:1** against that label: dark `#FFC24B` with
+`#2A1C00` at **10.34:1**, light **`#975C0F`** with `#FFFFFF` at **5.45:1**. *(The merged light
+accent `#B06B12` could not do it with any ink — white 4.24, the theme's darkest ink 4.37,
+`#0D0D0D` 4.59 — and no hue fixes it: white clears 4.5:1 only below relative luminance
+0.18333, which is L\* ≤ 49.90 at every hue, and `#B06B12` is L\* 51.60. It is darkened along its
+own hue, the triple scaled by 0.86, hue and HSV saturation unchanged, L\* 51.6 → 44.6.)*
+
+**AC-1516 — THE LABEL ON THE ACCENT IS THE GROUND'S OPPOSITE.** Given either theme, Then the
+ink drawn on the accent is `inkOnAccent` and is on the far side of the ground: `#2A1C00` on the
+dark theme's light gold, `#FFFFFF` on the light theme's dark one. *(AC-1512's rule applied to
+the accent rather than to High Contrast, so there is one rule and no per-theme exception. A
+near-black label on `#B06B12` would have passed at 4.59:1 and is rejected: it is the hazard
+pairing, and a primary button is not a hazard.)*
+
+**AC-1517 — THE ACCENT'S OTHER PAIRS.** Given the light theme, Then the accent clears **4.5:1**
+as body text on `bg` `#F2EDE3` (**4.67**) and `panel` `#FAF6EC` (**5.05**), and **3:1** as a
+mark or a large numeral on `panelSunken` `#E4DDCE` (**4.03**), `board` `#E6DFD2` (**4.11**),
+`cell` `#DDD5C6` (**3.74**) and its own 10% wash `#E9DFCE` (**4.13**); a label on a washed card
+is `ink`, not `accent`. *(`#B06B12` failed three of these too — 3.63, 3.92 and 2.91 — and the
+2.91 is AC-411's drop ghost, a non-text mark under the 3:1 floor on the ground it is drawn on.
+Every light token derived from the accent takes the new triple `151, 92, 15`.)*
+
+**AC-1518 — A COSMETIC GROUND NAMES THE RAMP IT PAIRS WITH.** Given a board theme (AC-1011),
+Then it names an existing ramp rather than carrying a palette, and the animals on it are that
+ramp whatever theme the chrome is wearing: Night Savanna is a dark ground by definition and
+pairs with the **dark** ramp. *(Measured: the light ramp on `#151026` leaves the elephant at
+2.22:1, under AC-1503's floor — an elephant nobody can see.)*
+
+**AC-1519 — A COSMETIC COLOUR IS SUPPLIED PER RAMP.** Given any cosmetic that supplies a
+colour, Then it supplies one value for each ramp it can appear over: a palette ships a `dark`
+and a `light` table, and a gild is the theme's own gold — `#E8B44A` on slate, AC-1505's
+`#9C6D14` on bone — never a literal. Given a ramp for which a cosmetic has no value, Then that
+cosmetic is a defect and AC-1504 fails rather than the cosmetic being hidden. *(A literal
+`#E8B44A` gild on bone is 1.43:1 and takes the light rat to 1.68:1: Golden Herd replaces every
+edge, and on bone the edge is what pays the floor.)*
+
+**AC-1520 — THE RAMP IN FORCE SELECTS THE VARIANT.** Given a palette applied over a board theme,
+Then the variant used is the one for the ground's ramp, not the app's theme — Tundra over Night
+Savanna is Tundra's dark table in either theme. *(Ground and ramp always come from the same
+declaration. A lightness clamp at the point of use was rejected: it can push a fill past its
+neighbour and invert AC-1502's ramp, it alters a colour the player earned by an amount nobody
+has looked at, and it leaves the check reading a function instead of a palette. Restricting a
+palette to one theme was rejected against `ui.md` §14.2 — an unlock you cannot apply is not an
+unlock, and this one would retract itself when the player changed theme.)*
+
+**AC-1521 — THE SWEEP IS THE PRODUCT.** Given `theme-contrast.mjs`, Then it asserts AC-1503 and
+AC-1502 over every **ground × ramp source × gild state × species** combination a player can
+assemble — 3 × 2 × 2 × 5 = **60 rows** — and not merely over the two themes. *(Planted with the
+palette as it shipped the check fails on 4 rows; planted with the merged light accent it fails
+on 4 accent pairs. Before this it passed with both defects in the build.)*
+
+**AC-1522 — TUNDRA HAS TWO TABLES.** Given the Tundra palette, Then its values are:
+
+| Tundra | dark ramp, on `#16212C` | best | light ramp, on `#E6DFD2` | best |
+|---|---|---:|---|---:|
+| Rat | fill `#E4EEFA` edge `#B4C8DE` | 13.90 | fill `#8CB0DE` edge `#2963AB` | 4.57 |
+| Fox | fill `#A8C4E0` edge `#7B9DBE` | 9.03 | fill `#6190BE` edge `#2D5781` | 5.68 |
+| Elk | fill `#6C90B2` edge `#4C6C8C` | 4.87 | fill `#4D7192` edge `#2E4963` | 7.05 |
+| Elephant | fill `#5C77A7` edge `#455D85` | 3.61 | fill `#3A4F6D` edge `#263851` | 8.97 |
+
+and the light table's fills run L\* 71 / 58 / 46 / 33, the base light ramp's own spacing.
+*(The dark elephant is repriced from `#41587A`, which was **2.25:1** on the board it shipped
+for and 2.56:1 over Night Savanna — Tundra failed AC-1503 on every ground, including its own,
+and nothing was checking. `#5C77A7` is 3.61:1 and 4.10:1, L\* 36.9 → 49.8, still the darkest of
+the four. The light rat is 1.69:1 on fill and 4.57:1 on edge: the same division of labour as
+AC-1503. No palette touches the buffalo, so AC-1505 holds across cosmetics unchanged.)*

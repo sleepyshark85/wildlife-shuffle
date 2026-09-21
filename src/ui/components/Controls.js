@@ -10,7 +10,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { EASE, delay, timing } from '../motion.js';
-import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
+import { RADIUS, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 
 /**
  * ui.md §10 / AC-910c: sheets and overlays scale fully; fixed-height chrome
@@ -57,6 +58,8 @@ export function useFocusRing() {
 export const Button = memo(function Button({
   label, onPress, muted, tone = 'primary', style, testID, maxFontScale,
 }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const primary = tone === 'primary';
   const ring = useFocusRing();
   return (
@@ -80,7 +83,7 @@ export const Button = memo(function Button({
     >
       <Text
         maxFontSizeMultiplier={maxFontScale}
-        style={[TYPE.button, primary ? styles.inkOnAccent : styles.inkOnPanel, muted && styles.inkMuted]}
+        style={[theme.type.button, primary ? styles.inkOnAccent : styles.inkOnPanel, muted && styles.inkMuted]}
       >
         {label}
       </Text>
@@ -89,6 +92,7 @@ export const Button = memo(function Button({
 });
 
 export const IconButton = memo(function IconButton({ glyph, label, onPress, muted }) {
+  const styles = STYLES[useTheme().name];
   const ring = useFocusRing();
   return (
     <Pressable
@@ -120,6 +124,7 @@ export const IconButton = memo(function IconButton({ glyph, label, onPress, mute
  * AC-910d: it grows with the score when the HUD drops its labels.
  */
 export const StreakPill = memo(function StreakPill({ mult, large }) {
+  const styles = STYLES[useTheme().name];
   return (
     <View style={[styles.pill, large && styles.pillLarge]}>
       <Text allowFontScaling={false} style={[styles.pillText, large && styles.pillTextLarge]}>
@@ -133,6 +138,7 @@ export const StreakPill = memo(function StreakPill({ mult, large }) {
 const SPENT = 0.22;
 
 const Segment = memo(function Segment({ filled, leaving, reduced, large }) {
+  const styles = STYLES[useTheme().name];
   const on = useSharedValue(filled || Boolean(leaving) ? 1 : SPENT);
   useEffect(() => {
     if (!leaving) {
@@ -158,6 +164,7 @@ const Segment = memo(function Segment({ filled, leaving, reduced, large }) {
  * what tells the bar at index `size` that it is the one on its way out.
  */
 export const BuffaloChip = memo(function BuffaloChip({ size, shrink, reduced, large }) {
+  const styles = STYLES[useTheme().name];
   const bars = [];
   for (let i = 0; i < 4; i += 1) {
     bars.push(
@@ -186,28 +193,30 @@ export const BuffaloChip = memo(function BuffaloChip({ size, shrink, reduced, la
 
 /** ui.md §10: one row per toggle, label and caption on the left. */
 export const Toggle = memo(function Toggle({ label, caption, value, onChange }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   return (
     <View style={styles.toggleRow}>
       <View style={styles.toggleCopy}>
-        <Text style={TYPE.button}>{label}</Text>
-        <Text style={TYPE.body}>{caption}</Text>
+        <Text style={theme.type.button}>{label}</Text>
+        <Text style={theme.type.body}>{caption}</Text>
       </View>
       <Switch
         value={value}
         onValueChange={onChange}
         accessibilityRole="switch"
         accessibilityLabel={label}
-        trackColor={{ false: COLORS.hairline, true: 'rgba(255,194,75,.5)' }}
-        thumbColor={value ? COLORS.accent : COLORS.inkMuted}
+        trackColor={{ false: theme.colors.hairline, true: theme.colors.accentTrack }}
+        thumbColor={value ? theme.colors.accent : theme.colors.inkMuted}
       />
     </View>
   );
 });
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   focusRing: {
     outlineWidth: 2,
-    outlineColor: COLORS.accent,
+    outlineColor: T.colors.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   },
@@ -227,31 +236,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonPrimary: { backgroundColor: COLORS.accent },
+  buttonPrimary: { backgroundColor: T.colors.accent },
   buttonSecondary: {
-    backgroundColor: COLORS.panel,
+    backgroundColor: T.colors.panel,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
   },
   buttonMuted: { opacity: 0.38 },
   buttonPressed: { opacity: 0.74 },
-  inkOnAccent: { color: '#2A1C00' },
-  inkOnPanel: { color: COLORS.ink },
-  inkMuted: { color: COLORS.inkMuted },
+  inkOnAccent: { color: T.colors.inkOnAccent },
+  inkOnPanel: { color: T.colors.ink },
+  inkMuted: { color: T.colors.inkMuted },
   icon: {
     width: TOUCH,
     height: TOUCH,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconGlyph: { fontSize: 17, color: COLORS.inkMuted, letterSpacing: 2 },
+  iconGlyph: { fontSize: 17, color: T.colors.inkMuted, letterSpacing: 2 },
   pill: {
     paddingHorizontal: 10,
     height: 24,
     borderRadius: RADIUS.pill,
-    backgroundColor: 'rgba(255,194,75,.14)',
+    backgroundColor: T.colors.accentWash,
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: T.colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -259,7 +268,7 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.accent,
+    color: T.colors.accent,
     fontVariant: ['tabular-nums'],
   },
   pillTextLarge: { fontSize: 16 },
@@ -270,13 +279,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     height: 24,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.panelSunken,
+    backgroundColor: T.colors.panelSunken,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
   },
   chipLarge: { height: 30, paddingHorizontal: 10 },
   chipGlyph: { fontSize: 13, marginRight: 2 },
   chipGlyphLarge: { fontSize: 16 },
-  bar: { width: 5, height: 12, borderRadius: 1, backgroundColor: '#E8B44A' },
+  bar: { width: 5, height: 12, borderRadius: 1, backgroundColor: T.colors.lastStand },
   barLarge: { width: 6, height: 16 },
-});
+}));

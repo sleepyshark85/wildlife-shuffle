@@ -28,7 +28,8 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { BEATS, beatIndex } from '../onboarding.js';
-import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
+import { RADIUS, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 import { Button } from '../components/Controls.js';
 
 /** ui.md §12's register: short, active, never cute. */
@@ -40,13 +41,15 @@ const ONBOARDING_COPY = Object.freeze({
 });
 
 export function OnboardingCoach({ beat, satisfied, onNext, onSkip, top }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const step = beatIndex(beat.id);
   const last = step === BEATS.length - 1;
   return (
     <View style={[styles.frame, { paddingTop: top + SPACE.sm }]} testID="onboarding">
       <View style={styles.card}>
         <View style={styles.head}>
-          <Text style={TYPE.label} testID="onboarding-step">
+          <Text style={theme.type.label} testID="onboarding-step">
             {`Step ${step + 1} of ${BEATS.length}`}
           </Text>
           {/* AC-1206: skippable, from every beat, in one tap. It is a
@@ -61,13 +64,13 @@ export function OnboardingCoach({ beat, satisfied, onNext, onSkip, top }) {
           />
         </View>
         <Text
-          style={TYPE.title}
+          style={theme.type.title}
           testID="onboarding-title"
           accessibilityLiveRegion="polite"
         >
           {satisfied ? `${ONBOARDING_COPY.done} · ${beat.title}` : beat.title}
         </Text>
-        <Text style={TYPE.body} testID="onboarding-body">{beat.body}</Text>
+        <Text style={theme.type.body} testID="onboarding-body">{beat.body}</Text>
         {satisfied ? (
           <Button
             label={last ? ONBOARDING_COPY.play : ONBOARDING_COPY.next}
@@ -80,7 +83,7 @@ export function OnboardingCoach({ beat, satisfied, onNext, onSkip, top }) {
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   frame: {
     ...StyleSheet.absoluteFillObject,
     paddingHorizontal: SPACE.lg,
@@ -92,10 +95,10 @@ const styles = StyleSheet.create({
     padding: SPACE.lg,
     borderRadius: RADIUS.card,
     borderWidth: 1,
-    borderColor: COLORS.accent,
-    backgroundColor: COLORS.panel,
+    borderColor: T.colors.accent,
+    backgroundColor: T.colors.panel,
     pointerEvents: 'auto',
   },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   skip: { paddingVertical: SPACE.xs, paddingHorizontal: SPACE.md },
-});
+}));

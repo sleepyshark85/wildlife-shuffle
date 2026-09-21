@@ -10,7 +10,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { BOARD } from '../../engine/constants.js';
 import { COLS, ROWS } from '../layout.js';
-import { COLORS, RADIUS } from '../theme.js';
+import { CELL_ALPHA, paintedCell, texturedRow, translucent } from '../texture.js';
+import { RADIUS } from '../theme.js';
 
 /** ui.md §7: 45 degree hazard stripes, drawn as rotated bars inside a clip. */
 function HazardStripes({ width, height, pitch, color, thickness }) {
@@ -35,14 +36,36 @@ function HazardStripes({ width, height, pitch, color, thickness }) {
   return <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>{bars}</View>;
 }
 
-function BoardCellsImpl({ cell, highContrast, colors = COLORS }) {
+function BoardCellsImpl({ cell, highContrast, colors }) {
   const boardW = cell * COLS;
   const cells = useMemo(() => {
+    /**
+     * AC-1507. The empty cells are what the natural background reads through,
+     * and this is the whole of how: the cell is painted at `CELL_ALPHA` over
+     * the board, in the colour that COMPOSITES BACK TO `colors.cell`. The
+     * player sees the cell colour ui.md §4 specifies, before and after the
+     * texture landed, and the grain shows through at half strength — which is
+     * half of a ratio that was already capped at 1.25:1 (AC-1508).
+     *
+     * It is an rgba FILL rather than a view `opacity` on purpose: opacity
+     * would fade the cell's own border with it, and the grid lines are not
+     * part of the ground.
+     */
+    const over = translucent(paintedCell(colors.cell, colors.board), CELL_ALPHA);
     const out = [];
     for (let y = 0; y < ROWS; y += 1) {
-      const danger = y >= BOARD.dangerBandLow && y <= BOARD.dangerBandHigh;
+      // ONE predicate decides both halves of AC-1511, so they cannot drift:
+      // `texturedRow` is what the layer below sizes itself from, and a row it
+      // says is not textured is a row that paints opaque here. `danger` is
+      // then "flat, and not the kill row", rather than a second range.
+      const textured = texturedRow(y);
       const kill = y >= BOARD.killLine;
+      const danger = !textured && !kill;
       for (let x = 0; x < COLS; x += 1) {
+        // AC-1511: the danger band and the kill row render FLAT. A texture
+        // under a tint under a pulse is three things competing in the one
+        // place the player most needs to read quickly, so these cells stay
+        // opaque and the layer beneath them stops at the band (texture.js).
         out.push(
           <View
             key={`${x}.${y}`}
@@ -52,12 +75,16 @@ function BoardCellsImpl({ cell, highContrast, colors = COLORS }) {
               top: (ROWS - 1 - y) * cell,
               width: cell,
               height: cell,
-              backgroundColor: kill ? COLORS.bg : danger ? COLORS.dangerBand : colors.cell,
+              backgroundColor: kill
+                ? colors.bg
+                : danger
+                  ? colors.dangerBand
+                  : over,
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: danger || kill
-                ? COLORS.dangerCellLine
+                ? colors.dangerCellLine
                 : highContrast
-                  ? COLORS.cellLineHigh
+                  ? colors.cellLineHigh
                   : colors.cellLine,
             }}
           />,
@@ -93,7 +120,7 @@ function BoardCellsImpl({ cell, highContrast, colors = COLORS }) {
           height: cell,
           overflow: 'hidden',
           borderBottomWidth: 1.5,
-          borderBottomColor: COLORS.killLine,
+          borderBottomColor: colors.killLine,
           borderTopLeftRadius: RADIUS.tray,
           borderTopRightRadius: RADIUS.tray,
         }}
@@ -103,7 +130,7 @@ function BoardCellsImpl({ cell, highContrast, colors = COLORS }) {
           height={cell}
           pitch={14}
           thickness={6}
-          color="rgba(224,82,96,.13)"
+          color={colors.hazardStripe}
         />
       </View>
     </View>

@@ -21,9 +21,9 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { DIFFICULTIES } from '../../engine/constants.js';
-import { COLORS, SPACE, TYPE } from '../theme.js';
+import { SPACE, themed } from '../theme.js';
 import { formatDay, formatScore, plural } from '../format.js';
-import { useProgress } from '../progressStore.js';
+import { useProgress, useTheme } from '../progressStore.js';
 import { Card, FullScreen, Line } from './FullScreen.js';
 
 function RunRow({ run }) {
@@ -37,6 +37,8 @@ function RunRow({ run }) {
 }
 
 export function RecordsScreen({ onBack }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const { save } = useProgress();
   const { best, lifetime, recent, streak } = save;
 
@@ -70,7 +72,7 @@ export function RecordsScreen({ onBack }) {
 
       <Card title="Recent runs">
         {recent.length === 0 ? (
-          <Text style={TYPE.body}>No runs yet. Your last ten will show up here.</Text>
+          <Text style={theme.type.body}>No runs yet. Your last ten will show up here.</Text>
         ) : (
           recent.map((run) => <RunRow key={`${run.at}.${run.score}`} run={run} />)
         )}
@@ -86,7 +88,7 @@ export function RecordsScreen({ onBack }) {
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   footnote: { paddingHorizontal: SPACE.xs },
-  footnoteInk: { ...TYPE.body, color: COLORS.inkDim },
-});
+  footnoteInk: { ...T.type.body, color: T.colors.inkDim },
+}));

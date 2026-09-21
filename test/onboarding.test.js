@@ -30,6 +30,7 @@ import {
   nextBeat,
   trayKept,
 } from '../src/ui/onboarding.js';
+import { DEFAULT_THEME } from '../src/ui/theme.js';
 import {
   SAVE_SCHEMA_VERSION,
   defaultSave,
@@ -348,7 +349,7 @@ test('AC-1207 completion and skip are indistinguishable in the save', () => {
   assert.ok(!/skipped|completedBeat|onboardingStep/.test(code('src/ui/progress.js')));
 });
 
-test('AC-1006/AC-1207 a version-1 save migrates to 3 keeping every choice', () => {
+test('AC-1006/AC-1207 a version-1 save migrates to the current schema, keeping every choice', () => {
   const v1 = {
     schemaVersion: 1,
     best: defaultSave().best,
@@ -360,42 +361,89 @@ test('AC-1006/AC-1207 a version-1 save migrates to 3 keeping every choice', () =
   };
   const parsed = parseSave(JSON.stringify(v1));
   assert.ok(parsed, 'a version-1 save was discarded');
-  assert.equal(parsed.schemaVersion, 3);
+  assert.equal(parsed.schemaVersion, SAVE_SCHEMA_VERSION);
   assert.equal(parsed.onboarded, false);
   assert.equal(parsed.settings.sizeNumerals, true);
   assert.equal(parsed.settings.reduceMotion, true);
   assert.equal(parsed.settings.sound, true, 'the version-2 defaults were lost');
+  assert.equal(parsed.settings.theme, DEFAULT_THEME, 'the version-4 default was lost');
   assert.equal(parsed.streak.count, 4);
   assert.equal(parsed.lifetime.games, 12);
   assert.deepEqual(parsed.unlocks.applied, { palette: 'tundra' });
 });
 
-test('AC-1006/AC-1207 a version-2 save migrates to 3 and keeps its settings', () => {
+test('AC-1006/AC-1207 a version-2 save migrates forward and keeps its settings', () => {
   const v2 = { ...defaultSave(), schemaVersion: 2, settings: { ...defaultSave().settings, sound: false } };
   delete v2.onboarded;
+  delete v2.settings.theme;
   const parsed = parseSave(JSON.stringify(v2));
   assert.ok(parsed, 'a version-2 save was discarded');
-  assert.equal(parsed.schemaVersion, 3);
+  assert.equal(parsed.schemaVersion, SAVE_SCHEMA_VERSION);
   assert.equal(parsed.onboarded, false);
   assert.equal(parsed.settings.sound, false);
+  assert.equal(parsed.settings.theme, DEFAULT_THEME);
+});
+
+/**
+ * AC-1006b, for the field AC-1501 added.
+ *
+ * *An AC that has never had a second version to migrate to has not been
+ * tested, only written* — and this one now has three. The planted fault is
+ * step 3 -> 4 doing nothing: the blob below is EXACTLY what `migrate` would
+ * hand `parseSave` if the step were missing or if it forgot the key, and the
+ * save has to be discarded rather than opened with half a settings object.
+ * (Verified by deleting the step from `src/ui/progress.js` and watching this
+ * test and the two above fail, then restoring it from a scratchpad copy.)
+ */
+test('AC-1006b a version-3 save gains the theme, and a step that forgot it loses the save', () => {
+  const v3 = { ...defaultSave(), schemaVersion: 3, settings: { ...defaultSave().settings } };
+  delete v3.settings.theme;
+  v3.lifetime = { ...v3.lifetime, games: 7 };
+
+  const parsed = parseSave(JSON.stringify(v3));
+  assert.ok(parsed, 'a version-3 save was discarded instead of migrated');
+  assert.equal(parsed.schemaVersion, SAVE_SCHEMA_VERSION);
+  assert.equal(parsed.lifetime.games, 7, 'the records did not survive the migration');
+  // AC-1501: a player who has only ever had the dark build is moved to the
+  // theme the owner chose, not left in the one that was overruled.
+  assert.equal(parsed.settings.theme, DEFAULT_THEME);
+
+  // THE PLANTED FAULT, as a value: a step that bumped the number and added
+  // nothing. `parseSave` must refuse it, so the failure is "opened on
+  // defaults" rather than "opened with a theme field that is not there".
+  const forgot = { ...v3, schemaVersion: SAVE_SCHEMA_VERSION };
+  assert.equal(parseSave(JSON.stringify(forgot)), null,
+    'a save with no theme was accepted at the current schema version');
+
+  // ...and a theme this build does not ship is refused like any other value
+  // the app did not write. `__proto__` is in the list because `THEME[name]`
+  // is not a membership test.
+  for (const bad of ['midnight', '__proto__', 'Light', true, null, 1]) {
+    const tampered = { ...defaultSave(), settings: { ...defaultSave().settings, theme: bad } };
+    assert.equal(parseSave(JSON.stringify(tampered)), null,
+      `theme: ${JSON.stringify(bad)} was accepted`);
+  }
 });
 
 test('AC-1006 the migration runs every step in sequence, not a jump to the top', () => {
-  // A 1 -> 3 that skipped step 2 would produce a blob with no `settings.sound`,
-  // which `parseSave` then discards — a save silently lost on update.
+  // A 1 -> 4 that skipped a step would produce a blob with no `settings.sound`
+  // or no `settings.theme`, which `parseSave` then discards — a save silently
+  // lost on update. Three steps now, and the count is asserted so adding a
+  // fourth without a test for it shows up here.
   const stepped = migrate({ schemaVersion: 1, settings: { sizeNumerals: true } });
-  assert.equal(stepped.schemaVersion, 3);
+  assert.equal(stepped.schemaVersion, SAVE_SCHEMA_VERSION);
   assert.equal(stepped.onboarded, false);
   assert.equal(stepped.settings.haptics, true);
   assert.equal(stepped.settings.sizeNumerals, true);
+  assert.equal(stepped.settings.theme, DEFAULT_THEME);
   // A current blob is handed back untouched.
-  const current = { schemaVersion: 3, onboarded: true };
+  const current = { schemaVersion: SAVE_SCHEMA_VERSION, onboarded: true };
   assert.equal(migrate(current), current);
 });
 
 test('AC-1005/AC-1207 a save whose onboarded field is not a boolean is discarded whole', () => {
   for (const bad of ['yes', 1, null, {}, []]) {
-    const blob = { ...defaultSave(), schemaVersion: 3, onboarded: bad };
+    const blob = { ...defaultSave(), schemaVersion: SAVE_SCHEMA_VERSION, onboarded: bad };
     assert.equal(parseSave(JSON.stringify(blob)), null, `onboarded: ${JSON.stringify(bad)} was accepted`);
   }
 });

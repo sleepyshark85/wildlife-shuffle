@@ -1572,11 +1572,12 @@ light  L*  71 > 58 > 46 > 33      gaps 13, 12, 13
 
 ### 16.2 The palettes, and the script that keeps them honest
 
-`node docs/v2/theme-contrast.mjs` asserts all three properties on every publish: every species
+`node docs/v2/theme-contrast.mjs` asserts every property below on every publish: every species
 separable from its board ground by fill **or** edge at **≥ 3:1** (WCAG 1.4.11, the non-text
-floor — these are solid shapes, not glyphs), the ramp monotonic in both themes, and the
-background texture under its ceiling. **The doubled QA surface §1 warned about is paid for by
-this script rather than by remembering.**
+floor — these are solid shapes, not glyphs), the ramp monotonic in both themes, the background
+texture under its ceiling, **each accent carrying the label drawn on it**, and — since §16.4 —
+every one of the 60 cosmetic × ground × species combinations a player can assemble.
+**The doubled QA surface §1 warned about is paid for by this script rather than by remembering.**
 
 | | dark board `#16212C` | light board `#E6DFD2` |
 |---|---|---|
@@ -1589,7 +1590,38 @@ this script rather than by remembering.**
 **Light surfaces:** app ground `#F2EDE3` (warm bone, not white — "natural" starts here and
 white is not a colour found outdoors), board `#E6DFD2`, empty cell `#DDD5C6`, cell line
 `#CBC1AE`, hairline `#C2B7A2`. **Light ink:** `#1C2A22`, muted `#5A6A5E`, dim `#7D8C81`.
-**Light accent** `#B06B12` — `#FFC24B` disappears on bone.
+**Light accent `#975C0F` (AC-1515–AC-1517).** `#FFC24B` disappears on bone, and the first
+light accent — `#B06B12` — turned out not to be a button colour at all: **no ink reaches
+4.5:1 on it.** White is 4.24:1, the theme's own darkest ink 4.37:1, and even `#0D0D0D` only
+4.59:1. No hue fixes that, and the arithmetic says so rather than the eye: white clears
+4.5:1 only against a colour of relative luminance ≤ 0.18333, which is **L\* ≤ 49.90 whatever
+the hue**, and `#B06B12` is L\* 51.60. Lightness alone decides it. So the accent is darkened
+along its own hue — the RGB triple scaled by 0.86, which leaves HSV hue (35°) and saturation
+(90%) untouched and moves only value, L\* 51.6 → 44.6, ΔE*ab 9.6.
+
+| the accent's pairs, light theme | `#B06B12` | **`#975C0F`** | floor |
+|---|---:|---:|---:|
+| label on the button fill (white) | 4.24 **fails** | **5.45** | 4.5 |
+| as text on app ground `#F2EDE3` | 3.63 **fails** | **4.67** | 4.5 |
+| as text on panel `#FAF6EC` | 3.92 **fails** | **5.05** | 4.5 |
+| as a mark on sunken `#E4DDCE` | 3.13 | **4.03** | 3.0 |
+| as a mark on board `#E6DFD2` | 3.20 | **4.11** | 3.0 |
+| drop ghost / focus ring on cell `#DDD5C6` | 2.91 **fails** | **3.74** | 3.0 |
+| on its own 10% wash `#E9DFCE` | 3.24 | **4.13** | 3.0 |
+
+Darkening fixes all four failures at once. The alternative on the table — keep `#B06B12` and
+set the label in near-black — buys one pair by 2% and leaves the other three under their
+floors, introduces a ninth ink that exists on one control (the light theme's own darkest ink,
+`#1C2A22`, is 3.53:1 and does not qualify), and reads as a **warning** affordance rather than a
+primary one: near-black on amber is the hazard pairing, and a primary button is not a hazard.
+
+**The label on the accent is the ground's opposite**, which is AC-1512's rule applied to the
+accent rather than to High Contrast: `#2A1C00` on slate's light gold at 10.34:1, `#FFFFFF` on
+bone's dark one at 5.45:1. One rule, both themes, no per-theme exception to remember. Every
+light token derived from the accent — its wash, its track, the hazard rule, the drop ghost fill,
+the light row flash — takes the new triple `151, 92, 15`. Accent *body* text sits on `bg` or
+`panel` only; on the board, on a sunken tile and on its own wash the accent is a mark or a large
+numeral, which is the 3:1 floor, and a label on a washed card is `ink`.
 
 **The buffalo keeps its reading, with a repriced gold.** `#E8B44A` against bone is 1.9:1 and
 would look like a smudge; `#9C6D14` holds 3.44:1 and is still unmistakably metal. It remains
@@ -1634,3 +1666,66 @@ judgement each future change re-litigates into a check that fails.
 tint under a pulse is three things competing in the one place the player most needs to read
 quickly, and where warmth and urgency conflict, urgency wins. It also earns something: **the
 textured world stops where the danger begins.**
+
+### 16.4 A cosmetic is a second ground, and a second ground was never measured
+
+AC-1518 to AC-1522.
+
+The four unlocks (§9) were specified when there was only one board to specify them against.
+A light ground is a second ground **they were never checked against**, and the Tundra palette
+is the proof: equipped in the light theme the rat reads at **1.29:1** and the fox at **2.14:1**
+against bone, both under the 3:1 floor. The check could not see it, because the check swept
+themes and cosmetics are not themes.
+
+Worse, and the reason this is a structural finding rather than a rat finding: **Tundra was
+never checked against the ground it *was* designed for either.** On slate its elephant is
+`#41587A` at **2.25:1** on fill and 1.48:1 on edge — under the floor on the dark board it
+shipped for, and 2.56:1 over Night Savanna.
+
+So the rule is stated once, for every cosmetic × theme combination, and not per species:
+
+> **1. A cosmetic that supplies a GROUND names the ramp it pairs with (AC-1518).** Night
+> Savanna is "the board after dark" — a dark ground by definition, so the animals on it
+> are the **dark** ramp whatever theme the chrome is wearing. *(Measured: the light ramp on
+> `#151026` leaves the elephant at 2.22:1. This is a wiring decision, not a colour one — the
+> board theme names an existing ramp rather than carrying a palette of its own.)*
+>
+> **2. A cosmetic that supplies a COLOUR supplies one value per ramp (AC-1519).** A palette
+> ships a `dark` and a `light` table. A gild is the theme's own gold token — `#E8B44A` on slate,
+> AC-1505's repriced `#9C6D14` on bone — and never a literal, because Golden Herd replaces
+> every edge, which is the thing carrying the floor for the light rat and fox. *(A literal
+> `#E8B44A` gild on bone is 1.43:1 and takes the rat to 1.68:1.)*
+>
+> **3. The ramp in force selects the variant (AC-1520)**, so Tundra over Night Savanna is
+> Tundra's **dark** table even in the light theme. Ground and ramp always come from the same
+> declaration; that is what keeps the sweep finite.
+
+**Why not the two cheaper answers.** A *lightness clamp at the point of use* fixes a number
+and breaks a meaning: it can push a fill past its neighbour and invert §16.1's ramp, it changes
+a colour the player earned by an amount nobody has looked at, and it leaves nothing to check —
+the check would be reading a function instead of a palette, and a palette that fails would ship
+looking fine. *Restricting a palette to the theme it was designed for* contradicts §14.2
+outright: an unlock you cannot apply is not an unlock, and this one would silently retract
+itself when the player changed theme.
+
+**Tundra, both variants (AC-1522).** One hue, lightness doing all the work, which is AC-908
+taken to its conclusion rather than an exception to it. The light table mirrors the base light
+ramp exactly: L\* 71 / 58 / 46 / 33, gaps 13 / 12 / 13, with the **edge** carrying the floor
+at the pale end where the fill cannot — the same division of labour as §16.1.
+
+| Tundra | dark board `#16212C` | best | light board `#E6DFD2` | best |
+|---|---|---:|---|---:|
+| Rat (1) | fill `#E4EEFA` edge `#B4C8DE` | 13.90 | fill `#8CB0DE` edge `#2963AB` | 4.57 |
+| Fox (2) | fill `#A8C4E0` edge `#7B9DBE` | 9.03 | fill `#6190BE` edge `#2D5781` | 5.68 |
+| Elk (3) | fill `#6C90B2` edge `#4C6C8C` | 4.87 | fill `#4D7192` edge `#2E4963` | 7.05 |
+| Elephant (4) | fill **`#5C77A7`** edge **`#455D85`** | 3.61 | fill `#3A4F6D` edge `#263851` | 8.97 |
+
+The dark elephant is repriced from `#41587A` (2.25:1) to `#5C77A7` (3.61:1, and 4.10:1 over
+Night Savanna), L\* 36.9 → 49.8 — still the darkest of the four, so the ramp keeps its
+direction and its meaning. The buffalo is not in the table because no palette touches it: it
+keeps its theme's own fill and its rim, which is AC-1505 holding across cosmetics too.
+
+**The sweep is the product, and the script runs it (AC-1521):** 3 grounds × 2 ramp sources
+× 2 gild states × 5 species = 60 combinations, every one of them something a player can be
+looking at. Planted against the palette as it shipped, the check fails on 4 of them;
+planted against the merged light accent it fails on 4 accent pairs.

@@ -19,14 +19,20 @@ import { BOARD } from '../../engine/constants.js';
 import { isTarget, targetingChip } from '../abilities.js';
 import { COLS, ROWS } from '../layout.js';
 import { Z } from '../stacking.js';
-import { COLORS, RADIUS, RECESS } from '../theme.js';
+import { TEXTURE_ROWS } from '../texture.js';
+import { RADIUS, themed } from '../theme.js';
 import { slideRanges } from '../occupancy.js';
-import { useCosmetics } from '../progressStore.js';
+import { useCosmetics, useTheme } from '../progressStore.js';
 import { AnimalView } from './AnimalView.js';
 import { BoardCells } from './BoardCells.js';
 import { ClearLayer, DangerPulse } from './ClearLayer.js';
+import { NaturalGround } from './NaturalGround.js';
 
 function Ghost({ cell, drag }) {
+  // Read on the JS thread and captured as four scalars, because a worklet may
+  // only close over values that existed before it ran — handing it the whole
+  // palette would make every ghost frame depend on an object the theme owns.
+  const { accent, illegal, ghostFill, illegalFill } = useTheme().colors;
   const style = useAnimatedStyle(() => {
     const legal = drag.ghostLegal.value === 1;
     return {
@@ -36,8 +42,8 @@ function Ghost({ cell, drag }) {
         { translateX: drag.ghostX.value * cell },
         { translateY: drag.ghostY.value },
       ],
-      borderColor: legal ? COLORS.accent : COLORS.illegal,
-      backgroundColor: legal ? COLORS.ghostFill : COLORS.illegalFill,
+      borderColor: legal ? accent : illegal,
+      backgroundColor: legal ? ghostFill : illegalFill,
     };
   });
 
@@ -96,6 +102,7 @@ function Ghost({ cell, drag }) {
  * and legibility beats elegance for the player who turned it on.
  */
 function OriginRecess({ cell, drag, highContrast }) {
+  const recess = useTheme().recess;
   const frame = useAnimatedStyle(() => ({
     opacity: drag.originAlpha.value,
     width: drag.originSize.value * cell,
@@ -118,9 +125,9 @@ function OriginRecess({ cell, drag, highContrast }) {
             left: 0,
             top: 0,
             height: cell,
-            borderWidth: RECESS.highContrastWidth,
+            borderWidth: recess.highContrastWidth,
             borderStyle: 'dashed',
-            borderColor: RECESS.highContrastEdge,
+            borderColor: recess.highContrastEdge,
             borderRadius: RADIUS.animal,
             zIndex: Z.recess,
           },
@@ -139,11 +146,11 @@ function OriginRecess({ cell, drag, highContrast }) {
           left: 0,
           top: 0,
           height: cell,
-          backgroundColor: RECESS.darken,
+          backgroundColor: recess.darken,
           // 1 pt along the TOP of the footprint only. This is the whole of
           // what makes it read as pressed in rather than merely dark.
-          borderTopWidth: RECESS.topEdgeWidth,
-          borderTopColor: RECESS.topEdge,
+          borderTopWidth: recess.topEdgeWidth,
+          borderTopColor: recess.topEdge,
           overflow: 'hidden',
           zIndex: Z.recess,
         },
@@ -152,7 +159,7 @@ function OriginRecess({ cell, drag, highContrast }) {
     >
       <Animated.View
         style={[
-          { ...StyleSheet.absoluteFillObject, opacity: RECESS.tintAlpha },
+          { ...StyleSheet.absoluteFillObject, opacity: recess.tintAlpha },
           tint,
         ]}
       />
@@ -161,9 +168,11 @@ function OriginRecess({ cell, drag, highContrast }) {
 }
 
 function BoardImpl({
-  animals, cell, drag, clock, plan, reduced, sizeNumerals, highContrast, diagnostics,
+  animals, cell, seed, drag, clock, plan, reduced, sizeNumerals, highContrast, diagnostics,
   onCommit, onIllegal, arming = null, onTarget, onCancelTarget,
 }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   // Recomputed when the board changes — never during a drag, because a drag
   // changes no React state until release.
   const ranges = useMemo(() => slideRanges(animals, BOARD.width), [animals]);
@@ -181,10 +190,17 @@ function BoardImpl({
         backgroundColor: colors.board,
         borderRadius: RADIUS.tray,
         borderWidth: 1,
-        borderColor: COLORS.hairline,
+        borderColor: colors.hairline,
         overflow: 'hidden',
       }}
     >
+      {/* AC-1507/AC-1511. FIRST CHILD, and that is the design rather than a
+          detail of the JSX: the cell layer paints over it at equal z and the
+          animals paint over that opaquely, so the background cannot be behind
+          an animal — not because an alpha was chosen carefully, but because
+          there is nothing translucent above it except the empty cells.
+          It stops at the danger band, so rows 11-14 are flat. */}
+      <NaturalGround seed={seed} width={boardW} height={TEXTURE_ROWS * cell} />
       <BoardCells cell={cell} highContrast={highContrast} colors={colors} />
       <DangerPulse
         cell={cell}
@@ -253,9 +269,9 @@ function BoardImpl({
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   /** The ground at 45%, which is `ui.md` §13.3's dim expressed as a scrim. */
-  scrim: { backgroundColor: 'rgba(13,20,27,.55)', zIndex: Z.targetScrim },
-});
+  scrim: { backgroundColor: T.colors.targetScrim, zIndex: Z.targetScrim },
+}));
 
 export const Board = memo(BoardImpl);

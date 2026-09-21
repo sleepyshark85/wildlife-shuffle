@@ -345,10 +345,13 @@ test('AC-419 the origin recess is not a second dashed outline in the default the
 
   assert.ok(!/dashed/.test(dflt), 'the default recess must not be dashed');
   assert.ok(!/borderStyle/.test(dflt), 'nor take a border style at all');
-  assert.ok(!/COLORS\.accent|COLORS\.illegal/.test(dflt), 'nor borrow the ghost’s colours');
-  // What it IS: a darkened ground plus a 1 pt top edge.
-  assert.match(dflt, /RECESS\.darken/);
-  assert.match(dflt, /RECESS\.topEdge/);
+  assert.ok(!/\.accent|\.illegal/.test(dflt), 'nor borrow the ghost’s colours');
+  // What it IS: a darkened ground plus a 1 pt top edge. AC-1506: `darken` is an
+  // OVERLAY rather than a colour in either theme, which is why the recess works
+  // on bone by construction — 4.30:1 against its own cell there against 1.25:1
+  // on slate, both of them a hole (test/theme.test.js measures it).
+  assert.match(dflt, /recess\.darken/);
+  assert.match(dflt, /recess\.topEdge/);
   // AC-425's outline lives on the other side of the branch, and only there.
   assert.match(body.slice(swap, swap + 900), /dashed/);
 

@@ -14,14 +14,17 @@ import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { SPECIES } from '../../engine/constants.js';
-import { COLORS, COPY, RADIUS, SPACE, SPECIES_STYLE, TYPE } from '../theme.js';
+import { COPY, RADIUS, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 import { Sheet } from './Sheet.js';
 
 const TOUCH = 44;
 const UNAFFORDABLE = 0.4;
 
 const Row = memo(function Row({ row, onPick }) {
-  const style = SPECIES_STYLE[row.species];
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
+  const style = theme.species[row.species];
   return (
     <Pressable
       testID={`ability-${row.id}`}
@@ -71,6 +74,8 @@ const Row = memo(function Row({ row, onPick }) {
  * @param {Function} onClose   dismissal, which spends nothing.
  */
 export const AbilitySheet = memo(function AbilitySheet({ rows, reduced, onPick, onClose }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   return (
     <Sheet
       testID="ability-sheet"
@@ -88,13 +93,13 @@ export const AbilitySheet = memo(function AbilitySheet({ rows, reduced, onPick, 
         accessibilityLabel={COPY.cancel}
         style={({ pressed }) => [styles.close, pressed && styles.rowPressed]}
       >
-        <Text style={[TYPE.button, styles.closeText]}>{COPY.cancel}</Text>
+        <Text style={[theme.type.button, styles.closeText]}>{COPY.cancel}</Text>
       </Pressable>
     </Sheet>
   );
 });
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   list: { gap: SPACE.sm },
   row: {
     flexDirection: 'row',
@@ -104,9 +109,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACE.md,
     paddingVertical: SPACE.sm,
     borderRadius: RADIUS.card,
-    backgroundColor: COLORS.panelSunken,
+    backgroundColor: T.colors.panelSunken,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
   },
   rowMuted: { opacity: UNAFFORDABLE },
   rowPressed: { opacity: 0.74 },
@@ -122,15 +127,15 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: 2 },
   right: { alignItems: 'flex-end', gap: 4 },
   costPips: { flexDirection: 'row', gap: 4 },
-  costPip: { width: 7, height: 7, borderRadius: RADIUS.pill, backgroundColor: COLORS.pip },
-  name: { fontSize: 16, fontWeight: '600', color: COLORS.ink },
-  effect: { fontSize: 13, fontWeight: '400', color: COLORS.inkMuted },
-  reason: { fontSize: 11, fontWeight: '600', color: COLORS.inkDim, textAlign: 'right' },
+  costPip: { width: 7, height: 7, borderRadius: RADIUS.pill, backgroundColor: T.colors.pip },
+  name: { fontSize: 16, fontWeight: '600', color: T.colors.ink },
+  effect: { fontSize: 13, fontWeight: '400', color: T.colors.inkMuted },
+  reason: { fontSize: 11, fontWeight: '600', color: T.colors.inkDim, textAlign: 'right' },
   close: {
     minHeight: TOUCH,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: SPACE.sm,
   },
-  closeText: { color: COLORS.inkMuted },
-});
+  closeText: { color: T.colors.inkMuted },
+}));

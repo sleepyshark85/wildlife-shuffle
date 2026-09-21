@@ -16,7 +16,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { EASE, delay, timing } from '../motion.js';
-import { COLORS, MOTION, RADIUS, SPACE, TYPE } from '../theme.js';
+import { MOTION, RADIUS, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 
 const SHEET_RISE = 280;
 
@@ -27,6 +28,8 @@ const SHEET_RISE = 280;
  * waits on `setTimeout` except the input lock and the BLOCKED label.
  */
 export function Sheet({ title, subtitle, children, reduced, visible = true, onClosed, testID }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const dim = useSharedValue(0);
   const rise = useSharedValue(1);
 
@@ -58,9 +61,9 @@ export function Sheet({ title, subtitle, children, reduced, visible = true, onCl
       <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, dimStyle]} />
       <Animated.View testID={testID} style={[styles.sheet, sheetStyle]}>
         <View style={styles.grabber} />
-        <Text style={TYPE.title}>{title}</Text>
+        <Text style={theme.type.title}>{title}</Text>
         {subtitle ? (
-          <Text style={TYPE.body}>{subtitle}</Text>
+          <Text style={theme.type.body}>{subtitle}</Text>
         ) : null}
         {children}
       </Animated.View>
@@ -68,10 +71,10 @@ export function Sheet({ title, subtitle, children, reduced, visible = true, onCl
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   // The sheet and the scrim take touches; the gap above them does not.
   passthrough: { pointerEvents: 'box-none' },
-  scrim: { backgroundColor: COLORS.scrim, pointerEvents: 'auto' },
+  scrim: { backgroundColor: T.colors.scrim, pointerEvents: 'auto' },
   sheet: {
     position: 'absolute',
     left: 0,
@@ -80,18 +83,18 @@ const styles = StyleSheet.create({
     gap: SPACE.md,
     padding: SPACE.xl,
     paddingBottom: SPACE.xxl,
-    backgroundColor: COLORS.panel,
+    backgroundColor: T.colors.panel,
     borderTopLeftRadius: RADIUS.sheet,
     borderTopRightRadius: RADIUS.sheet,
     borderTopWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
   },
   grabber: {
     alignSelf: 'center',
     width: 40,
     height: 4,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.hairline,
+    backgroundColor: T.colors.hairline,
     marginBottom: SPACE.xs,
   },
-});
+}));

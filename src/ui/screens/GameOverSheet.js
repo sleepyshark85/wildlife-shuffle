@@ -16,16 +16,19 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { DIFFICULTIES } from '../../engine/constants.js';
-import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
+import { RADIUS, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 import { formatScore } from '../format.js';
 import { Button } from '../components/Controls.js';
 import { Sheet } from './Sheet.js';
 
 function Stat({ caption, value }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   return (
     <View style={styles.stat}>
-      <Text style={TYPE.title}>{value}</Text>
-      <Text style={TYPE.label}>{caption}</Text>
+      <Text style={theme.type.title}>{value}</Text>
+      <Text style={theme.type.label}>{caption}</Text>
     </View>
   );
 }
@@ -33,17 +36,19 @@ function Stat({ caption, value }) {
 export function GameOverSheet({
   record, difficulty, flagged, reduced, best, newBest, unlocked = [], onAgain, onQuit,
 }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const habitat = (DIFFICULTIES[difficulty] || DIFFICULTIES.savanna).label;
   return (
     <Sheet testID="game-over" reduced={reduced} title={`Run over · ${habitat}`}>
-      <Text style={TYPE.display}>{formatScore(record.score)}</Text>
+      <Text style={theme.type.display}>{formatScore(record.score)}</Text>
       {newBest ? (
         <View style={styles.badgeRow}>
           <Text style={styles.badge} testID="new-best">NEW BEST</Text>
-          <Text style={TYPE.body}>{`previous ${formatScore(best)}`}</Text>
+          <Text style={theme.type.body}>{`previous ${formatScore(best)}`}</Text>
         </View>
       ) : (
-        <Text style={TYPE.body}>{`Best in ${habitat}: ${formatScore(best)}`}</Text>
+        <Text style={theme.type.body}>{`Best in ${habitat}: ${formatScore(best)}`}</Text>
       )}
       {flagged ? (
         // AC-504e / AC-1309: the engine was in a state the rules do not
@@ -60,7 +65,7 @@ export function GameOverSheet({
       </View>
       {unlocked.length ? (
         <View style={styles.unlocks} testID="unlocked">
-          <Text style={TYPE.label}>UNLOCKED</Text>
+          <Text style={theme.type.label}>UNLOCKED</Text>
           {unlocked.map((item) => (
             <Text key={item.id} style={styles.unlockName}>
               {`${item.name} · ${item.kind.toLowerCase()} — turn it on in Collection`}
@@ -76,16 +81,16 @@ export function GameOverSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   stats: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACE.sm },
   stat: { gap: 2 },
   actions: { gap: SPACE.md, marginTop: SPACE.md },
-  flagged: { ...TYPE.body, color: COLORS.illegal },
+  flagged: { ...T.type.body, color: T.colors.illegal },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   badge: {
-    ...TYPE.label,
-    color: '#2A1C00',
-    backgroundColor: COLORS.accent,
+    ...T.type.label,
+    color: T.colors.inkOnAccent,
+    backgroundColor: T.colors.accent,
     borderRadius: RADIUS.pill,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -97,8 +102,8 @@ const styles = StyleSheet.create({
     padding: SPACE.md,
     borderRadius: RADIUS.button,
     borderWidth: 1,
-    borderColor: COLORS.accent,
-    backgroundColor: 'rgba(255,194,75,.10)',
+    borderColor: T.colors.accent,
+    backgroundColor: T.colors.accentWash,
   },
-  unlockName: { ...TYPE.body, color: COLORS.ink },
-});
+  unlockName: { ...T.type.body, color: T.colors.ink },
+}));

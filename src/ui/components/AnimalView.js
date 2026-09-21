@@ -37,10 +37,8 @@ import { EASE, delay, sequence, spring, timing } from '../motion.js';
 import { TARGET_DIM } from '../abilities.js';
 import { Z } from '../stacking.js';
 import { rowAt } from '../trajectory.js';
-import { useCosmetics } from '../progressStore.js';
-import {
-  COLORS, MOTION, MOTION_SIZE, NUMERAL, RADIUS, SEAM, SEAM_BUFFALO, brighten,
-} from '../theme.js';
+import { useCosmetics, useTheme } from '../progressStore.js';
+import { MOTION, MOTION_SIZE, RADIUS, edgeLit, themed } from '../theme.js';
 
 /**
  * Grab lift: 90 ms, `spring(.34, 1.4, .64, 1)` (ui.md §8, AC-818). See
@@ -62,6 +60,7 @@ const rimOn = timing(1, EASE.out, false);
 
 /** ui.md §5.2 cue 2: the body counts out its own footprint in `size` panels. */
 function Panels({ size, cell, buffalo, highContrast }) {
+  const theme = useTheme();
   const seams = [];
   for (let i = 1; i < size; i += 1) {
     seams.push(
@@ -73,11 +72,13 @@ function Panels({ size, cell, buffalo, highContrast }) {
           top: 4,
           bottom: 4,
           width: highContrast ? 1.5 : 1,
+          // AC-1512: High Contrast takes the ground's opposite, so a seam
+          // that was white on slate is near-black on bone.
           backgroundColor: highContrast
-            ? 'rgba(255,255,255,.55)'
+            ? theme.colors.hcSeam
             : buffalo
-              ? SEAM_BUFFALO
-              : SEAM,
+              ? theme.seamBuffalo
+              : theme.seam,
         }}
       />,
     );
@@ -94,10 +95,20 @@ function AnimalViewImpl({
   // changes nothing else. The value is a stable object from one context, so
   // reading it costs no commit during a drag (src/ui/progressStore.js).
   const cosmetics = useCosmetics();
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const style = cosmetics.species[type] || cosmetics.species.rat;
   const buffalo = type === SPECIES.buffalo.type;
   const width = size * cell;
-  const edgeLit = useMemo(() => brighten(style.edge, MOTION_SIZE.edgeBrighten), [style.edge]);
+  // ui.md §5.4's 12%, away from the ground rather than always upward: on bone
+  // a brighter edge is a edge closer to the board (theme.js `edgeLit`).
+  const lifted = useMemo(
+    () => edgeLit(style.edge, theme, MOTION_SIZE.edgeBrighten),
+    [style.edge, theme],
+  );
+  // Captured for the worklets below, which may only read what already existed.
+  const illegalEdge = theme.colors.illegal;
+  const hcEdge = theme.colors.hcEdge;
   /**
    * Captured for the gesture worklet, which cannot look a species up: the
    * recess is tinted 12% toward the piece in the player's hand.
@@ -461,10 +472,10 @@ function AnimalViewImpl({
       zIndex: grab.value > 0.01 ? Z.grabbed : Z.animal,
       borderWidth: blocked ? 2 : rim,
       borderColor: blocked
-        ? COLORS.illegal
+        ? illegalEdge
         : highContrast
-          ? '#FFFFFF'
-          : interpolateColor(grab.value, [0, 1], [style.edge, edgeLit]),
+          ? hcEdge
+          : interpolateColor(grab.value, [0, 1], [style.edge, lifted]),
     };
   });
 
@@ -552,10 +563,10 @@ function label(type, size, y, x) {
   return `${name}, size ${size}, row ${y + 1}, ${columns}`;
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   // ui.md §5.4: anything in rows 11-13 wears the kill line at 40%.
-  danger: { outlineWidth: 1, outlineColor: 'rgba(224,82,96,.4)', outlineStyle: 'solid' },
-  buffaloGlow: { boxShadow: 'inset 0px 0px 12px rgba(232,180,74,0.14)' },
+  danger: { outlineWidth: 1, outlineColor: T.colors.dangerOutline, outlineStyle: 'solid' },
+  buffaloGlow: { boxShadow: `inset 0px 0px 12px ${T.colors.buffaloGlow}` },
   shadow: {
     pointerEvents: 'none',
     position: 'absolute',
@@ -563,7 +574,7 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    boxShadow: '0px 6px 16px rgba(0,0,0,0.45)',
+    boxShadow: `0px 6px 16px ${T.colors.grabShadow}`,
   },
   numeralChip: {
     position: 'absolute',
@@ -574,15 +585,15 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: NUMERAL.chip,
+    backgroundColor: T.numeral.chip,
   },
   numeral: {
-    fontSize: NUMERAL.size,
-    lineHeight: NUMERAL.size + 3,
-    fontWeight: NUMERAL.weight,
-    color: NUMERAL.ink,
+    fontSize: T.numeral.size,
+    lineHeight: T.numeral.size + 3,
+    fontWeight: T.numeral.weight,
+    color: T.numeral.ink,
     fontVariant: ['tabular-nums'],
   },
-});
+}));
 
 export const AnimalView = memo(AnimalViewImpl);

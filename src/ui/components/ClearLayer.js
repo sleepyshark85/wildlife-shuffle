@@ -33,8 +33,8 @@ import Animated, {
 import { BOARD, SPECIES } from '../../engine/constants.js';
 import { ROWS } from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
-import { COLORS, MOTION, MOTION_SIZE, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE } from '../theme.js';
-import { useCosmetics } from '../progressStore.js';
+import { MOTION, MOTION_SIZE, RADIUS, themed } from '../theme.js';
+import { useCosmetics, useTheme } from '../progressStore.js';
 
 /**
  * Row index to pixels from the board's top.
@@ -97,13 +97,17 @@ function useFlash(at, peak, reduced) {
  * each run needs its own `useAnimatedStyle`, and a hook cannot live in a loop.
  */
 const WashRun = memo(function WashRun({ wash, peak, left, width, top, height, testID }) {
+  // `flashRow`, not `flash`: this sits on the BOARD GROUND rather than on a
+  // body, and a white wash over bone at 0.14 announces nothing (theme.js).
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const style = useAnimatedStyle(() => ({ opacity: wash.value * peak }));
   return (
     <Animated.View
       testID={testID}
       style={[
         styles.inert,
-        { position: 'absolute', left, top, width, height, backgroundColor: COLORS.flash },
+        { position: 'absolute', left, top, width, height, backgroundColor: theme.colors.flashRow },
         style,
       ]}
     />
@@ -175,6 +179,8 @@ const AnticipationRow = memo(function AnticipationRow({ row, plan, cell, reduced
 
 /** "These rows are the ones going." Full board width, behind the bodies. */
 const FlashRow = memo(function FlashRow({ row, at, cell, boardW, reduced }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const flash = useFlash(at, MOTION_SIZE.flashRowPeak, reduced);
   const style = useAnimatedStyle(() => ({ opacity: flash.value }));
   return (
@@ -187,7 +193,7 @@ const FlashRow = memo(function FlashRow({ row, at, cell, boardW, reduced }) {
           top: rowTop(row, cell),
           width: boardW,
           height: cell,
-          backgroundColor: COLORS.flash,
+          backgroundColor: theme.colors.flashRow,
         },
         style,
       ]}
@@ -204,6 +210,8 @@ const FlashRow = memo(function FlashRow({ row, at, cell, boardW, reduced }) {
  */
 const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) {
   const cosmetics = useCosmetics();
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const style = cosmetics.species[dep.type] || cosmetics.species.rat;
   const buffalo = dep.type === SPECIES.buffalo.type;
   const flash = useFlash(dep.flashAt, MOTION_SIZE.flashPeak, reduced);
@@ -241,7 +249,7 @@ const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) 
           top: 4,
           bottom: 4,
           width: highContrast ? 1.5 : 1,
-          backgroundColor: buffalo ? SEAM_BUFFALO : SEAM,
+          backgroundColor: buffalo ? theme.seamBuffalo : theme.seam,
         }}
       />,
     );
@@ -262,7 +270,8 @@ const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) 
           borderRadius: RADIUS.animal,
           backgroundColor: style.fill,
           borderWidth: highContrast ? 2.5 : buffalo ? 2 : 1.5,
-          borderColor: highContrast ? '#FFFFFF' : style.edge,
+          // AC-1512: the ground's opposite, so the 2.5 pt rim survives bone.
+          borderColor: highContrast ? theme.colors.hcEdge : style.edge,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -279,7 +288,7 @@ const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) 
       <Animated.View
         style={[
           StyleSheet.absoluteFill,
-          { backgroundColor: COLORS.flash, borderRadius: RADIUS.animal },
+          { backgroundColor: theme.colors.flash, borderRadius: RADIUS.animal },
           flashStyle,
         ]}
       />
@@ -289,6 +298,9 @@ const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) 
 
 /** AC-812: the segment that cracks off a shrinking buffalo, and falls. */
 const Shard = memo(function Shard({ shard, cell, reduced }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
+  const fill = theme.species.buffalo;
   const go = useSharedValue(0);
   useEffect(() => {
     go.value = delay(
@@ -306,7 +318,6 @@ const Shard = memo(function Shard({ shard, cell, reduced }) {
     ],
   }));
 
-  const fill = SPECIES_STYLE.buffalo;
   return (
     <Animated.View
       style={[
@@ -330,6 +341,8 @@ const Shard = memo(function Shard({ shard, cell, reduced }) {
 
 /** ui.md §8: where the points came from. 900 ms, rise 46 pt, ease-out. */
 const Float = memo(function Float({ float, cell, boardW, reduced }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const go = useSharedValue(0);
   useEffect(() => {
     go.value = delay(float.at, withTiming(1, timing(MOTION.float, EASE.cubicOut, reduced)));
@@ -350,7 +363,7 @@ const Float = memo(function Float({ float, cell, boardW, reduced }) {
       ]}
     >
       <View style={styles.floatChip}>
-        <Text allowFontScaling={false} style={[styles.float, TONE[float.tone] || null]}>
+        <Text allowFontScaling={false} style={[styles.float, TONE[theme.name][float.tone] || null]}>
           {float.text}
         </Text>
       </View>
@@ -358,11 +371,11 @@ const Float = memo(function Float({ float, cell, boardW, reduced }) {
   );
 });
 
-const TONE = {
-  score: { color: COLORS.accent },
-  buffalo: { color: SPECIES_STYLE.buffalo.edge },
-  perfect: { color: COLORS.success },
-};
+const TONE = themed((T) => ({
+  score: { color: T.colors.accent },
+  buffalo: { color: T.species.buffalo.edge },
+  perfect: { color: T.colors.success },
+}));
 
 /**
  * The whole announcement layer for one turn.
@@ -375,6 +388,7 @@ const TONE = {
  * guard here, because a guard would be the second place that decides.
  */
 function ClearLayerImpl({ plan, cell, boardW, reduced, highContrast }) {
+  const styles = STYLES[useTheme().name];
   return (
     <View style={[StyleSheet.absoluteFill, styles.inert]}>
       {plan.anticipate
@@ -427,6 +441,8 @@ function ClearLayerImpl({ plan, cell, boardW, reduced, highContrast }) {
  * is exactly how v1 would have written it.
  */
 export const DangerPulse = memo(function DangerPulse({ cell, boardW, active, reduced }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const pulse = useSharedValue(0);
   useEffect(() => {
     if (!active) {
@@ -461,7 +477,7 @@ export const DangerPulse = memo(function DangerPulse({ cell, boardW, active, red
           top: rowTop(BAND_HIGH, cell),
           width: boardW,
           height: (BAND_HIGH - BAND_LOW + 1) * cell,
-          backgroundColor: COLORS.dangerWash,
+          backgroundColor: theme.colors.dangerWash,
         },
         style,
       ]}
@@ -469,7 +485,7 @@ export const DangerPulse = memo(function DangerPulse({ cell, boardW, active, red
   );
 });
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   inert: { pointerEvents: 'none' },
   /**
    * A chip rather than a text shadow. `textShadow*` is the only form RN 0.86
@@ -480,16 +496,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: RADIUS.pill,
-    backgroundColor: 'rgba(8,13,18,.82)',
+    backgroundColor: T.colors.floatChip,
   },
   float: {
     fontSize: 17,
     lineHeight: 20,
     fontWeight: '800',
     letterSpacing: -0.2,
-    color: COLORS.accent,
+    color: T.colors.accent,
     fontVariant: ['tabular-nums'],
   },
-});
+}));
 
 export const ClearLayer = memo(ClearLayerImpl);

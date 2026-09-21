@@ -8,19 +8,30 @@
 // does not ask is a trap.
 
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DEFAULT_DIFFICULTY, DIFFICULTIES } from '../../engine/constants.js';
-import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
+import { RADIUS, SPACE, themed } from '../theme.js';
 import { formatScore } from '../format.js';
 import { Button, IconButton, useFocusRing } from '../components/Controls.js';
-import { useProgress } from '../progressStore.js';
+import { NaturalGround } from '../components/NaturalGround.js';
+import { useProgress, useTheme } from '../progressStore.js';
 import { useSettings } from '../settings.js';
 import { Sheet } from './Sheet.js';
 import { SettingsSheet } from './SettingsSheet.js';
 
 const HABITATS = ['meadow', 'savanna', 'tundra'];
+
+/**
+ * ui.md §16.3 reaches Home as well as the board — the owner asked for the
+ * texture in both places, at the same ceiling.
+ *
+ * A CONSTANT seed, because Home is not a run and AC-1510's "the run's seed" has
+ * nothing to name here. The property that matters is the same one: it is fixed,
+ * so the ground does not reshuffle itself every time the player comes back.
+ */
+const HOME_GROUND = 'home';
 
 /** Habitats, not Easy/Normal/Hard: "Hard" judges the player, a habitat
  *  describes the place — and Tundra is where the big animals live. */
@@ -32,6 +43,8 @@ const BLURB = {
 
 /** One habitat choice. Its own component so it can own its focus ring. */
 function Habitat({ id, selected, onSelect }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const ring = useFocusRing();
   return (
     <Pressable
@@ -43,7 +56,7 @@ function Habitat({ id, selected, onSelect }) {
       accessibilityLabel={`${DIFFICULTIES[id].label}. ${BLURB[id]}`}
       style={[styles.choice, selected && styles.choiceSelected, ring.focused && styles.focusRing]}
     >
-      <Text style={[TYPE.button, selected && styles.choiceInkSelected]}>
+      <Text style={[theme.type.button, selected && styles.choiceInkSelected]}>
         {DIFFICULTIES[id].label}
       </Text>
     </Pressable>
@@ -51,7 +64,10 @@ function Habitat({ id, selected, onSelect }) {
 }
 
 export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   const progress = useProgress();
   const settings = useSettings();
   const [difficulty, setDifficulty] = useState(DEFAULT_DIFFICULTY);
@@ -68,12 +84,16 @@ export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + SPACE.xxl, paddingBottom: insets.bottom + SPACE.xl }]}>
+      {/* First child, and nothing above it is translucent: Home's panels are
+          opaque. `surface="app"` is what keeps it under the 1.25:1 ceiling on
+          a ground that is not the board's (AC-1508). */}
+      <NaturalGround seed={HOME_GROUND} width={width} height={height} surface="app" />
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Text style={TYPE.display}>Wildlife{'\n'}Shuffle</Text>
+          <Text style={theme.type.display}>Wildlife{'\n'}Shuffle</Text>
           <IconButton glyph="⚙" label="Settings" onPress={() => setSettingsOpen(true)} />
         </View>
-        <Text style={TYPE.body}>
+        <Text style={theme.type.body}>
           Animals rise. Drag them sideways to pack a row. A full row clears.
         </Text>
         {streak.count > 0 ? (
@@ -86,7 +106,7 @@ export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
       </View>
 
       <View style={styles.choices}>
-        <Text style={TYPE.label}>HABITAT</Text>
+        <Text style={theme.type.label}>HABITAT</Text>
         <View style={styles.row}>
           {HABITATS.map((id) => (
             <Habitat
@@ -97,7 +117,7 @@ export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
             />
           ))}
         </View>
-        <Text style={TYPE.body}>{BLURB[difficulty]}</Text>
+        <Text style={theme.type.body}>{BLURB[difficulty]}</Text>
       </View>
 
       <View style={styles.actions}>
@@ -145,19 +165,19 @@ export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: T.colors.bg,
     paddingHorizontal: SPACE.xl,
     justifyContent: 'space-between',
   },
   header: { gap: SPACE.md },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  streak: { ...TYPE.button, color: COLORS.accent },
+  streak: { ...T.type.button, color: T.colors.accent },
   focusRing: {
     outlineWidth: 2,
-    outlineColor: COLORS.accent,
+    outlineColor: T.colors.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   },
@@ -173,9 +193,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: RADIUS.button,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
-    backgroundColor: COLORS.panel,
+    borderColor: T.colors.hairline,
+    backgroundColor: T.colors.panel,
   },
-  choiceSelected: { borderColor: COLORS.accent, backgroundColor: 'rgba(255,194,75,.12)' },
-  choiceInkSelected: { color: COLORS.accent },
-});
+  choiceSelected: { borderColor: T.colors.accent, backgroundColor: T.colors.accentWash },
+  choiceInkSelected: { color: T.colors.labelOnWash },
+}));

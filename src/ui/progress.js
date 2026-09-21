@@ -1,8 +1,11 @@
 // The persisted save — records, stats, recent runs, the daily streak, the
 // unlocks and the accessibility settings (gameplay.md §9, AC-1003 to AC-1011b).
 //
-// PURE. This module imports the engine's constants and nothing else: no React,
-// no AsyncStorage, no `Date.now()`, no `Math.random()`. The calendar day is
+// PURE. This module imports the engine's constants and the theme's own list of
+// theme names, and nothing else: no React, no AsyncStorage, no `Date.now()`, no
+// `Math.random()`. `theme.js` is a leaf Node can load, and the names are
+// imported rather than retyped so a persisted `theme` cannot name a theme this
+// build does not have. The calendar day is
 // passed in as a string and the wall clock as a number, because a rule that
 // reads its own clock cannot be tested against a day boundary — and the daily
 // streak is exactly a day-boundary rule.
@@ -16,13 +19,17 @@
 // save: it is a save that looks trustworthy.
 
 import { DIFFICULTIES } from '../engine/constants.js';
+import { DEFAULT_THEME, isThemeName } from './theme.js';
 
 /**
  * AC-1006. Version 2 added the sound and haptics preferences; version 3 added
- * `onboarded`. `migrate()` below carries an older blob forward rather than
- * discarding it, which is the half of AC-1006 that had never been exercised.
+ * `onboarded`; version 4 added `settings.theme` (AC-1501). `migrate()` below
+ * carries an older blob forward rather than discarding it, which is the half
+ * of AC-1006 that had never been exercised — and AC-1006b is why every step
+ * ships with a test that plants a fault in it and watches the save be
+ * discarded rather than half-applied.
  */
-export const SAVE_SCHEMA_VERSION = 3;
+export const SAVE_SCHEMA_VERSION = 4;
 
 /** v1's StatsPanel.js listed ten, and ten is what AC-1011b asks for. */
 export const RECENT_RUNS = 10;
@@ -39,6 +46,10 @@ const DIFFICULTY_IDS = Object.freeze(Object.keys(DIFFICULTIES));
  * OFF, while Sound and Haptics are the game working normally and start ON. A
  * game that shipped silent until the player found a switch would read as broken
  * rather than as considerate.
+ *
+ * AC-1501 adds `theme`, and it is the first preference that is not a boolean.
+ * Its default is LIGHT: the owner did not ask for an option, they asked for
+ * bright, so the game opens bright and dark is the setting.
  */
 export const SETTING_DEFAULTS = Object.freeze({
   sizeNumerals: false,
@@ -46,9 +57,37 @@ export const SETTING_DEFAULTS = Object.freeze({
   reduceMotion: false,
   sound: true,
   haptics: true,
+  theme: DEFAULT_THEME,
 });
 
 const SETTING_KEYS = Object.freeze(Object.keys(SETTING_DEFAULTS));
+
+/**
+ * What each preference is allowed to be, off the disk.
+ *
+ * A table rather than `typeof value === 'boolean'` for all of them: `theme` is
+ * a string that names one of exactly two themes, and a blob claiming
+ * `theme: "__proto__"` or `theme: "midnight"` must be refused like any other
+ * value this app did not write. A key with no entry here is refused too, which
+ * is what stops a new default being added without a rule for reading it back.
+ */
+const isBoolean = (v) => typeof v === 'boolean';
+/**
+ * `SETTING_IS_VALID[key]` is not a membership test, for `knownDifficulty`'s
+ * reason: `SETTING_IS_VALID['__proto__']` is `Object.prototype`, which is
+ * truthy and is not a function. Found by the AC-1501 test putting `__proto__`
+ * in `withSettings`, where it threw rather than being refused.
+ */
+const settingRule = (key) =>
+  (Object.prototype.hasOwnProperty.call(SETTING_IS_VALID, key) ? SETTING_IS_VALID[key] : null);
+const SETTING_IS_VALID = Object.freeze({
+  sizeNumerals: isBoolean,
+  highContrast: isBoolean,
+  reduceMotion: isBoolean,
+  sound: isBoolean,
+  haptics: isBoolean,
+  theme: isThemeName,
+});
 
 /**
  * The three cosmetic slots (`src/ui/cosmetics.js`). Listed here because this is
@@ -136,13 +175,19 @@ function readRecent(raw) {
 /**
  * Bring an older blob up to the current schema, or hand it back untouched.
  *
- * Two steps, applied IN SEQUENCE rather than as a switch on the stored
- * version: a version-1 blob has to become a version-2 blob and then a
- * version-3 one, and a `if (v === 1) return {...v3}` would have to know about
- * every future step at once. Each step below knows only about its own.
+ * Three steps now, applied IN SEQUENCE rather than as a switch on the stored
+ * version: a version-1 blob has to become a version-2 blob, then a version-3
+ * one, then a version-4 one, and a `if (v === 1) return {...v4}` would have to
+ * know about every future step at once. Each step below knows only about its
+ * own, which is what made adding the fourth a four-line change.
  *
  * Step 1 -> 2 added `settings.sound` and `settings.haptics` (AC-1104). Step
- * 2 -> 3 added `onboarded`, and it is FALSE for an existing player on purpose:
+ * 3 -> 4 added `settings.theme`, and it takes the DEFAULT rather than `dark`:
+ * every stored save predates the light theme, so its owner is not somebody who
+ * chose dark, only somebody who was never offered anything else. The owner
+ * overruled dark-only having played it, and an update that kept existing
+ * players in the theme that was overruled would be honouring the old ruling.
+ * Step 2 -> 3 added `onboarded`, and it is FALSE for an existing player on purpose:
  * somebody who has been playing since version 1 has demonstrably worked the
  * game out, and a four-beat tutorial dropped in front of them by an update
  * would be the app explaining what they already know. `migrate` cannot see
@@ -161,6 +206,15 @@ const STEPS = [
   }),
   // 2 -> 3
   (raw) => ({ ...raw, schemaVersion: 3, onboarded: false }),
+  // 3 -> 4
+  (raw) => ({
+    ...raw,
+    schemaVersion: 4,
+    settings: {
+      ...(isObject(raw.settings) ? raw.settings : {}),
+      theme: SETTING_DEFAULTS.theme,
+    },
+  }),
 ];
 
 export function migrate(raw) {
@@ -231,7 +285,8 @@ export function parseSave(text) {
   if (!isObject(raw.settings)) return null;
   const settings = {};
   for (const key of SETTING_KEYS) {
-    if (typeof raw.settings[key] !== 'boolean') return null;
+    const valid = settingRule(key);
+    if (!valid || !valid(raw.settings[key])) return null;
     settings[key] = raw.settings[key];
   }
 
@@ -382,8 +437,20 @@ export function hasPlayed(save) {
   return save.lifetime.games > 0;
 }
 
+/**
+ * Write one preference.
+ *
+ * `Boolean(value)` used to be the whole of this, and it was right while every
+ * preference was a switch. `theme` is not, and coercing it would have stored
+ * `true` for "light" — the setting saved, the save valid, and the theme wrong
+ * on the next launch. An unknown key or an unacceptable value is refused
+ * rather than coerced, because the alternative is writing a save this app's
+ * own parser would throw away.
+ */
 export function withSettings(save, key, value) {
-  return { ...save, settings: { ...save.settings, [key]: Boolean(value) } };
+  const valid = settingRule(key);
+  if (!valid || !valid(value)) return save;
+  return { ...save, settings: { ...save.settings, [key]: value } };
 }
 
 export function withAnnounced(save, ids) {

@@ -17,14 +17,16 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
+import { RADIUS, SPACE, themed } from '../theme.js';
 import { formatScore } from '../format.js';
 import { unlockStatus } from '../cosmetics.js';
-import { useProgress } from '../progressStore.js';
+import { useProgress, useTheme } from '../progressStore.js';
 import { useFocusRing } from '../components/Controls.js';
 import { Card, FullScreen } from './FullScreen.js';
 
 function Item({ item, onToggle }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const ring = useFocusRing();
   const counter = `${formatScore(item.progress)} / ${formatScore(item.need)} ${item.unit}`;
   const label = item.unlocked
@@ -34,10 +36,10 @@ function Item({ item, onToggle }) {
   const body = (
     <>
       <View style={styles.head}>
-        <Text style={[TYPE.button, !item.unlocked && styles.lockedInk]}>{item.name}</Text>
-        <Text style={TYPE.label}>{item.kind}</Text>
+        <Text style={[theme.type.button, !item.unlocked && styles.lockedInk]}>{item.name}</Text>
+        <Text style={theme.type.label}>{item.kind}</Text>
       </View>
-      <Text style={[TYPE.body, !item.unlocked && styles.lockedInk]}>{item.blurb}</Text>
+      <Text style={[theme.type.body, !item.unlocked && styles.lockedInk]}>{item.blurb}</Text>
       {/* AC-1010: the counter is always present, and it is a NUMBER. A bar on
           its own says "some progress"; the number says which run to play. */}
       <Text style={item.unlocked ? styles.earned : styles.counter}>
@@ -79,6 +81,7 @@ function Item({ item, onToggle }) {
 }
 
 export function CollectionScreen({ onBack }) {
+  const styles = STYLES[useTheme().name];
   const { save, applyCosmetic } = useProgress();
   const items = unlockStatus(save);
   const earned = items.filter((i) => i.unlocked).length;
@@ -105,36 +108,36 @@ export function CollectionScreen({ onBack }) {
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   items: { gap: SPACE.md },
   item: {
     gap: SPACE.xs,
     padding: SPACE.md,
     borderRadius: RADIUS.button,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
-    backgroundColor: COLORS.panelSunken,
+    borderColor: T.colors.hairline,
+    backgroundColor: T.colors.panelSunken,
     minHeight: 44,
   },
   locked: { opacity: 0.66 },
-  applied: { borderColor: COLORS.accent, backgroundColor: 'rgba(255,194,75,.10)' },
+  applied: { borderColor: T.colors.accent, backgroundColor: T.colors.accentWash },
   focusRing: {
     outlineWidth: 2,
-    outlineColor: COLORS.accent,
+    outlineColor: T.colors.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   },
   head: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: SPACE.sm },
-  lockedInk: { color: COLORS.inkDim },
-  counter: { ...TYPE.body, color: COLORS.inkMuted, fontVariant: ['tabular-nums'] },
-  earned: { ...TYPE.body, color: COLORS.success },
-  action: { ...TYPE.label, color: COLORS.accent },
+  lockedInk: { color: T.colors.inkDim },
+  counter: { ...T.type.body, color: T.colors.inkMuted, fontVariant: ['tabular-nums'] },
+  earned: { ...T.type.body, color: T.colors.success },
+  action: { ...T.type.label, color: T.colors.labelOnWash },
   track: {
     flexDirection: 'row',
     height: 4,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.hairline,
+    backgroundColor: T.colors.hairline,
     overflow: 'hidden',
   },
-  fill: { backgroundColor: COLORS.accent },
-});
+  fill: { backgroundColor: T.colors.accent },
+}));
