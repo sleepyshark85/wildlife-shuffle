@@ -38,6 +38,7 @@ import Animated, {
 
 import { SPECIES } from '../../engine/constants.js';
 import { ROWS, trayMetrics } from '../layout.js';
+import { Z } from '../stacking.js';
 import { EASE, delay, timing } from '../motion.js';
 import { handoverWindow } from '../timeline.js';
 import { HANDOVER_MS, SEAM, SEAM_BUFFALO, SILHOUETTE } from '../theme.js';
@@ -173,7 +174,7 @@ function ArrivalFlightImpl({ arrivals, cell, boardH, gap, compact, reduced }) {
 const styles = StyleSheet.create({
   inert: { pointerEvents: 'none' },
   // Above the tray, which is painted after it in the group's document order.
-  layer: { zIndex: 5, overflow: 'visible', pointerEvents: 'none' },
+  layer: { zIndex: Z.flight, overflow: 'visible', pointerEvents: 'none' },
 });
 
 export const ArrivalFlight = memo(ArrivalFlightImpl);

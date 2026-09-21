@@ -16,8 +16,9 @@
 // the board they were emitted against is the only source for that which cannot
 // drift from the engine, because it IS the engine's output.
 
+import { ABILITIES } from '../engine/abilities.js';
 import { BOARD } from '../engine/constants.js';
-import { MOTION } from './theme.js';
+import { COPY, MOTION } from './theme.js';
 import { stampedeBeats, turnTimeline } from './timeline.js';
 
 /**
@@ -171,6 +172,19 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
           });
           board.delete(id);
           motion.delete(id);
+        }
+
+        // AC-1410c: Hold the Line's announce beat. It moves no animal, so
+        // without this the only sign the ability fired is a tray that quietly
+        // stopped — the player spends two charges and sees nothing happen.
+        if (event.ability === ABILITIES.hold.id) {
+          floats.push({
+            key: `hold-${lastTurn.seq}`,
+            at: 0,
+            y: BOARD.dangerBandLow - 4,
+            text: COPY.holdAnnounce,
+            tone: 'buffalo',
+          });
         }
 
         // Stampede: rows slide left, staggered from the bottom up. The slide is

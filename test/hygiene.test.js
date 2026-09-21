@@ -9,6 +9,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ORDER } from '../src/ui/stacking.js';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function walk(dir, out = []) {
@@ -692,4 +694,210 @@ test('AC-1403 nothing in the engine ever lowers the score', () => {
   const planted = 'return { ...state, score: state.score - COST, charges: state.charges - 1 };';
   const plantedWrites = [...planted.matchAll(/\bscore:\s*([^,\n]+)/g)].map((m) => m[1].trim());
   assert.equal(plantedWrites.filter((w) => /-\s*\w/.test(w)).length, 1);
+});
+
+
+// ---- the boundary the last three "right state, wrong appearance" bugs crossed
+
+/**
+ * §6.7, stated as a rule about SOURCE rather than about a rendered frame.
+ *
+ * All seven defects of the last round lived in the gap between a pure function
+ * and the component that renders its value: `chargePips()` was asserted to
+ * return 0.25 and the component multiplied it by 0.55; `frozenLabel()` was
+ * asserted and nothing looked at the strip's style array; `isTarget()` was
+ * asserted and nothing asked whether a target could be HIT.
+ *
+ * These four audits sit on the component side of that gap. None of them needs
+ * a device, and each one fails on the exact fault it was written for.
+ */
+
+/** The board's stacking order may not be written down twice. */
+test('AC-1414 the board components take their z-order from one table', () => {
+  const owners = SRC.filter((f) => /\bconst Z = Object\.freeze/.test(code(f)))
+    .map((f) => path.relative(ROOT, f));
+  assert.deepEqual(owners, ['src/ui/stacking.js'], `a second z-order table: ${owners.join(', ')}`);
+
+  // No numeric zIndex anywhere in the board's own components. The scrim shipped
+  // at a literal `zIndex: 2` over animals at a literal `zIndex: 1`, which is
+  // two numbers in two files that nothing could compare.
+  const board = ['src/ui/components/Board.js', 'src/ui/components/AnimalView.js',
+    'src/ui/components/ClearLayer.js', 'src/ui/components/ArrivalFlight.js'];
+  const literals = [];
+  for (const rel of board) {
+    for (const m of code(path.join(ROOT, rel)).matchAll(/zIndex:\s*([^,\n}]+)/g)) {
+      if (!/\bZ\./.test(m[1])) literals.push(`${rel}: zIndex: ${m[1].trim()}`);
+    }
+  }
+  assert.deepEqual(literals, [], `hard-coded z-order: ${literals.join(' | ')}`);
+});
+
+/**
+ * The scrim's z is only half the story: two layers at the same z are separated
+ * by document order, so the scrim must also be WRITTEN before the animals.
+ */
+test('AC-1414 the targeting scrim exists, and is painted before the animals', () => {
+  const body = code(path.join(ROOT, 'src/ui/components/Board.js'));
+  const scrim = body.indexOf('testID="target-scrim"');
+  const animals = body.indexOf('animals.map(');
+  assert.ok(scrim !== -1, 'the board has no cancel scrim, so a tap on empty board does nothing');
+  assert.ok(animals !== -1, 'the board stopped rendering animals');
+  assert.ok(scrim < animals,
+    'the scrim is written after the animals, so it paints over them at equal z');
+  // ...and the model's own order agrees with the file.
+  assert.ok(ORDER.targetScrim < ORDER.animals);
+
+  // The scrim is rendered on `arming` alone. Gating it on anything else would
+  // leave a targeting state with no way to cancel by tapping the board, which
+  // is half of AC-1414 and the half a keyboard user cannot work around.
+  const gate = body.slice(Math.max(0, scrim - 120), scrim);
+  assert.match(gate, /\{arming \? \(/,
+    'the cancel scrim is gated on something other than `arming` being set');
+});
+
+/**
+ * AC-1414's other half, and the one the stacking model cannot see.
+ *
+ * Once the animals correctly sit ABOVE the scrim, an animal that is not a valid
+ * target must still take the tap and cancel — because in a real view tree it is
+ * a hittable element whether or not anyone gave it a handler, so leaving it
+ * without one does not let the tap "fall through" to the scrim. It swallows it,
+ * and the player is stuck in a targeting state that no longer cancels.
+ *
+ * The model reports CANCEL either way, because a layer it is told is not
+ * hittable simply is not a candidate. So this is a source check: EVERY animal
+ * gets an overlay while targeting, and only the overlay's HANDLER varies.
+ */
+test('AC-1414 every animal takes the tap while targeting, valid or not', () => {
+  const body = code(path.join(ROOT, 'src/ui/components/AnimalView.js'));
+  const at = body.indexOf('target-');
+  assert.ok(at !== -1, 'the targeting overlay has gone');
+
+  // The overlay's own JSX gate, back to the `{`.
+  const gateStart = body.lastIndexOf('{', body.lastIndexOf('<Pressable', at));
+  const gate = body.slice(gateStart, body.indexOf('<Pressable', gateStart));
+  assert.match(gate, /\{targeting \? \(/,
+    `the overlay is gated on more than "is a targeting state open": ${gate.trim().slice(0, 80)}`);
+  assert.ok(!/targeting\.valid\s*\?[\s\S]{0,40}<Pressable/.test(body),
+    'an invalid target gets no overlay, so it swallows the tap and cancel stops working');
+
+  // And the handler is what varies — cancel for an invalid one, never nothing.
+  const overlay = body.slice(body.indexOf('<Pressable', gateStart),
+    body.indexOf('/>', body.indexOf('<Pressable', gateStart)));
+  assert.match(overlay, /onPress=\{targeting\.valid \? [\s\S]*? : onCancelTarget\}/,
+    'an invalid target does not cancel on tap');
+  assert.ok(!/disabled=\{!targeting\.valid\}/.test(overlay),
+    'the invalid overlay is disabled, which makes it swallow the tap again');
+});
+
+/**
+ * One `opacity` per style array.
+ *
+ * `Tray.js` shipped `[styles.strip, {...}, styles.frozenStrip, revealStyle]`
+ * where the third entry set `opacity: 0.45` and the fourth set an animated
+ * `opacity` — so the frozen grey-out was silently overwritten and the strip
+ * rendered at full opacity under a label reading `FROZEN · 2`. Nothing could
+ * see it, because both values were individually correct.
+ */
+function styleArrayEntries(text) {
+  const entries = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '{' || c === '[' || c === '(') depth += 1;
+    else if (c === '}' || c === ']' || c === ')') depth -= 1;
+    else if (c === ',' && depth === 0) {
+      entries.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  entries.push(text.slice(start));
+  return entries.map((e) => e.trim()).filter(Boolean);
+}
+
+function opacitySources(body) {
+  // Style names declared in this file's StyleSheet that set an opacity.
+  const staticNames = new Set();
+  for (const m of body.matchAll(/(\w+):\s*\{[^{}]*\bopacity:\s*[^,}]+/g)) staticNames.add(m[1]);
+  // Animated style variables whose worklet sets an opacity.
+  const animatedNames = new Set();
+  for (const m of body.matchAll(/const\s+(\w+)\s*=\s*useAnimatedStyle\(([\s\S]*?)\}\)\);/g)) {
+    if (/\bopacity:/.test(m[2])) animatedNames.add(m[1]);
+  }
+
+  /**
+   * Split into TOP-LEVEL entries first. Counting name occurrences across the
+   * whole array instead reported `[styles.inert, { backgroundColor: style.fill
+   * }, bodyStyle]` as two, because a species palette called `style` collided
+   * with an animated style called `style` in another component. An entry is
+   * what the array actually composes, so an entry is what gets counted.
+   */
+  const contributes = (entry) => {
+    const bare = entry.replace(/^[^?]*\?\s*/, '').replace(/^\w+\s*&&\s*/, '');
+    if (animatedNames.has(bare)) return true;
+    // An inline `opacity:` anywhere inside a conditional entry counts too:
+    // `frozen ? { opacity: 0.45 } : null` is the same fault wearing a ternary.
+    if (/\bopacity:/.test(entry)) return true;
+    for (const name of animatedNames) {
+      if (new RegExp(`(^|[?:&|(\\s])${name}(\\s|$|[:,)])`).test(entry)) return true;
+    }
+    for (const name of staticNames) {
+      if (new RegExp(`styles\\.${name}\\b`).test(entry)) return true;
+    }
+    return /^\{[\s\S]*\bopacity:/.test(entry.replace(/\s+/g, ' '))
+      || /(^|[{,]\s*)opacity:/.test(entry);
+  };
+
+  const offenders = [];
+  for (const m of body.matchAll(/style=\{\[([\s\S]*?)\]\}/g)) {
+    const sources = styleArrayEntries(m[1]).filter(contributes);
+    if (sources.length > 1) {
+      offenders.push(sources.join(' + ').replace(/\s+/g, ' ').slice(0, 90));
+    }
+  }
+  return offenders;
+}
+
+test('AC-1410b a style array may set opacity from only one source', () => {
+  for (const file of SRC) {
+    const offenders = opacitySources(code(file));
+    assert.deepEqual(
+      offenders, [],
+      `${path.relative(ROOT, file)} composes two opacities in one style array, and the later `
+        + `one silently wins: ${offenders.join(' | ')}`,
+    );
+  }
+});
+
+test('AC-1410b the opacity audit fires on the shape that shipped', () => {
+  // Tray.js, verbatim as it was.
+  const planted = `
+    const styles = StyleSheet.create({ frozenStrip: { opacity: 0.45 }, strip: { borderWidth: 1 } });
+    const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
+    const x = <View style={[styles.strip, styles.frozenStrip, revealStyle]} />;`;
+  assert.equal(opacitySources(planted).length, 1, 'the audit missed the shipped fault');
+
+  // ...and does not fire on the composed form that replaced it.
+  const fixed = `
+    const styles = StyleSheet.create({ strip: { borderWidth: 1 } });
+    const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value * stripAlpha }));
+    const x = <View style={[styles.strip, revealStyle]} />;`;
+  assert.deepEqual(opacitySources(fixed), []);
+});
+
+/**
+ * A component may not do arithmetic on a value a pure function already
+ * composed. Both of these were real: the pip multiplied `restAlpha` by 0.55,
+ * and nothing stopped it.
+ */
+test('AC-1415 the components render the composed value, never a factor of it', () => {
+  const pips = code(path.join(ROOT, 'src/ui/components/AbilityButton.js'));
+  assert.match(pips, /pipAlpha\(/, 'the pip stopped reading the composed opacity');
+  assert.ok(!/restAlpha/.test(pips),
+    'AbilityButton reaches past pipAlpha() into restAlpha, which is how 25% became 13.75%');
+
+  const tray = code(path.join(ROOT, 'src/ui/components/Tray.js'));
+  assert.match(tray, /trayStripOpacity\(/, 'the tray stopped reading the composed opacity');
+  assert.ok(!/opacity:\s*0\.45/.test(tray), 'the frozen opacity is hard-coded in the component');
 });

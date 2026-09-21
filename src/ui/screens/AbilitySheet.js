@@ -27,8 +27,12 @@ const Row = memo(function Row({ row, onPick }) {
       testID={`ability-${row.id}`}
       onPress={() => row.enabled && onPick(row)}
       accessibilityRole="button"
-      accessibilityLabel={`${row.name}. ${row.effect}${row.enabled ? '' : ` ${row.reason}.`}`}
+      accessibilityLabel={
+        `${row.name}. Costs ${row.cost} ${row.cost === 1 ? 'charge' : 'charges'}. `
+        + `${row.effect}${row.enabled ? '' : ` ${row.reason}.`}`
+      }
       accessibilityState={{ disabled: !row.enabled }}
+      aria-disabled={!row.enabled}
       style={({ pressed }) => [
         styles.row,
         !row.enabled && styles.rowMuted,
@@ -44,7 +48,17 @@ const Row = memo(function Row({ row, onPick }) {
         <Text style={styles.name}>{row.name}</Text>
         <Text style={styles.effect}>{row.effect}</Text>
       </View>
-      {row.enabled ? null : <Text style={styles.reason}>{row.reason}</Text>}
+      {/* AC-1405j. The cost is shown on EVERY row, affordable or not, and it
+          renders as pips rather than a numeral so the player compares two rows
+          of dots — this against the reserve on the button — instead of a
+          number against a number (ui.md §13.2). A dimmed row with no price
+          looks broken; a dimmed row showing ●●● looks expensive. */}
+      <View style={styles.right}>
+        <View testID={`cost-${row.id}`} style={styles.costPips}>
+          {row.costPips.map((i) => <View key={i} style={styles.costPip} />)}
+        </View>
+        {row.enabled ? null : <Text style={styles.reason}>{row.reason}</Text>}
+      </View>
     </Pressable>
   );
 });
@@ -106,6 +120,9 @@ const styles = StyleSheet.create({
   },
   chipGlyph: { fontSize: 17 },
   copy: { flex: 1, gap: 2 },
+  right: { alignItems: 'flex-end', gap: 4 },
+  costPips: { flexDirection: 'row', gap: 4 },
+  costPip: { width: 7, height: 7, borderRadius: RADIUS.pill, backgroundColor: COLORS.pip },
   name: { fontSize: 16, fontWeight: '600', color: COLORS.ink },
   effect: { fontSize: 13, fontWeight: '400', color: COLORS.inkMuted },
   reason: { fontSize: 11, fontWeight: '600', color: COLORS.inkDim, textAlign: 'right' },

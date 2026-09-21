@@ -37,7 +37,7 @@ import Animated, {
 import { SPECIES } from '../../engine/constants.js';
 import { traySilhouettes, trayMetrics } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
-import { frozenLabel } from '../abilities.js';
+import { frozenLabel, trayStripOpacity } from '../abilities.js';
 import { COLORS, COPY, MOTION, RADIUS, SILHOUETTE, TYPE } from '../theme.js';
 
 /**
@@ -84,6 +84,11 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
   // arrival that will not happen — which is v1's defect exactly, in reverse.
   // So the strip greys out and SAYS SO for as long as the freeze lasts.
   const frozenText = frozenLabel(frozen);
+  // AC-1410b. MULTIPLIED into the animated opacity rather than layered after
+  // it: a static `opacity: 0.45` in the same style array as `revealStyle` is
+  // whichever of the two is written last, and it shipped losing — the label
+  // said FROZEN and the strip rendered at full opacity.
+  const stripAlpha = trayStripOpacity(frozen);
 
   // The batch on screen while an arrival is in flight is the NEXT one: the
   // engine advanced the queue in the same reducer call that emptied it. So the
@@ -100,7 +105,7 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
     reveal.value = 0;
     reveal.value = delay(revealAt, withTiming(1, timing(MOTION.reduced, EASE.out, reduced)));
   }, [queue, revealAt, reduced, reveal]);
-  const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
+  const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value * stripAlpha }));
 
   return (
     <View
@@ -119,12 +124,7 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
         </Text>
       </View>
       <Animated.View
-        style={[
-          styles.strip,
-          { width: boardW, height: stripH },
-          frozenText ? styles.frozenStrip : null,
-          revealStyle,
-        ]}
+        style={[styles.strip, { width: boardW, height: stripH }, revealStyle]}
       >
         {(frozenText ? [] : traySilhouettes(queue, cell, SILHOUETTE.gap)).map((shape) => {
           const buffalo = shape.type === SPECIES.buffalo.type;
@@ -168,7 +168,6 @@ function trayLabel(queue, cells, frozen) {
 const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   frozenLabel: { color: COLORS.inkMuted },
-  frozenStrip: { opacity: 0.45 },
   strip: {
     backgroundColor: COLORS.panelSunken,
     borderWidth: 1,

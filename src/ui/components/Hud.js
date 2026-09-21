@@ -121,18 +121,23 @@ export const HudStats = memo(function HudStats({
 });
 
 /**
- * ui.md §13.1: the turn-state line moved HERE from the action bar, into the
- * spare right-hand column where the pause control already sits.
+ * ui.md §13.1 asks for the turn-state line to move here, into "the HUD's spare
+ * right-hand column, where the pause control already sits". IT DOES NOT FIT,
+ * and the arithmetic is in `layout.js` beside `actionBarSlots`.
  *
- * That is what paid for the abilities button without growing any chrome. The
- * HUD is at its budget and the bar held one button; the bar now holds two and
- * the line it used to hold sits above the pause glyph, in space the HUD was
- * already reserving. No point of the ladder's chrome allowance changed, which
- * is the only reason the board still fits at every stage.
+ * Vertically: a 12 pt label over a 2 pt gap over a 44 pt pause button is 58 pt
+ * against a 52 pt full budget and a 44 pt compact one — 3 pt over at the
+ * reference device and 7 pt over at compact, which is the rung the chrome
+ * budget exists to protect. Horizontally a row does not fit either: the worst
+ * case (5-digit score + streak pill + buffalo chip + `2 MOVES LEFT` + a 44 pt
+ * button) sums to about 411 pt inside 361 pt of content.
+ *
+ * So the HUD is UNCHANGED from Slice 3, the turn-state line stays in the action
+ * bar where it already worked, and the abilities control is icon-sized rather
+ * than a second 150 pt button. That deviation is recorded in `layout.js`.
  */
 export const Hud = memo(function Hud({
-  chrome, score, count, streak, buffalo, buffaloShrink, reduced, status, statusTone,
-  onPause, pauseMuted,
+  chrome, score, count, streak, buffalo, buffaloShrink, reduced, onPause, pauseMuted,
 }) {
   return (
     <View style={[styles.hud, { height: hudHeight(chrome) }]}>
@@ -145,17 +150,7 @@ export const Hud = memo(function Hud({
         reduced={reduced}
         compact={chrome.hud === 44}
       />
-      <View style={styles.right}>
-        <Text
-          testID="turn-state"
-          allowFontScaling={false}
-          accessibilityLiveRegion="polite"
-          style={[TYPE.label, styles.status, statusTone ? { color: statusTone } : null]}
-        >
-          {status}
-        </Text>
-        <IconButton glyph="❙❙" label="Pause" onPress={onPause} muted={pauseMuted} />
-      </View>
+      <IconButton glyph="❙❙" label="Pause" onPress={onPause} muted={pauseMuted} />
     </View>
   );
 });
@@ -170,8 +165,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.hairline,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACE.lg, flex: 1 },
-  right: { alignItems: 'flex-end', gap: 2 },
-  status: { textAlign: 'right' },
   stack: { gap: SPACE.md },
   badgesRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   badgesColumn: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },

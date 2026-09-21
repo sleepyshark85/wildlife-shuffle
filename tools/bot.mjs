@@ -4,9 +4,11 @@
 // This is not part of the game. It is a harness: it only ever calls the public
 // reducer, so anything it can do a player could do.
 
-import { BOARD, DIFFICULTIES, STATUS } from '../src/engine/constants.js';
+import { BOARD, BUFFALO, DIFFICULTIES, STATUS } from '../src/engine/constants.js';
 import { checkMove, MOVE_OK } from '../src/engine/board.js';
-import { ABILITIES, MIGRATE_SPECIES, stampede } from '../src/engine/abilities.js';
+import {
+  ABILITIES, MIGRATE_SPECIES, abilityCost, stampede,
+} from '../src/engine/abilities.js';
 import { ACTIONS, createRun, reduce } from '../src/engine/engine.js';
 
 /** Column heights and buried holes, the two things a packer cares about. */
@@ -116,40 +118,65 @@ export function measurePacing(seeds = 30, turnCap = 3000) {
  * is a claim about a player who freezes, and the only honest way to check it is
  * to play one.
  *
- * So this one hoards nothing. It spends the moment it holds a charge, and it
- * spends on the ability that most extends the run — Hold the Line first,
- * because that is the ability the guarantee is actually about (§13.3: freezing
- * stops the supply of the thing that buys freezes), then Stampede to repack,
- * then Migrate on whatever species is most numerous, then Burrow on the highest
- * animal. Dart is skipped deliberately: it buys extra moves rather than extra
- * turns, and the greedy search below already plays the first of them.
+ * THREE policies, because AC-1405h's pricing split them. A policy that spends
+ * the moment it holds a charge buys Burrow at 1 and therefore NEVER saves the
+ * 3 a Stampede costs — measured over 60 runs it took Stampede zero times. One
+ * policy is now one half of the economy, so there are three: spend on value,
+ * buy nothing but the freeze, or save the whole reserve for the elephant.
+ * All three must terminate, and the freeze one is the policy §13.3's guarantee
+ * is actually worded against.
+ *
+ * Dart is skipped deliberately: it buys extra moves rather than extra turns,
+ * and the greedy search already plays the first of them.
  *
  * It is a harness, exactly like `chooseAction`: it only ever calls the public
  * reducer, so nothing it does is something a player could not do.
  */
-export function chooseAbility(state) {
-  if (state.charges <= 0 || state.dart > 0) return null;
-  if (state.frozen === 0) return { type: ACTIONS.ABILITY, ability: ABILITIES.hold.id };
+/** The abilities a policy is willing to buy, in the order it tries them. */
+const POLICY = Object.freeze({
+  /** Spend on the best thing affordable, right now. Never saves, so never
+   *  reaches Stampede — which is exactly why it is not the only policy. */
+  value: ['stampede', 'migrate', 'hold', 'burrow'],
+  /** Buys nothing but the freeze. The policy AC-1409's wording is about. */
+  freeze: ['hold'],
+  /** Saves the entire reserve for the one ability that costs all of it. */
+  stampede: ['stampede'],
+});
 
-  const packed = stampede(state.animals);
-  if (packed.moved.length > 0) {
-    return { type: ACTIONS.ABILITY, ability: ABILITIES.stampede.id };
-  }
+export function chooseAbility(state, { policy = 'value' } = {}) {
+  if (state.dart > 0) return null;
+  const wanted = POLICY[policy] || POLICY.value;
 
-  const counts = new Map();
-  for (const a of state.animals) {
-    if (!MIGRATE_SPECIES.includes(a.type)) continue;
-    counts.set(a.type, (counts.get(a.type) || 0) + 1);
-  }
-  let best = null;
-  for (const [type, n] of counts) if (!best || n > best[1]) best = [type, n];
-  if (best) {
-    return { type: ACTIONS.ABILITY, ability: ABILITIES.migrate.id, target: best[0] };
-  }
+  for (const ability of wanted) {
+    if (state.charges < abilityCost(ability)) continue;
 
-  const highest = state.animals.reduce((top, a) => (!top || a.y > top.y ? a : top), null);
-  if (highest) {
-    return { type: ACTIONS.ABILITY, ability: ABILITIES.burrow.id, target: highest.id };
+    if (ability === ABILITIES.stampede.id) {
+      if (stampede(state.animals).moved.length === 0) continue;
+      return { type: ACTIONS.ABILITY, ability };
+    }
+    if (ability === ABILITIES.hold.id) {
+      if (state.frozen > 0) continue;
+      return { type: ACTIONS.ABILITY, ability };
+    }
+    if (ability === ABILITIES.migrate.id) {
+      const counts = new Map();
+      for (const a of state.animals) {
+        if (!MIGRATE_SPECIES.includes(a.type)) continue;
+        counts.set(a.type, (counts.get(a.type) || 0) + 1);
+      }
+      let best = null;
+      for (const [type, n] of counts) if (!best || n > best[1]) best = [type, n];
+      if (!best) continue;
+      return { type: ACTIONS.ABILITY, ability, target: best[0] };
+    }
+    // Burrow. The buffalo is not a target for it (AC-1412b), so the policy has
+    // to skip it exactly as a player does.
+    const highest = state.animals.reduce(
+      (top, a) => (a.type !== BUFFALO && (!top || a.y > top.y) ? a : top),
+      null,
+    );
+    if (!highest) continue;
+    return { type: ACTIONS.ABILITY, ability, target: highest.id };
   }
   return null;
 }
@@ -161,13 +188,13 @@ export function chooseAbility(state) {
  * `turnCap` is a bound on the harness, not on the game: a run that reaches it
  * has NOT terminated, and that is the failure AC-1409 is about.
  */
-export function playAbilityRun(seed, difficulty, turnCap = 3000) {
+export function playAbilityRun(seed, difficulty, turnCap = 3000, policy = {}) {
   let state = createRun({ seed, difficulty, abilities: true });
   let spent = 0;
   let frozenTurns = 0;
   while (state.status === STATUS.READY && state.turn < turnCap) {
     if (state.frozen > 0) frozenTurns += 1;
-    const ability = chooseAbility(state);
+    const ability = chooseAbility(state, policy);
     const next = ability ? reduce(state, ability) : reduce(state, chooseAction(state));
     if (ability && next.lastAction && next.lastAction.type === 'REJECTED') {
       // The policy asked for something illegal; fall back rather than stall.

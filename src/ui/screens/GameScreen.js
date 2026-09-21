@@ -322,6 +322,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
             column
             chrome={chrome}
             screenW={railW}
+            blocked={run.blocked}
             resolving={run.resolving}
             gameOver={run.view.gameOver}
             onPass={run.pass}
@@ -347,8 +348,6 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
           buffalo={run.view.buffalo}
           buffaloShrink={buffaloShrink}
           reduced={reduced}
-          status={status}
-          statusTone={run.blocked ? COLORS.illegal : null}
           onPause={() => setPaused(true)}
           pauseMuted={!inputOpen}
         />
@@ -361,6 +360,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
         <ActionBar
           chrome={chrome}
           screenW={width}
+          blocked={run.blocked}
           resolving={run.resolving}
           gameOver={run.view.gameOver}
           onPass={run.pass}
