@@ -1197,8 +1197,11 @@ the action bar beside Pass — **no new chrome, no board cost.**
 ```
 
 - Two buttons, 150 pt each, 44 pt tall, 12 pt gap — both above the 44 pt target.
-- **Charge pips** on the abilities button: 3 dots, filled for held charges. The count is the
-  whole status, so it needs no label.
+- **Charge pips** on the abilities button: **4 dots** — three for the banked cap and a fourth,
+  gold-rimmed, that only ever fills from Last Stand (`gameplay.md` §13.2b). The count is the
+  whole status, so it needs no label. The fourth pip sits at 25% opacity while empty, so the
+  reserve reads as "three, plus one you have not earned" rather than as a four-slot bar the
+  player is failing to fill.
 - At **zero charges** the button is disabled but **still visible** — layout must not reflow
   (the AC-413 principle). The turn-state text (`YOUR MOVE`) moves into the HUD's spare
   right-hand column, where the pause control already sits.
@@ -1244,3 +1247,10 @@ reads as broken for three turns.
 
 A charge being earned is announced in the HUD: the pip fills with a 300 ms bloom and the
 abilities button pulses once. It never interrupts play.
+
+**Last Stand gets its own beat**, because it fires at the worst moment of the run and must not
+read as an ordinary threshold crossing: the gold fourth pip blooms over 400 ms, the abilities
+button takes a single `#E8B44A` pulse, and a `LAST STAND` label rises from it. It fires in the
+same moment the danger band first lights (§7), so the two read as one event — *you are in
+trouble, here is one more thing you can do about it* — rather than as a reward arriving
+inexplicably beside a warning.

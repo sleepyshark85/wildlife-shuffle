@@ -993,6 +993,8 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D42 | The 3-charge cap is justified as the recovery/reset dial, not as burst prevention | Bursting is already impossible — an ability is the turn's action — so the approved rationale credited the cap for the one-action rule's work, and framed as a failure mode the behaviour the owner asked for (§13.2a). |
+| D43 | Last Stand: one charge on first entering the danger band, ignoring the cap, once per run | Charges come from clearing and a struggling player is not clearing, so the score ladder cannot reach the player who most needs help. Without it the assist mechanic is rich-get-richer (§13.2b). |
 | D39 | Bands retuned down after the first bot measurement; ramp left alone deliberately | All three medians came in short. Bands are the first lever and moving two at once would make the next measurement unattributable (§5.6a). |
 | D40 | No band's low may be below 2 | `k ≥ 1` means the minimum arrival is one animal, so a band under the difficulty's mean animal size cannot be delivered (§5.6a, AC-306b). |
 | D41 | VoiceOver names species although the silhouette hides it | Parity is about what a player can act on, not about matching the quantity of information on screen (AC-902b). |
@@ -1075,7 +1077,8 @@ else; if spending *deducted* score, the leaderboard would reward never using the
 the best scores would come from ignoring the mechanic. **Thresholds are gates, not purchases.**
 Your score never goes down.
 
-- Charges accumulate; **at most 3 may be held**, so they cannot be hoarded and dumped.
+- Charges accumulate; **at most 3 may be held** — see §13.2a for why 3, and why the reason I
+  first gave for it was wrong.
 - Thresholds **escalate**, so early charges teach the system and late ones are earned:
   roughly 1,500 / 4,000 / 8,000 / 14,000 / 22,000 / 32,000. **All six numbers are provisional
   pending AC-318b** — they are placed against a guess at the score curve, and a guess is not
@@ -1086,6 +1089,75 @@ Your score never goes down.
 - **Clears caused by an ability score normally.** The feedback loop — ability → clears → score
   → charge — is bounded by the escalating thresholds and the 3-charge cap. A player who uses
   Stampede to set up a triple clear has done exactly what score is for.
+
+### 13.2a Why the cap is 3 — and a correction
+
+The approved text said the cap existed *"so they cannot be hoarded and dumped."* **That
+rationale was wrong, and it also contradicted the owner's reason for wanting accumulation at
+all** — *"so that the players can save up abilities for dangerous situations"*, which is
+hoarding, deployed at the moment of need. Same behaviour, called the failure mode in one
+document and the point in the other.
+
+**Dumping is already impossible, and not because of the cap.** An ability *is* your action for
+the turn (§13.2, two bullets below the one that claimed otherwise). A player holding three
+charges can spend **one per turn**, so three charges are three turns of intervention spread
+across at least three turns. There is no burst to prevent. The one-action rule does that job,
+and the cap was being credited for it.
+
+**What the cap actually bounds is the size of the reserve** — how many turns of intervention
+you may walk into a crisis already holding. Three is chosen against the owner's intent, not
+against a risk:
+
+- **Three is a genuine rescue.** Stampede to repack the board, Migrate to clear a species,
+  Hold the Line for three turns of no arrivals — that sequence takes a nearly-dead board back
+  to playable. A reserve that cannot save you is not a reserve, and "save up for dangerous
+  situations" requires that saving up be *worth* it.
+- **Four begins to be a reset.** Past three, the reserve stops being a recovery from a bad
+  position and becomes an undo of it, which removes the consequence of having played badly —
+  and the player holding four has, by construction, been clearing well enough not to need
+  them.
+- **Saturation is a feature, not a side effect.** At three, the ladder pauses (below), and the
+  game is saying *you have enough help — go use some*. That is the right pressure for an
+  assist mechanic: it should push you to spend, not to admire the stack.
+
+**For a future reader deciding whether to move it:** the cap is the dial between *recovery*
+and *reset*. **Raise it only if measurement shows crises are routinely unsurvivable with three
+charges in hand; lower it only if runs are routinely rescued from positions that should have
+ended.** Do not move it to prevent bursting — bursting is not possible.
+
+**The ladder pauses at the cap; charges are never lost.** Crossing a threshold while holding
+three does not waste it: the ladder stops advancing and the next charge arrives the moment a
+slot frees. Losing progress for banking would punish exactly the behaviour the owner asked
+for. Score keeps accumulating for the record throughout — it simply stops buying charges
+while you are full, which is the pressure described above.
+
+### 13.2b The Last Stand charge — fixing a rich-get-richer curve
+
+**Charges come from clearing, and a player in trouble is by definition not clearing well.**
+So the economy as approved helps the player who banked early and reaches a crisis with three
+in hand, and does nothing for the player who has struggled all run and reaches the danger band
+with none. That is a rich-get-richer curve on **the one mechanic intended to soften entropy**,
+and the owner's framing — *"players can use some helps"* — is assistive language that asks for
+the opposite.
+
+This is a defect in the economy rather than in its wording, so it gets a fix:
+
+> **Last Stand.** The first time in a run that any animal enters the danger band (row 11 or
+> above), **one charge is granted immediately** — regardless of score, and **regardless of the
+> cap**. Once per run.
+
+- **It fires exactly when help is needed**, which is what "a dangerous situation" means, and it
+  is the only grant in the economy that does not ask how well you have been playing.
+- **It cannot be farmed.** Entering the danger band means being one to three rows from death;
+  doing it deliberately to collect a single once-per-run charge is a terrible trade, and the
+  danger is real whether or not the charge was the motive.
+- **It ignores the cap deliberately**, so the grant always does something. That gives the cap
+  a cleaner story than it had: **three is what you can bank by playing well, and the fourth
+  exists only because you are in trouble.**
+- It does not threaten §13.3's guarantee. One extra charge per run does not make the economy
+  less self-limiting.
+- Resume needs nothing new: whether Last Stand has fired is reconstructible from the replay,
+  since the engine knows when the band was first entered.
 
 ### 13.3 What it does to the difficulty curve
 

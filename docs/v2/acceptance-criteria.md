@@ -541,6 +541,22 @@ with a platform-chosen pattern, so two dash rhythms cannot be distinguished. **S
 dashed is achievable and reads better anyway**: the origin is a fact, the destination is a
 proposal. I am not adding SVG or per-segment views for a dash pattern.)*
 
+**AC-1405c — THE LADDER PAUSES, CHARGES ARE NEVER LOST.** Given a player crosses a score
+threshold while already holding the maximum charges, Then the threshold is **not consumed**:
+the ladder stops advancing and the next charge is granted the moment a slot frees. *(Losing
+progress for banking would punish exactly the behaviour the owner asked for — "save up
+abilities for dangerous situations".)*
+
+**AC-1405d** Given a player is saturated at the cap, Then score continues to accumulate for the
+record and simply stops buying charges. That pause is **intended pressure to spend**, not a
+gap in the reward curve.
+
+**AC-1406b — BURSTING IS ALREADY IMPOSSIBLE.** Given a player holds three charges, Then they
+can spend **at most one per turn**, because an ability is the turn's action (AC-1406). *(The
+approved text justified the cap as preventing a "dump"; the one-action rule already does that,
+and the cap's real job is bounding the size of the reserve — `gameplay.md` §13.2a. Do not move
+the cap to prevent bursting.)*
+
 **AC-1405b** Given the thresholds are priced, Then they are set per difficulty from **measured
 score percentiles**, not from absolute point values — e.g. a first charge at roughly the 35th
 percentile of that difficulty's final-score distribution, so every difficulty earns its first
@@ -1419,6 +1435,28 @@ turn resolves after the third or when they choose to end it early.
 
 **AC-1408** Given clears caused by an ability, Then they score normally. *(The ability → clears
 → score → charge loop is bounded by the escalating thresholds and the 3-charge cap.)*
+
+**AC-1408b — LAST STAND.** Given the first time in a run that any animal enters the danger
+band (row 11 or above), Then **one charge is granted immediately**, regardless of score and
+**regardless of the cap**, once per run.
+
+**AC-1408c** Given Last Stand fires while the player already holds the maximum, Then they hold
+**four**. *(The cap bounds what can be banked by playing well; the fourth charge exists only
+because the player is in trouble.)*
+
+**AC-1408d** Given a run in which the danger band is never entered, Then Last Stand never
+fires.
+
+**AC-1408e — WHY IT EXISTS.** Given charges are otherwise earned by clearing, and a player in
+trouble is by definition not clearing well, Then Last Stand is the **only** grant in the
+economy that does not ask how well the player has been playing. *(Without it the economy is a
+rich-get-richer curve on the one mechanic meant to soften entropy: it would help the player
+who banked early and do nothing for the player who has struggled all run. Do not remove it as
+redundant with the score ladder — it exists precisely because the score ladder cannot reach
+that player.)*
+
+**AC-1408f** Given a resume, Then whether Last Stand has fired is reconstructed from the
+replay rather than persisted separately — the engine knows when the band was first entered.
 
 **AC-1409 — RUNS STILL ALWAYS END.** Given unlimited skilled play with abilities, Then a run
 still terminates. *(The economy is self-limiting: charges come from score, score from
