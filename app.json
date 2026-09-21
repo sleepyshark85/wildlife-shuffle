@@ -20,17 +20,15 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#16212C"
-      }
+      },
+      "permissions": [
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "owner": "sleepyshark.85",
-    "extra": {
-      "eas": {
-        "projectId": "e9ff7692-80d8-4bac-80f3-3b3ade4be252"
-      }
-    },
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0D141B",
@@ -54,6 +52,11 @@
           "enableFullScreenImage_legacy": true
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "44c8be93-139e-4aea-93f5-c83d246d8625"
+      }
+    }
   }
 }
