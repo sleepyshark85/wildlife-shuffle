@@ -12,6 +12,7 @@ import { BOARD } from '../src/engine/constants.js';
 import { MOVE_OK, checkMove } from '../src/engine/board.js';
 import { ACTIONS, createRun, reduce } from '../src/engine/engine.js';
 import { slideRange, slideRanges } from '../src/ui/occupancy.js';
+import { CONTACT_ENGAGE, CONTACT_RELEASE, clampDrag } from '../src/ui/dragClamp.js';
 import {
   LOCK_BUDGET_MS,
   MAX_ANIMATED_UNITS,
@@ -27,9 +28,22 @@ import { inspectChainGuard } from '../src/ui/chainGuard.js';
 
 // ---- the drag snapshot ---------------------------------------------------
 
+/** The 6.1" reference cell (ui.md §3.2). Any positive number would do. */
+const CELL = 39;
+
 test('AC-407/AC-408 slideRange agrees with checkMove on every column of every board', () => {
-  // 400 real boards from real runs, every animal, every target column.
+  // 400 real boards from real runs, every animal, every target column — and,
+  // on the same boards, every column `clampDrag` can actually PRODUCE from a
+  // finger dragged the width of the board in either direction and past both
+  // ends of it (AC-407c's strong claim).
+  //
+  // One sweep, not two, on purpose. The clamp's guarantee is not "the clamp is
+  // self-consistent", it is "the body cannot stop anywhere the engine would
+  // refuse" — and that is a claim about three things agreeing: clampDrag,
+  // slideRange and checkMove. A parallel sweep on invented boards would be
+  // checking the first two.
   let checked = 0;
+  let dragged = 0;
   for (let s = 0; s < 40; s += 1) {
     let state = createRun({ seed: `snapshot-${s}`, difficulty: 'savanna' });
     for (let turn = 0; turn < 10 && state.status === 'READY'; turn += 1) {
@@ -48,10 +62,138 @@ test('AC-407/AC-408 slideRange agrees with checkMove on every column of every bo
           checked += 1;
         }
       }
+
+      // ---- AC-407b/AC-407c: the body, dragged across the whole board ----
+      for (const animal of state.animals) {
+        const r = ranges[animal.id];
+        const startPx = animal.x * CELL;
+        const lo = r.minX * CELL;
+        const hi = r.maxX * CELL;
+        const produced = new Set();
+        let pressed = 0;
+        let previous = -Infinity;
+        const reach = BOARD.width * CELL + 4 * CONTACT_ENGAGE;
+        for (let t = -reach; t <= reach; t += 3) {
+          const out = clampDrag(startPx, t, CELL, r.minX, r.maxX, pressed);
+          assert.ok(
+            out.px >= lo && out.px <= hi,
+            `${animal.id} px ${out.px} escaped [${lo}, ${hi}] at translation ${t}`,
+          );
+          assert.ok(out.px >= previous, `px went backwards at translation ${t}`);
+          if (out.pressed !== 0) {
+            assert.ok(
+              out.px === lo || out.px === hi,
+              `pressed ${out.pressed} while px ${out.px} was off both limits`,
+            );
+          }
+          previous = out.px;
+          pressed = out.pressed;
+          produced.add(out.col);
+          dragged += 1;
+        }
+
+        // Nothing it produced is a column the engine would refuse...
+        for (const col of produced) {
+          const verdict = checkMove(state.animals, animal.id, col, BOARD.width);
+          assert.ok(
+            verdict === MOVE_OK || col === animal.x,
+            `seed ${s} turn ${turn} animal ${animal.id}: the clamp can stop at col ` +
+              `${col}, which the engine refuses with "${verdict}"`,
+          );
+        }
+        // ...and it can reach every column the engine WOULD accept. A clamp
+        // one column short is as much a defect as one column long: the player
+        // shoves the piece against a wall that is not there and the row they
+        // were packing cannot be packed.
+        const legal = [];
+        for (let x = r.minX; x <= r.maxX; x += 1) legal.push(x);
+        assert.deepEqual(
+          [...produced].sort((a, b) => a - b),
+          legal,
+          `seed ${s} turn ${turn} animal ${animal.id}: the clamp's reach is not [${r.minX}, ${r.maxX}]`,
+        );
+      }
+
       state = reduce(state, { type: ACTIONS.PASS });
     }
   }
   assert.ok(checked > 5000, `only ${checked} columns exercised`);
+  assert.ok(dragged > 500000, `only ${dragged} drag frames swept`);
+});
+
+test('AC-407c the clamp changes nothing inside the range and stops dead outside it', () => {
+  // Identity: while the finger is inside the legal range the clamp is not
+  // there. A clamp that rounds or smooths mid-range would make the body lag
+  // the thumb, which is the v1 drag feel this whole architecture exists to
+  // avoid (docs/v1-review.md D3).
+  for (let t = 0; t <= 4 * CELL; t += 1) {
+    const out = clampDrag(2 * CELL, t, CELL, 0, 6, 0);
+    assert.equal(out.px, 2 * CELL + t, `identity broke at translation ${t}`);
+  }
+
+  // AC-407f: a hard stop. Not damped, not rubber-banded — the same pixel for
+  // 400 pt of further push.
+  const far = clampDrag(2 * CELL, 400, CELL, 0, 6, 0);
+  const further = clampDrag(2 * CELL, 4000, CELL, 0, 6, 0);
+  assert.equal(far.px, 6 * CELL);
+  assert.equal(further.px, 6 * CELL, 'the body must not creep past its limit');
+
+  // Both ends, including a fractional cell — the ladder produces those.
+  assert.equal(clampDrag(0, -1000, 38.5, 2, 5, 0).px, 77);
+  assert.equal(clampDrag(0, 1000, 38.5, 2, 5, 0).px, 192.5);
+
+  // AC-407c: `col` is inside the snapshot for every input, at any cell size,
+  // including the degenerate range where the animal cannot move at all.
+  for (const cell of [24, 33, 38.5, 39, 44]) {
+    for (let t = -900; t <= 900; t += 7) {
+      const out = clampDrag(3 * cell, t, cell, 3, 3, 0);
+      assert.equal(out.col, 3, 'a pinned animal may only ever report its own column');
+      assert.equal(out.px, 3 * cell);
+      const wide = clampDrag(3 * cell, t, cell, 1, 8, 0);
+      assert.ok(wide.col >= 1 && wide.col <= 8, `col ${wide.col} escaped [1, 8]`);
+      assert.equal(wide.col, Math.max(1, Math.min(8, Math.round(wide.px / cell))));
+    }
+  }
+});
+
+test('AC-407e contact engages at 6 pt of overshoot and releases at 2 pt', () => {
+  assert.equal(CONTACT_ENGAGE, 6);
+  assert.equal(CONTACT_RELEASE, 2);
+  assert.equal(CONTACT_ENGAGE - CONTACT_RELEASE, 4, 'AC-407e names a 4 pt band');
+
+  const at = (over, was) => clampDrag(0, 6 * CELL + over, CELL, 0, 6, was).pressed;
+
+  // Resting ON the limit is not pushing against it: no rim, no cue.
+  assert.equal(at(0, 0), 0);
+  assert.equal(at(5.9, 0), 0, 'engaged before the finger had pushed 6 pt');
+  assert.equal(at(6, 0), 1);
+
+  // Once engaged it holds all the way back down to 2 pt...
+  assert.equal(at(3, 1), 1);
+  assert.equal(at(2, 1), 1);
+  // ...and lets go below it.
+  assert.equal(at(1.9, 1), 0);
+  assert.equal(at(0, 1), 0);
+
+  // THE FLUTTER, which is the whole reason the band exists. A finger jittering
+  // either side of the boundary without ever pushing 6 pt must never engage —
+  // each engagement is one haptic tick (AC-407g), so a missing band is a
+  // machine gun against the player's thumb.
+  let pressed = 0;
+  let fires = 0;
+  for (let i = 0; i < 200; i += 1) {
+    const over = (i % 2 === 0 ? 1 : -1) * (3 + (i % 3));
+    const next = clampDrag(0, 6 * CELL + over, CELL, 0, 6, pressed).pressed;
+    if (next !== 0 && pressed === 0) fires += 1;
+    pressed = next;
+  }
+  assert.equal(fires, 0, `a fluttering finger fired the contact cue ${fires} times`);
+
+  // A flip from one limit straight to the other earns no discount: the
+  // release threshold belongs to the side that was being pressed.
+  assert.equal(clampDrag(0, -3, CELL, 0, 6, 1).pressed, 0);
+  assert.equal(clampDrag(0, -6, CELL, 0, 6, 1).pressed, -1);
+  assert.equal(clampDrag(0, -3, CELL, 0, 6, -1).pressed, -1);
 });
 
 test('AC-407 the snapshot names the animal that blocks, on each side', () => {
@@ -421,13 +563,17 @@ test('AC-421/AC-422 the recess fades on every route out, before any of them', ()
   const firstRoute = finalize.indexOf('return;', armedGuard + GUARD.length);
   assert.ok(fade < firstRoute, 'the fade must precede every route out of the gesture');
 
+  // AC-421/AC-406: THREE routes now, not four. The rejected drop was deleted
+  // with the shake — under AC-407 the body cannot reach an illegal column, so
+  // a release either commits, comes home from the origin, or was cancelled.
+  // The count is a tripwire for a route ADDED past the fade; it moves when the
+  // design removes one, and this one it removed on purpose.
   const routes = (finalize.match(/return;/g) || []).length;
-  assert.ok(routes >= 4, `only ${routes} exits — has a route been added past the fade?`);
+  assert.ok(routes >= 3, `only ${routes} exits — has a route been added past the fade?`);
 
   // AC-422: it is the body's own snap, so the two converge to nothing
-  // together and the recess cannot outlive the shake.
+  // together, and 110 ms is inside the Reduce Motion cross-fade ceiling.
   assert.equal(MOTION.snap, 110);
-  assert.ok(MOTION.snap < MOTION.illegal, 'the shake outlasts the fade, not the other way round');
 });
 
 test('AC-424 the recess survives Reduce Motion, and needs no reduced twin', () => {
@@ -438,6 +584,110 @@ test('AC-424 the recess survives Reduce Motion, and needs no reduced twin', () =
   // The reason it needs no twin: 110 ms already sits inside the cross-fade
   // ceiling, so there is nothing for Reduce Motion to shorten.
   assert.ok(MOTION.snap <= MOTION.reduced, `${MOTION.snap} ms must fit the ${MOTION.reduced} ms ceiling`);
+});
+
+// ---- AC-406/AC-407: the body stops at its neighbour ----------------------
+//
+// The owner, from a device: "when dragging an animal, I shouldn't be able to
+// drag it over another animal in the same row. I can now, although when I drop
+// it, it go back to the original row. So the logic is correct, but the
+// visualize is not."
+//
+// The arithmetic is swept above. What is left is structural, and it is the
+// half that actually broke: the worklet that RENDERS the drag has to be the
+// one calling the swept function, and the rejection path has to be gone rather
+// than merely unreachable. Both are source properties, because a worklet is
+// not observable from Node and the dead path is, by definition, never run.
+
+test('AC-407b the drag worklet clamps with clampDrag, and has no second clamp', () => {
+  const source = stripComments(readSrc('src/ui/components/AnimalView.js'));
+  const update = callbackBody(source, 'onUpdate');
+
+  assert.match(update, /clampDrag\(/, 'onUpdate must call the swept clamp');
+  assert.match(source, /import \{ clampDrag \} from '\.\.\/dragClamp\.js'/);
+
+  // AC-407b: ONE clamp. The board-edge clamp is REPLACED, not joined — a
+  // second bound in here is a second source for the same rule, and the pair
+  // would be free to disagree the moment the snapshot changed (§6.3).
+  assert.ok(
+    !/COLS - size/.test(update),
+    'onUpdate still clamps to the board separately from the slide range',
+  );
+  assert.ok(
+    !/\bif \(px [<>]/.test(update) && !/\bif \(col [<>]/.test(update),
+    'onUpdate clamps by hand as well as by clampDrag',
+  );
+
+  // AC-407d: the rim comes from the UNCLAMPED finger, which is what `pressed`
+  // is. Deriving it from the body instead would light it permanently, since
+  // the body sits on the limit whether or not anyone is pushing.
+  assert.match(update, /drag\.blockedId\.value =/);
+  assert.match(update, /pressed/);
+  // AC-831: no React in the touch path. `runOnJS` reaches only the cue
+  // player, which renders nothing (see AC-1101's note on fireCue).
+  const hops = [...update.matchAll(/runOnJS\((\w+)\)/g)].map((m) => m[1]);
+  assert.deepEqual(hops, ['fireCue'], `onUpdate hops to the JS thread for ${hops.join(', ')}`);
+});
+
+test('AC-407g the contact cue fires once per press, not once per frame', () => {
+  const source = stripComments(readSrc('src/ui/components/AnimalView.js'));
+  const update = callbackBody(source, 'onUpdate');
+  const finalize = callbackBody(source, 'onFinalize');
+
+  assert.match(update, /CUE\.illegal/, 'the cue moved to contact (AC-1101e)');
+  // It is gated on the TRANSITION. Firing on `pressed !== 0` alone would fire
+  // sixty times a second for as long as the finger leans on the wall — which
+  // is one haptic tick per frame, against the thumb that is holding it there.
+  //
+  // The gate and the call are one statement, so the window is the line plus
+  // the two above it. (The first version of this assertion looked only at the
+  // text BEFORE the line and could not see the condition at all: it failed on
+  // correct code, which is how it was found.)
+  const lines = update.split('\n');
+  const at = lines.findIndex((l) => l.includes('CUE.illegal'));
+  assert.notEqual(at, -1, 'no contact cue');
+  const window = lines.slice(Math.max(0, at - 2), at + 1).join('\n');
+  assert.match(
+    window,
+    /pressed\.value === 0/,
+    'the cue must be gated on pressed LEAVING 0, not on pressed being non-zero',
+  );
+  assert.ok(!/CUE\.illegal/.test(finalize), 'the cue must no longer fire on release');
+});
+
+test('AC-406 the rejection shake and everything only it reached are gone', () => {
+  const animal = stripComments(readSrc('src/ui/components/AnimalView.js'));
+  // The shake itself, its shared value, its easing pair and its Reduce Motion
+  // substitute. A release can no longer be illegal (AC-407b), so every one of
+  // these is a branch that cannot execute.
+  for (const token of [
+    'shakeIn', 'shakeMid', 'rimOn', 'REJECT_RIM_REDUCED',
+    'illegalShake', 'EASE.illegal', 'MOTION.illegal', 'onIllegal',
+  ]) {
+    assert.ok(!animal.includes(token), `AnimalView still carries ${token}`);
+  }
+
+  const board = stripComments(readSrc('src/ui/components/Board.js'));
+  // AC-408: the ghost can no longer be illegal, so the value that chose
+  // between the two treatments goes with it.
+  assert.ok(!/ghostLegal/.test(board), 'Board still selects a ghost treatment');
+  assert.ok(!/illegalFill/.test(board), 'Board still has a red ghost fill');
+  assert.ok(!/ghostLegal/.test(animal), 'AnimalView still writes ghostLegal');
+  assert.ok(
+    !/ghostLegal/.test(stripComments(readSrc('src/ui/useDragShared.js'))),
+    'the ghostLegal shared value survives its only two readers',
+  );
+
+  // The state layer's half: a BLOCKED announcement nothing can raise.
+  const run = stripComments(readSrc('src/ui/useGameRun.js'));
+  for (const token of ['markBlocked', 'blocked', 'blockTick']) {
+    assert.ok(!run.includes(token), `useGameRun still carries ${token}`);
+  }
+  const bar = stripComments(readSrc('src/ui/components/ActionBar.js'));
+  assert.ok(!/blocked/.test(bar), 'the action bar still has a BLOCKED style');
+  const theme = stripComments(readSrc('src/ui/theme.js'));
+  assert.ok(!/blocked:/.test(theme), 'COPY still carries a label nothing can set');
+  assert.ok(!/illegalFill/.test(theme), 'the palettes still carry a red ghost fill');
 });
 
 

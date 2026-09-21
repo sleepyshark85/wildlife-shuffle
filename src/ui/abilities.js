@@ -270,10 +270,13 @@ export function dartLabel(dart) {
  * What the action bar's status line says. One function, so the bar cannot
  * disagree with the HUD about what the player is being asked to do.
  */
-export function turnStatus({ gameOver, blocked, resolving, arming, dart }) {
+export function turnStatus({ gameOver, resolving, arming, dart }) {
   if (gameOver) return 'RUN OVER';
   if (arming) return 'CHOOSE A TARGET';
-  if (blocked) return COPY.blocked;
+  // AC-406: there is no BLOCKED rank any more. The body cannot reach an
+  // illegal column, so nothing can raise the announcement — and it could not
+  // have been retargeted to contact in any case, because this bar is React and
+  // a word appearing mid-drag is a re-render AC-831 forbids.
   if (resolving) return COPY.resolving;
   // The Dart counter replaces the idle line rather than sitting beside it: the
   // bar has one status slot and "how many moves are left" is the status.

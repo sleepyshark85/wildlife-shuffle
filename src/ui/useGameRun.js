@@ -38,7 +38,6 @@ import { recordTurn } from './diagnostics.js';
 import { buildReplay } from './replay.js';
 import { appendMove, openRun } from './session.js';
 import { lockDelay } from './timeline.js';
-import { MOTION } from './theme.js';
 
 /**
  * A monotonic millisecond clock. `performance.now()` rather than `Date.now()`
@@ -134,8 +133,6 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
   );
 
   const [resolving, setResolving] = useState(false);
-  const [blocked, setBlocked] = useState(false);
-  const [blockTick, setBlockTick] = useState(0);
   const [guardRecord, setGuardRecord] = useState(null);
 
   const lockedRef = useRef(false);
@@ -210,13 +207,6 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
     return () => clearTimeout(timer);
   }, [state.lastTurn, state.seed, state.difficulty, state.plan]);
 
-  // ---- the BLOCKED announcement ----------------------------------------
-  useEffect(() => {
-    if (!blocked) return undefined;
-    const timer = setTimeout(() => setBlocked(false), MOTION.illegal);
-    return () => clearTimeout(timer);
-  }, [blocked, blockTick]);
-
   const isOpen = () => !lockedRef.current && stateRef.current.status === STATUS.READY;
 
   // ---- the three things the player can do -------------------------------
@@ -232,11 +222,6 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
     fingerUpRef.current = now();
     lockedRef.current = true; // synchronous: closes the two-finger window
     dispatch({ type: ACTIONS.MOVE, id, x, reservedMs: gapRef.current });
-  }, []);
-
-  const markBlocked = useCallback(() => {
-    setBlocked(true);
-    setBlockTick((tick) => tick + 1);
   }, []);
 
   /**
@@ -275,7 +260,6 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
     bufferedRef.current = null;
     lockedRef.current = false;
     fingerUpRef.current = null;
-    setBlocked(false);
     setGuardRecord(null);
     dispatch({ type: ACTIONS.RESTART, seed: newSeed(), difficulty: nextDifficulty });
   }, []);
@@ -307,10 +291,8 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
     state,
     view,
     resolving,
-    blocked,
     guardRecord,
     commitMove,
-    markBlocked,
     pass,
     useAbility,
     restart,

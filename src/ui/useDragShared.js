@@ -15,7 +15,6 @@ export function useDragShared() {
   const ghostX = useSharedValue(0);
   const ghostY = useSharedValue(0);
   const ghostSize = useSharedValue(1);
-  const ghostLegal = useSharedValue(1);
   const ghostVisible = useSharedValue(0);
   const blockedId = useSharedValue('');
   /**
@@ -53,10 +52,10 @@ export function useDragShared() {
 
   return useMemo(
     () => ({
-      ghostX, ghostY, ghostSize, ghostLegal, ghostVisible, blockedId, epoch, inputOpen,
+      ghostX, ghostY, ghostSize, ghostVisible, blockedId, epoch, inputOpen,
       originX, originY, originSize, originFill, originAlpha,
     }),
-    [ghostX, ghostY, ghostSize, ghostLegal, ghostVisible, blockedId, epoch, inputOpen,
+    [ghostX, ghostY, ghostSize, ghostVisible, blockedId, epoch, inputOpen,
       originX, originY, originSize, originFill, originAlpha],
   );
 }

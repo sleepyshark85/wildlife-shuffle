@@ -55,7 +55,6 @@ const HAPTICS = {
   medium: () => impactAsync(ImpactFeedbackStyle.Medium),
   heavy: () => impactAsync(ImpactFeedbackStyle.Heavy),
   success: () => notificationAsync(NotificationFeedbackType.Success),
-  error: () => notificationAsync(NotificationFeedbackType.Error),
 };
 
 const engine = makeCueEngine({
