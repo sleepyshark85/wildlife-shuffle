@@ -39,31 +39,53 @@ export const BUFFALO = 'buffalo';
 /** Species that may be drawn at random, largest first. */
 export const DRAWABLE = Object.freeze(['elephant', 'elk', 'fox', 'rat']);
 
-/** gameplay.md §5.5. Difficulty varies band, weights and buffalo cadence. */
+/**
+ * gameplay.md §5.5. Difficulty varies band, weights and buffalo cadence.
+ *
+ * THE SECOND SET OF BANDS (gameplay.md §5.6a). The first were derived from
+ * fraction-of-row and the bot falsified them: medians of 73 / 35.5 / 27
+ * against a hypothesis of 100-150 / 60-90 / 35-55, all three short and Savanna
+ * worst at -41%. Every ceiling drops by 1 and Savanna's and Tundra's starting
+ * bands drop by 1.
+ *
+ * MEADOW'S STARTING BAND DOES NOT MOVE, and that is a finding rather than a
+ * choice — see AC-306b and `bandFloorViolations` below. It is the one band in
+ * the table that is at a hard floor rather than at a tuned value.
+ *
+ * This retune moves BANDS ONLY. The measured ratios (2.06 and 1.31 against a
+ * target of 1.8 and 1.6) are a SHAPE problem, and lowering every band
+ * uniformly cannot fix a shape — it moves all three without changing their
+ * ratios. The lever for that is the per-difficulty ramp interval, which is
+ * deliberately the next change and not this one, because §5.7's ordering
+ * exists so a measurement can attribute an effect to a cause.
+ */
 export const DIFFICULTIES = Object.freeze({
   meadow: Object.freeze({
     id: 'meadow',
     label: 'Meadow',
+    // 2-4 is Meadow's FLOOR, not its tuning. AC-306b.
     startBand: Object.freeze([2, 4]),
-    ceilingBand: Object.freeze([4, 6]),
+    ceilingBand: Object.freeze([3, 5]),
     buffaloEvery: 12,
     weights: Object.freeze({ rat: 35, fox: 30, elk: 25, elephant: 10 }),
   }),
   savanna: Object.freeze({
     id: 'savanna',
     label: 'Savanna',
-    startBand: Object.freeze([3, 5]),
-    ceilingBand: Object.freeze([5, 7]),
+    startBand: Object.freeze([2, 4]),
+    ceilingBand: Object.freeze([4, 6]),
     buffaloEvery: 10,
     weights: Object.freeze({ rat: 25, fox: 28, elk: 27, elephant: 20 }),
   }),
   tundra: Object.freeze({
     id: 'tundra',
     label: 'Tundra',
-    startBand: Object.freeze([4, 6]),
-    // gameplay.md §5.6: 6-8 and not 7-9, for a hard reason. The spawn cap is
-    // W-1 = 8, so a band reaching 9 would demand batches invariant 1 forbids.
-    ceilingBand: Object.freeze([6, 8]),
+    startBand: Object.freeze([3, 5]),
+    // The W-1 = 8 ceiling that forced 6-8 rather than 7-9 (gameplay.md §5.6)
+    // is no longer the binding constraint here: 5-7 sits under it with room.
+    // The reason it dropped is the retune, not the invariant — but the
+    // invariant is still what stops anything climbing back past 6-8.
+    ceilingBand: Object.freeze([5, 7]),
     buffaloEvery: 8,
     weights: Object.freeze({ rat: 15, fox: 25, elk: 30, elephant: 30 }),
   }),
@@ -71,7 +93,16 @@ export const DIFFICULTIES = Object.freeze({
 
 export const DEFAULT_DIFFICULTY = 'savanna';
 
-/** gameplay.md §5.5: +1 to both ends of the band every 12 turns, until the ceiling. */
+/**
+ * gameplay.md §5.5: +1 to both ends of the band every 12 turns, until the
+ * ceiling.
+ *
+ * ONE INTERVAL FOR ALL THREE DIFFICULTIES, and it stayed that way through the
+ * band retune on purpose. Making it per-difficulty is the designer's named
+ * lever for the ratio problem (§5.6b) and is the NEXT change; moving magnitude
+ * and spacing in the same pass would make the following measurement
+ * unattributable.
+ */
 export const RAMP_EVERY_TURNS = 12;
 
 /**
