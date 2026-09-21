@@ -578,6 +578,14 @@ any other animal in its own row. Rationale: the gesture is a drag, so the rule m
 one the gesture implies; a piece that tunnels through its neighbours makes the board
 unreadable.
 
+**And since the owner's device review, the gesture enforces it rather than reporting it.** The
+dragged body is clamped to the swept-legal range, so a piece cannot be *dragged* across a
+neighbour either, not even for the frames before a release that would have been refused
+(`ui.md` §5.6, AC-407). The rule is unchanged; what changed is that the finger now meets it.
+One consequence belongs here rather than in the UI document: **a drag released past a blocker
+commits the packed-against move and spends the turn**, where it used to be rejected for free.
+Cancelling a drag means releasing it back on its origin (AC-402).
+
 ### 6.2 The move rules
 
 - **One action per turn.** Move exactly one animal, or pass. Any animal on the board may be
