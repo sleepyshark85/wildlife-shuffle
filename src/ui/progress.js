@@ -18,11 +18,11 @@
 import { DIFFICULTIES } from '../engine/constants.js';
 
 /**
- * AC-1006. Version 2 added the sound and haptics preferences; `migrate()`
- * below carries a version-1 blob forward rather than discarding it, which is
- * the half of AC-1006 that had never been exercised.
+ * AC-1006. Version 2 added the sound and haptics preferences; version 3 added
+ * `onboarded`. `migrate()` below carries an older blob forward rather than
+ * discarding it, which is the half of AC-1006 that had never been exercised.
  */
-export const SAVE_SCHEMA_VERSION = 2;
+export const SAVE_SCHEMA_VERSION = 3;
 
 /** v1's StatsPanel.js listed ten, and ten is what AC-1011b asks for. */
 export const RECENT_RUNS = 10;
@@ -79,6 +79,18 @@ const zeros = (keys) => Object.fromEntries(keys.map((k) => [k, 0]));
 export function defaultSave() {
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
+    /**
+     * AC-1207. One boolean, in the save the player already has, rather than a
+     * second store beside it: onboarding runs once, and "has it run?" is a fact
+     * about this player's progress like every other fact in here. A parallel
+     * key would be a second source for one truth (§6.3) and would survive a
+     * "clear my data" that this one does not.
+     *
+     * It is set on completion AND on skip, because AC-1207 names both and
+     * because a tutorial that reappears after you dismissed it is worse than
+     * one that never ran.
+     */
+    onboarded: false,
     best: Object.fromEntries(DIFFICULTY_IDS.map((id) => [id, zeros(BEST_KEYS)])),
     lifetime: zeros(LIFETIME_KEYS),
     recent: [],
@@ -124,25 +136,44 @@ function readRecent(raw) {
 /**
  * Bring an older blob up to the current schema, or hand it back untouched.
  *
- * One step so far. Version 2 added `settings.sound` and `settings.haptics`
- * (AC-1104) and changed nothing else, so the migration is "take the new
- * defaults for the new keys and keep every choice the player had already
- * made". The player's records, streak and unlocks survive an app update, which
- * is what AC-1006's "migrated" was always for.
+ * Two steps, applied IN SEQUENCE rather than as a switch on the stored
+ * version: a version-1 blob has to become a version-2 blob and then a
+ * version-3 one, and a `if (v === 1) return {...v3}` would have to know about
+ * every future step at once. Each step below knows only about its own.
+ *
+ * Step 1 -> 2 added `settings.sound` and `settings.haptics` (AC-1104). Step
+ * 2 -> 3 added `onboarded`, and it is FALSE for an existing player on purpose:
+ * somebody who has been playing since version 1 has demonstrably worked the
+ * game out, and a four-beat tutorial dropped in front of them by an update
+ * would be the app explaining what they already know. `migrate` cannot see
+ * their records from here, so `parseSave`'s caller decides — see `hasPlayed`.
  *
  * It never validates. It produces a candidate and `parseSave` judges it, so a
  * migration that produced nonsense discards the save exactly as a corrupt one
  * does — there is no path on which half of a migration is written back.
  */
-export function migrate(raw) {
-  if (!isObject(raw)) return raw;
-  if (raw.schemaVersion !== 1) return raw;
-  const had = isObject(raw.settings) ? raw.settings : {};
-  return {
+const STEPS = [
+  // 1 -> 2
+  (raw) => ({
     ...raw,
     schemaVersion: 2,
-    settings: { ...SETTING_DEFAULTS, ...had },
-  };
+    settings: { ...SETTING_DEFAULTS, ...(isObject(raw.settings) ? raw.settings : {}) },
+  }),
+  // 2 -> 3
+  (raw) => ({ ...raw, schemaVersion: 3, onboarded: false }),
+];
+
+export function migrate(raw) {
+  if (!isObject(raw)) return raw;
+  let out = raw;
+  while (
+    typeof out.schemaVersion === 'number' &&
+    out.schemaVersion >= 1 &&
+    out.schemaVersion < SAVE_SCHEMA_VERSION
+  ) {
+    out = STEPS[out.schemaVersion - 1](out);
+  }
+  return out;
 }
 
 /**
@@ -195,6 +226,8 @@ export function parseSave(text) {
     applied[slot] = id;
   }
 
+  if (typeof raw.onboarded !== 'boolean') return null;
+
   if (!isObject(raw.settings)) return null;
   const settings = {};
   for (const key of SETTING_KEYS) {
@@ -204,6 +237,7 @@ export function parseSave(text) {
 
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
+    onboarded: raw.onboarded,
     best,
     lifetime,
     recent,
@@ -324,6 +358,28 @@ export function applyRunRecord(save, record, when) {
 export function isNewBest(save, difficulty, score) {
   const row = knownDifficulty(difficulty) ? save.best[difficulty] : null;
   return Boolean(row) && score > row.score;
+}
+
+/**
+ * AC-1207. Onboarding is finished — completed or skipped, the save does not
+ * record which, because nothing downstream is allowed to treat them
+ * differently and a field nobody may branch on is a field that will be
+ * branched on.
+ */
+export function withOnboarded(save) {
+  return save.onboarded ? save : { ...save, onboarded: true };
+}
+
+/**
+ * Has this player played before?
+ *
+ * AC-1206 says onboarding runs on "a first launch with no stored data", and a
+ * migrated version-1 save is stored data. `lifetime.games` is the count the
+ * engine wrote, so a returning player is one who has finished at least one run
+ * — which is exactly who must not be shown a tutorial by an app update.
+ */
+export function hasPlayed(save) {
+  return save.lifetime.games > 0;
 }
 
 export function withSettings(save, key, value) {

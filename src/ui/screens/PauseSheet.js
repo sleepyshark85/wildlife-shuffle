@@ -12,7 +12,7 @@ import { SPACE } from '../theme.js';
 import { Button } from '../components/Controls.js';
 import { Sheet } from './Sheet.js';
 
-export function PauseSheet({ reduced, onResume, onRestart, onSettings, onQuit }) {
+export function PauseSheet({ reduced, onResume, onRestart, onSettings, onHowToPlay, onQuit }) {
   const [leaving, setLeaving] = useState(null);
   const leave = (run) => () => setLeaving({ run });
 
@@ -29,6 +29,18 @@ export function PauseSheet({ reduced, onResume, onRestart, onSettings, onQuit })
             accessibility toggles and the diagnostic log could not be turned on
             while the thing you wanted to look at was on screen. */}
         <Button label="Settings" tone="secondary" testID="pause-settings" onPress={onSettings} />
+        {/* AC-1207: onboarding is replayable. It is absent DURING onboarding —
+            the handler is null there — because the one thing a tutorial must
+            not offer is itself. Taking it replaces the run, exactly as "Back to
+            home" does, and it sits beside that button for the same reason. */}
+        {onHowToPlay ? (
+          <Button
+            label="How to play"
+            tone="secondary"
+            testID="pause-howtoplay"
+            onPress={leave(onHowToPlay)}
+          />
+        ) : null}
         <Button label="Restart run" tone="secondary" onPress={leave(onRestart)} />
         <Button label="Back to home" tone="secondary" onPress={leave(onQuit)} />
       </View>

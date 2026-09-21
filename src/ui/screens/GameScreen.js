@@ -21,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { needsTarget, targetOf, targetingChip, turnStatus } from '../abilities.js';
+import { BEAT } from '../onboarding.js';
 import { CUE } from '../cues.js';
 import { fireCue } from '../cuePlayer.js';
 import { STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap } from '../layout.js';
@@ -40,11 +41,20 @@ import { Hud, HudStats } from '../components/Hud.js';
 import { IconButton } from '../components/Controls.js';
 import { Tray } from '../components/Tray.js';
 import { GameOverSheet } from './GameOverSheet.js';
+import { OnboardingCoach } from './OnboardingCoach.js';
 import { PauseSheet } from './PauseSheet.js';
 import { SettingsSheet } from './SettingsSheet.js';
 import { AbilitySheet } from './AbilitySheet.js';
 
-export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
+/**
+ * `onboarding` is S7 (AC-1206): `{ beat, onNext, onSkip, onRestart }`, or null
+ * for an ordinary run. It changes three things and nothing else — a caption
+ * layer goes on top, the run writes nothing to disk, and the Game Over sheet is
+ * replaced by restarting the beat. Everything below it is the shipped screen,
+ * because a tutorial that runs on a special screen has taught the special
+ * screen (gameplay.md §11).
+ */
+export function GameScreen({ seed, difficulty, resumed = null, onboarding = null, onHowToPlay = null, onQuit }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [paused, setPaused] = useState(false);
@@ -76,6 +86,10 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
    * from an AppState transition, which is neither (src/ui/useAppState.js).
    */
   useOnBackground(() => {
+    // An onboarding run is scripted, so it must never become the run the player
+    // is offered on the way back in (AC-1012): its board was not produced by
+    // replaying moves through the engine, and Resume promises one that was.
+    if (onboarding) return;
     if (!run.view.gameOver) progress.saveResume(run.state);
   });
 
@@ -108,7 +122,19 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
     }
   }, [over, runIndex]);
 
+  const onboardingRestart = onboarding ? onboarding.onRestart : null;
   useEffect(() => {
+    // A player who passes fifteen times during a beat fills the scripted board
+    // and reaches Game Over on a run that has no record to write and no score
+    // to show. The beat starts again rather than dead-ending on a sheet whose
+    // every button is about a run that did not happen.
+    if (onboardingRestart && over) onboardingRestart();
+  }, [onboardingRestart, over]);
+
+  useEffect(() => {
+    // AC-1207's other half: nothing about an onboarding run reaches the save.
+    // Not the record, not the streak, not the lifetime totals that buy unlocks.
+    if (onboarding) return;
     if (!over) {
       writtenRef.current = null;
       setOutcome(null);
@@ -132,7 +158,30 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
     // same line that decides the badge, so the sound and the badge cannot
     // disagree about whether this was a record.
     if (newBest) fireCue(CUE.newBest, 1);
-  }, [over, runIndex, record, finishRun]);
+  }, [onboarding, over, runIndex, record, finishRun]);
+
+  /**
+   * AC-1206 — the beat's gate, evaluated on CONSECUTIVE engine states.
+   *
+   * `prevStateRef` holds the board the player's input arrived at, never the
+   * board the beat opened on: a gate that compares a counter against the
+   * opening value goes on reporting true for the rest of the beat once it has
+   * moved, and the caption would then confirm a lesson three turns old.
+   *
+   * The ref is written before the comparison can fire twice, so React 19
+   * StrictMode's double-invoked effect compares a state against itself and does
+   * nothing the second time.
+   */
+  const beatId = onboarding ? onboarding.beat : null;
+  const [beatDone, setBeatDone] = useState(false);
+  const prevStateRef = useRef(run.state);
+  useEffect(() => {
+    if (!beatId) return;
+    const before = prevStateRef.current;
+    const after = run.state;
+    prevStateRef.current = after;
+    if (before !== after && BEAT[beatId].gate(before, after)) setBeatDone(true);
+  }, [beatId, run.state]);
 
   // THE one call. Insets are read as numbers and fed into the formula, never
   // used as an opaque wrapper view (ui.md §3.3).
@@ -396,11 +445,23 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
       ]}
     >
       {body}
+      {beatId ? (
+        <OnboardingCoach
+          beat={BEAT[beatId]}
+          satisfied={beatDone}
+          // Below the HUD in every stage that has one at the top; in stage W
+          // the HUD is in the side rail and there is nothing above the board.
+          top={insets.top + (wide ? 0 : chrome.hud)}
+          onNext={onboarding.onNext}
+          onSkip={onboarding.onSkip}
+        />
+      ) : null}
       {paused && !settingsOpen && !run.view.gameOver ? (
         <PauseSheet
           reduced={reduced}
           onResume={() => setPaused(false)}
           onSettings={() => setSettingsOpen(true)}
+          onHowToPlay={onHowToPlay}
           onRestart={() => {
             setPaused(false);
             run.restart(difficulty);
@@ -417,7 +478,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
           onClose={() => setSheetOpen(false)}
         />
       ) : null}
-      {run.view.gameOver && outcome ? (
+      {run.view.gameOver && outcome && !onboarding ? (
         <GameOverSheet
           record={run.view.record}
           difficulty={difficulty}

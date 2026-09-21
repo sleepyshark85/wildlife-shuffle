@@ -6,6 +6,7 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "com.sleepyshark.animalrun",
       "buildNumber": "1",
@@ -15,7 +16,14 @@
       "supportsTablet": false
     },
     "android": {
-      "package": "com.sleepyshark.animalrun"
+      "package": "com.sleepyshark.animalrun",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#16212C"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "owner": "sleepyshark.85",
     "extra": {
@@ -28,7 +36,24 @@
     "backgroundColor": "#0D141B",
     "plugins": [
       "expo-status-bar",
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0D141B",
+          "enableFullScreenImage_legacy": true
+        }
+      ]
     ]
   }
 }
