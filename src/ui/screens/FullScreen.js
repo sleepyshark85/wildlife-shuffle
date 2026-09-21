@@ -12,16 +12,19 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
+import { RADIUS, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 import { Button } from '../components/Controls.js';
 
 export function FullScreen({ title, subtitle, onBack, children, testID }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const insets = useSafeAreaInsets();
   return (
     <View testID={testID} style={[styles.screen, { paddingTop: insets.top + SPACE.lg }]}>
       <View style={styles.header}>
-        <Text style={TYPE.title}>{title}</Text>
-        {subtitle ? <Text style={TYPE.body}>{subtitle}</Text> : null}
+        <Text style={theme.type.title}>{title}</Text>
+        {subtitle ? <Text style={theme.type.body}>{subtitle}</Text> : null}
       </View>
       <ScrollView
         style={styles.body}
@@ -38,9 +41,11 @@ export function FullScreen({ title, subtitle, onBack, children, testID }) {
 
 /** A titled panel. Everything on both screens sits in one of these. */
 export function Card({ title, children }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   return (
     <View style={styles.card}>
-      {title ? <Text style={TYPE.label}>{title}</Text> : null}
+      {title ? <Text style={theme.type.label}>{title}</Text> : null}
       {children}
     </View>
   );
@@ -48,16 +53,18 @@ export function Card({ title, children }) {
 
 /** One `caption ......... value` line. Tabular figures so columns line up. */
 export function Line({ caption, value, muted }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   return (
     <View style={styles.line}>
-      <Text style={[TYPE.body, muted && styles.mutedInk]} numberOfLines={2}>{caption}</Text>
+      <Text style={[theme.type.body, muted && styles.mutedInk]} numberOfLines={2}>{caption}</Text>
       <Text style={styles.lineValue}>{value}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bg, paddingHorizontal: SPACE.xl },
+const STYLES = themed((T) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: T.colors.bg, paddingHorizontal: SPACE.xl },
   header: { gap: SPACE.xs, paddingBottom: SPACE.md },
   body: { flex: 1 },
   bodyContent: { gap: SPACE.md },
@@ -65,10 +72,10 @@ const styles = StyleSheet.create({
   card: {
     gap: SPACE.sm,
     padding: SPACE.lg,
-    backgroundColor: COLORS.panel,
+    backgroundColor: T.colors.panel,
     borderRadius: RADIUS.card,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
   },
   line: {
     flexDirection: 'row',
@@ -77,9 +84,9 @@ const styles = StyleSheet.create({
     gap: SPACE.md,
   },
   lineValue: {
-    ...TYPE.button,
-    color: COLORS.ink,
+    ...T.type.button,
+    color: T.colors.ink,
     fontVariant: ['tabular-nums'],
   },
-  mutedInk: { color: COLORS.inkDim },
-});
+  mutedInk: { color: T.colors.inkDim },
+}));

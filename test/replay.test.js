@@ -22,7 +22,7 @@ import { inDangerBand } from '../src/engine/abilities.js';
 import { buildReplay } from '../src/ui/replay.js';
 import { runReducer } from '../src/ui/useGameRun.js';
 import {
-  MOTION, MOTION_SIZE, NUMERAL, SPECIES_STYLE, brighten, contrast,
+  MOTION, MOTION_SIZE, THEME, brighten, contrast,
 } from '../src/ui/theme.js';
 import { LAST, animal, fullRow, rowExcept } from './helpers.js';
 
@@ -487,9 +487,16 @@ test('AC-905b the size numeral clears 4.5:1 on every species, by construction', 
   // three of five (fox 4.46, elk 3.92, elephant 3.47). Emoji ink is decorative
   // by design; the numeral is the information. The chip makes the answer the
   // same number whatever is underneath it.
-  const ratio = contrast(NUMERAL.ink, NUMERAL.chip);
-  assert.ok(ratio >= 4.5, `numeral contrast is ${ratio.toFixed(2)}:1`);
-  assert.equal(Number(ratio.toFixed(1)), 16.7);
+  //
+  // AC-1512: on light the chip flips to bone with dark ink, which is the same
+  // construction on the other ground — so BOTH are asserted, and the number
+  // for each is pinned so a palette edit that quietly weakens one shows up.
+  for (const theme of Object.values(THEME)) {
+    const ratio = contrast(theme.numeral.ink, theme.numeral.chip);
+    assert.ok(ratio >= 4.5, `${theme.name} numeral contrast is ${ratio.toFixed(2)}:1`);
+  }
+  assert.equal(Number(contrast(THEME.dark.numeral.ink, THEME.dark.numeral.chip).toFixed(1)), 16.7);
+  assert.equal(Number(contrast(THEME.light.numeral.ink, THEME.light.numeral.chip).toFixed(1)), 12.8);
 
   // And prove the arithmetic is the arithmetic that condemned the old choice:
   // recomputing the superseded treatment must still fail on the same three.
@@ -498,7 +505,10 @@ test('AC-905b the size numeral clears 4.5:1 on every species, by construction', 
     const mix = px(fg).map((c, i) => Math.round(alpha * c + (1 - alpha) * px(bg)[i]));
     return `#${mix.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
   };
-  const failed = Object.entries(SPECIES_STYLE)
+  // On the DARK ramp, which is the one the superseded treatment was measured
+  // against. It is a historical proof about a specific palette, not a property
+  // of every palette, so it is not swept over both themes.
+  const failed = Object.entries(THEME.dark.species)
     .filter(([, v]) => contrast(composite(v.glyph, v.fill, 0.85), v.fill) < 4.5)
     .map(([k]) => k);
   assert.deepEqual(failed.sort(), ['elephant', 'elk', 'fox']);

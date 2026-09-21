@@ -28,7 +28,8 @@ import Animated, {
 import { pipAlpha, pipBloomTone } from '../abilities.js';
 import { plural } from '../format.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
-import { COLORS, COPY, MOTION, RADIUS, SPACE, TYPE } from '../theme.js';
+import { COPY, MOTION, RADIUS, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 import { CHROME_FONT_CAP, useFocusRing } from './Controls.js';
 
 const TOUCH = 44;
@@ -43,11 +44,13 @@ const TOUCH = 44;
  * announcement may live in one arm of a conditional.
  */
 const Pip = memo(function Pip({ pip, bloom, tone, reduced }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   // `pipAlpha` is the WHOLE composition, and the component does no arithmetic
   // on it. It used to multiply by 0.55 here, which quietly took the gold pip's
   // specified 25% down to 13.75% while the test asserting the 25% passed.
   const rest = pipAlpha(pip);
-  const restFill = pip.gold ? COLORS.lastStand : pip.filled ? COLORS.pip : COLORS.pipEmpty;
+  const restFill = pip.gold ? theme.colors.lastStand : pip.filled ? theme.colors.pip : theme.colors.pipEmpty;
   const on = useSharedValue(rest);
   // ui.md §13.1: the gold is the EVENT. It rides its own value so the pip can
   // settle back to its ordinary fill afterwards — a grant is a moment, and
@@ -73,12 +76,13 @@ const Pip = memo(function Pip({ pip, bloom, tone, reduced }) {
 
   const style = useAnimatedStyle(() => ({
     opacity: on.value,
-    backgroundColor: interpolateColor(gold.value, [0, 1], [restFill, COLORS.lastStand]),
+    backgroundColor: interpolateColor(gold.value, [0, 1], [restFill, theme.colors.lastStand]),
   }));
   return <Animated.View style={[styles.pip, pip.gold && styles.pipRim, style]} />;
 });
 
 const ChargePips = memo(function ChargePips({ pips, grants, reduced }) {
+  const styles = STYLES[useTheme().name];
   // A grant fills the pip at the index it took the count to — WHICHEVER pip
   // that is. Last Stand at 0 charges lands on pip 1, and the gold has to go
   // with it: that player is the whole reason the grant exists.
@@ -112,6 +116,8 @@ const ChargePips = memo(function ChargePips({ pips, grants, reduced }) {
 export const AbilityButton = memo(function AbilityButton({
   button, grants, reduced, showLabel = true, onPress, style,
 }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const ring = useFocusRing();
   const lastStand = grants ? grants.find((g) => g.reason === 'lastStand') : null;
 
@@ -171,7 +177,7 @@ export const AbilityButton = memo(function AbilityButton({
         <Text
           maxFontSizeMultiplier={CHROME_FONT_CAP}
           numberOfLines={1}
-          style={[TYPE.button, styles.label, button.muted && styles.labelMuted]}
+          style={[theme.type.button, styles.label, button.muted && styles.labelMuted]}
         >
           {showLabel ? COPY.abilities : COPY.abilitiesGlyph}
         </Text>
@@ -190,13 +196,15 @@ export const AbilityButton = memo(function AbilityButton({
  * cannot dispatch.
  */
 export const TargetingChip = memo(function TargetingChip({ copy, onCancel, height }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   return (
     <View style={[styles.chip, { height }]}>
       <Text
         testID="targeting"
         maxFontSizeMultiplier={CHROME_FONT_CAP}
         accessibilityLiveRegion="polite"
-        style={[TYPE.body, styles.chipCopy]}
+        style={[theme.type.body, styles.chipCopy]}
       >
         {copy}
       </Text>
@@ -208,7 +216,7 @@ export const TargetingChip = memo(function TargetingChip({ copy, onCancel, heigh
         hitSlop={12}
         style={({ pressed }) => [styles.cancel, pressed && styles.pressed]}
       >
-        <Text maxFontSizeMultiplier={CHROME_FONT_CAP} style={[TYPE.button, styles.label]}>
+        <Text maxFontSizeMultiplier={CHROME_FONT_CAP} style={[theme.type.button, styles.label]}>
           {COPY.cancel}
         </Text>
       </Pressable>
@@ -216,7 +224,7 @@ export const TargetingChip = memo(function TargetingChip({ copy, onCancel, heigh
   );
 });
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   button: {
     minHeight: TOUCH,
     flexDirection: 'row',
@@ -225,9 +233,9 @@ const styles = StyleSheet.create({
     gap: SPACE.sm,
     paddingHorizontal: SPACE.sm,
     borderRadius: RADIUS.button,
-    backgroundColor: COLORS.panel,
+    backgroundColor: T.colors.panel,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
     overflow: 'hidden',
   },
   pulse: {
@@ -236,18 +244,18 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: COLORS.lastStand,
+    backgroundColor: T.colors.lastStand,
   },
   muted: { opacity: 0.38 },
   pressed: { opacity: 0.74 },
   focusRing: {
     outlineWidth: 2,
-    outlineColor: COLORS.accent,
+    outlineColor: T.colors.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   },
-  label: { color: COLORS.ink, fontSize: 13 },
-  labelMuted: { color: COLORS.inkMuted },
+  label: { color: T.colors.ink, fontSize: 13 },
+  labelMuted: { color: T.colors.inkMuted },
   lastStand: {
     position: 'absolute',
     left: 0,
@@ -257,25 +265,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.4,
-    color: COLORS.lastStand,
+    color: T.colors.lastStand,
   },
   pips: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pip: { width: 7, height: 7, borderRadius: RADIUS.pill },
   /** The fourth SLOT keeps its rim: it is still reachable only by overflow. */
-  pipRim: { borderWidth: 1, borderColor: COLORS.lastStand },
+  pipRim: { borderWidth: 1, borderColor: T.colors.lastStand },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACE.lg,
     borderTopWidth: 1,
-    borderTopColor: COLORS.hairline,
-    backgroundColor: COLORS.panelSunken,
+    borderTopColor: T.colors.hairline,
+    backgroundColor: T.colors.panelSunken,
   },
-  chipCopy: { color: COLORS.ink, flexShrink: 1 },
+  chipCopy: { color: T.colors.ink, flexShrink: 1 },
   cancel: {
     minHeight: TOUCH,
     justifyContent: 'center',
     paddingLeft: SPACE.lg,
   },
-});
+}));

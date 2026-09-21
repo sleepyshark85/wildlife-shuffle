@@ -17,7 +17,13 @@ import assert from 'node:assert/strict';
 import { DIFFICULTIES } from '../src/engine/constants.js';
 import { ACTIONS, createRun, reduce, runRecord } from '../src/engine/engine.js';
 import { STATUS } from '../src/engine/constants.js';
-import { SPECIES_STYLE, COLORS } from '../src/ui/theme.js';
+import { DEFAULT_THEME, THEME, contrast } from '../src/ui/theme.js';
+
+/** The ramp and the surfaces the app opens in — what a cosmetic starts from. */
+const BASE = THEME[DEFAULT_THEME];
+
+/** A save wearing one theme, so a cosmetic can be exercised on both grounds. */
+const wearing = (save, name) => ({ ...save, settings: { ...save.settings, theme: name } });
 import {
   COSMETIC_SLOTS,
   RECENT_RUNS,
@@ -396,8 +402,7 @@ test('AC-1011 applying a cosmetic changes appearance and never writes a token', 
   // The fault this exists to catch: a cosmetic implemented by MUTATING the
   // shared palette, which is v1's mutable-module-global defect (A3) wearing a
   // different hat — the engine's own species table sits next to these objects.
-  const speciesBefore = JSON.parse(JSON.stringify(SPECIES_STYLE));
-  const colorsBefore = JSON.parse(JSON.stringify(COLORS));
+  const speciesBefore = JSON.parse(JSON.stringify(THEME));
 
   const save = defaultSave();
   save.lifetime.buffaloRetired = 10;
@@ -409,13 +414,33 @@ test('AC-1011 applying a cosmetic changes appearance and never writes a token', 
     unlocks: { announced: [], applied: { theme: 'nightSavanna', palette: 'tundraPalette', animals: 'goldenHerd' } },
   };
 
+  // BOTH grounds. A cosmetic is applied on top of whichever theme the player
+  // is wearing, so checking one of them is checking half the feature.
+  for (const name of Object.keys(THEME)) {
+    const worn = cosmeticsFor(wearing(everything, name));
+    assert.equal(worn.theme.name, name, 'the save\'s theme was ignored');
+    assert.notEqual(worn.colors.board, THEME[name].colors.board, `${name}: the theme did nothing`);
+    assert.notEqual(worn.species.elk.fill, THEME[name].species.elk.fill,
+      `${name}: the palette did nothing`);
+    assert.notEqual(worn.glyph('rat'), BASE_COSMETICS.glyph('rat'),
+      `${name}: the animal set did nothing`);
+    // AC-1505's repricing reaches the Golden Herd's gild, and §16.4 says which
+    // gold: the one belonging to the GROUND the gilded edge is drawn on, which
+    // here is Night Savanna's rather than the app theme's. The property is
+    // what is asserted rather than the token, because the edge is what pays
+    // the visibility floor once every fill has been replaced.
+    assert.ok(contrast(worn.species.rat.edge, worn.colors.board) >= 3,
+      `${name}: the gild reads at ${contrast(worn.species.rat.edge, worn.colors.board).toFixed(2)}`
+      + ' on the board it is drawn on');
+  }
+
   const skin = cosmeticsFor(everything);
-  assert.notEqual(skin.colors.board, COLORS.board, 'the theme did nothing');
-  assert.notEqual(skin.species.elk.fill, SPECIES_STYLE.elk.fill, 'the palette did nothing');
+  assert.notEqual(skin.colors.board, BASE.colors.board, 'the theme did nothing');
+  assert.notEqual(skin.species.elk.fill, BASE.species.elk.fill, 'the palette did nothing');
   assert.notEqual(skin.glyph('rat'), BASE_COSMETICS.glyph('rat'), 'the animal set did nothing');
 
-  assert.deepEqual(SPECIES_STYLE, speciesBefore, 'cosmeticsFor wrote to SPECIES_STYLE');
-  assert.deepEqual(COLORS, colorsBefore, 'cosmeticsFor wrote to COLORS');
+  assert.deepEqual(JSON.parse(JSON.stringify(THEME)), speciesBefore,
+    'cosmeticsFor wrote to a theme token');
 
   // ui.md §4.3 / AC-908 survive the palette: lightness still descends with size.
   const lum = (hex) => {
@@ -435,16 +460,22 @@ test('AC-1011 a cosmetic the counters have not earned is ignored', () => {
     ...defaultSave(),
     unlocks: { announced: [], applied: { theme: 'nightSavanna', palette: 'tundraPalette' } },
   };
+  for (const name of Object.keys(THEME)) {
+    const worn = cosmeticsFor(wearing(save, name));
+    assert.equal(worn.colors.board, THEME[name].colors.board, `${name}: an unearned board applied`);
+    assert.deepEqual(worn.species.elk, { ...THEME[name].species.elk },
+      `${name}: an unearned palette applied`);
+  }
   const skin = cosmeticsFor(save);
-  assert.equal(skin.colors.board, COLORS.board);
-  assert.deepEqual(skin.species.elk, { ...SPECIES_STYLE.elk });
+  assert.equal(skin.colors.board, BASE.colors.board);
+  assert.deepEqual(skin.species.elk, { ...BASE.species.elk });
 
   // ...and an applied id that is not an unlock at all, or is in the wrong slot.
   const nonsense = {
     ...defaultSave(),
     unlocks: { announced: [], applied: { theme: 'ratKing', palette: '../../etc/passwd' } },
   };
-  assert.equal(cosmeticsFor(nonsense).colors.board, COLORS.board);
+  assert.equal(cosmeticsFor(nonsense).colors.board, BASE.colors.board);
   assert.equal(cosmeticsFor(nonsense).glyph('rat'), BASE_COSMETICS.glyph('rat'));
 });
 

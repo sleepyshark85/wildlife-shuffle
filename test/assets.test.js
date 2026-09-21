@@ -21,7 +21,16 @@ import { inflateSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { COLORS } from '../src/ui/theme.js';
+import { DEFAULT_THEME, THEME } from '../src/ui/theme.js';
+
+/**
+ * AC-1501 split what used to be one palette. The ICON keeps the dark board
+ * ground ui.md §11.1 names — a mark on a home screen is not a surface of the
+ * app — while the SPLASH follows the theme the app opens in, because AC-1205's
+ * whole subject is the seam between the splash and React's first frame.
+ */
+const ICON_GROUND = THEME.dark.colors.board;
+const APP_GROUND = THEME[DEFAULT_THEME].colors.bg;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => readFileSync(f, 'utf8');
@@ -151,10 +160,10 @@ test('AC-1202 icon.png has square corners: all four are the ground colour', () =
     [0, png.height - 1],
     [png.width - 1, png.height - 1],
   ].map(([x, y]) => pixelAt(png, x, y));
-  // ui.md §11.1: ground `#16212C`, which is COLORS.board. A rounded icon is
+  // ui.md §11.1: ground `#16212C`, which is the dark board. A rounded icon is
   // made by punching the corners out, and whatever is punched in — white,
   // black, or a composited edge — is not this.
-  assert.deepEqual(corners, new Array(4).fill(COLORS.board.toUpperCase()));
+  assert.deepEqual(corners, new Array(4).fill(ICON_GROUND.toUpperCase()));
 });
 
 test('AC-1202 every shipped PNG is opaque, not only the icon', () => {
@@ -248,36 +257,62 @@ test('AC-1205 the splash is configured, and on the background the design names',
   const opts = entry[1];
   assert.equal(opts.image, './assets/splash.png');
   assert.equal(opts.resizeMode, 'contain');
-  assert.equal(opts.backgroundColor, COLORS.bg);
+  assert.equal(opts.backgroundColor, APP_GROUND);
 });
 
 test('AC-1205 no white flash: the splash ground and the app ground are one colour', () => {
   // The seam between the splash and the first React frame is only invisible if
   // the two are the same colour. Three places have to agree and all three are
-  // derived from `COLORS.bg` rather than typed: the splash plugin, the
-  // manifest's own backgroundColor, and the screen's root style.
+  // derived from the DEFAULT theme's ground rather than typed: the splash
+  // plugin, the manifest's own backgroundColor, and the root style.
+  //
+  // AC-1501 is why this is the default theme's and not "the theme's": a static
+  // splash cannot know which theme the player chose, so it takes the one the
+  // app opens in. A player who has switched to dark gets one bright frame,
+  // which is the honest cost of a preference a launch image cannot read.
   const entry = (APP.plugins || []).find(
     (p) => (Array.isArray(p) ? p[0] : p) === 'expo-splash-screen',
   );
-  assert.equal(APP.backgroundColor, COLORS.bg);
-  assert.equal(entry[1].backgroundColor, COLORS.bg);
-  assert.match(read(path.join(ROOT, 'App.js')), /backgroundColor: COLORS\.bg/);
+  assert.equal(APP.backgroundColor, APP_GROUND);
+  assert.equal(entry[1].backgroundColor, APP_GROUND);
+  assert.match(
+    read(path.join(ROOT, 'App.js')),
+    /backgroundColor: THEME\[DEFAULT_THEME\]\.colors\.bg/,
+  );
   // ...and the splash image's own top-left pixel is that colour too, so a
   // regenerated image on a different ground shows up here rather than on a
   // phone.
   const png = readPng(path.join(ROOT, 'assets/splash.png'));
-  assert.equal(pixelAt(png, 0, 0), COLORS.bg.toUpperCase());
+  assert.equal(pixelAt(png, 0, 0), APP_GROUND.toUpperCase());
 });
 
-test('AC-1211 userInterfaceStyle is dark and nothing overrides it per platform', () => {
-  assert.equal(APP.userInterfaceStyle, 'dark');
+test('AC-1513 userInterfaceStyle is not dark, and no platform puts it back', () => {
+  // AC-1211 is SUPERSEDED. It pinned the manifest to `dark` so the app would
+  // render dark whatever the device said; the owner overruled dark-only having
+  // played it, so what the app now renders regardless of the device setting is
+  // the theme the PLAYER chose (src/ui/progress.js `settings.theme`).
+  //
+  // The manifest therefore names the theme the app OPENS in, which is the one
+  // the splash and the root view are painted in too. It is not `automatic`:
+  // the app does not follow the device, so letting the system chrome follow it
+  // would put dark system surfaces under a bright app on a device set to dark.
+  assert.notEqual(APP.userInterfaceStyle, 'dark');
+  assert.equal(APP.userInterfaceStyle, DEFAULT_THEME);
   for (const platform of ['ios', 'android']) {
     const scheme = (APP[platform] || {}).userInterfaceStyle;
     assert.ok(
-      scheme === undefined || scheme === 'dark',
+      scheme === undefined || scheme === DEFAULT_THEME,
       `${platform}.userInterfaceStyle is ${scheme}`,
     );
   }
+  // AC-1512, on the one surface iOS draws for us: the status bar's content
+  // takes the ground's opposite, and it is read from the theme rather than
+  // pinned here — a `style="light"` bar over a bone screen is invisible.
+  assert.match(
+    read(path.join(ROOT, 'App.js')),
+    /StatusBar style=\{useTheme\(\)\.name === 'light' \? 'dark' : 'light'\}/,
+    'the status bar no longer follows the theme',
+  );
 });
 
 /** Every shipped `.js`, comments stripped — the same shape as hygiene.test.js. */
@@ -359,7 +394,7 @@ test('AC-1205 the root view is the app ground, so there is no white first frame'
   const pkg = JSON.parse(read(path.join(ROOT, 'package.json')));
   assert.ok(pkg.dependencies['expo-system-ui'],
     'backgroundColor is set but expo-system-ui is not installed, so it does nothing');
-  assert.equal(APP.backgroundColor, COLORS.bg);
+  assert.equal(APP.backgroundColor, APP_GROUND);
 });
 
 test('ui.md §11.4 the audio plugin asks for no microphone and no background audio', () => {

@@ -35,7 +35,8 @@ import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { actionBarHeight, actionBarSlots, passButtonHeight, railSlots } from '../layout.js';
-import { COLORS, COPY, SPACE, TYPE } from '../theme.js';
+import { COPY, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 import { AbilityButton, TargetingChip } from './AbilityButton.js';
 import { Button, CHROME_FONT_CAP } from './Controls.js';
 
@@ -43,6 +44,8 @@ export const ActionBar = memo(function ActionBar({
   chrome, screenW, blocked, resolving, gameOver, onPass, column,
   ability, grants, reduced, targeting, onAbilities, onCancelTarget, status,
 }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const muted = resolving || gameOver;
   // `screenW` is the RAIL's width in the column layout and the screen's in the
   // row layout, so each measures the box it is actually laid out in. Neither
@@ -71,7 +74,7 @@ export const ActionBar = memo(function ActionBar({
       maxFontSizeMultiplier={CHROME_FONT_CAP}
       accessibilityLiveRegion="polite"
       numberOfLines={1}
-      style={[TYPE.label, blocked && styles.blocked]}
+      style={[theme.type.label, blocked && styles.blocked]}
     >
       {status}
     </Text>
@@ -103,7 +106,7 @@ export const ActionBar = memo(function ActionBar({
     return (
       <View style={styles.column}>
         {targeting ? (
-          <Text testID="targeting" style={[TYPE.body, styles.chipCopy]}>{targeting}</Text>
+          <Text testID="targeting" style={[theme.type.body, styles.chipCopy]}>{targeting}</Text>
         ) : null}
         {abilities}
         {pass}
@@ -131,18 +134,18 @@ export const ActionBar = memo(function ActionBar({
   );
 });
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: SPACE.lg,
     borderTopWidth: 1,
-    borderTopColor: COLORS.hairline,
+    borderTopColor: T.colors.hairline,
   },
   column: { gap: SPACE.md, alignItems: 'stretch' },
   wideButton: { height: 48 },
   wideSlot: { alignSelf: 'stretch' },
-  chipCopy: { color: COLORS.ink },
-  blocked: { color: COLORS.illegal },
-});
+  chipCopy: { color: T.colors.ink },
+  blocked: { color: T.colors.illegal },
+}));

@@ -31,7 +31,17 @@ import {
   traySilhouettes,
   verticalSlack,
 } from '../src/ui/layout.js';
-import { SILHOUETTE } from '../src/ui/theme.js';
+import { THEME } from '../src/ui/theme.js';
+
+/**
+ * The tray's 1 pt of daylight (AC-315b) is a METRIC, not a colour, so it is
+ * the same on both grounds — asserted here rather than assumed, because after
+ * AC-1501 every token has two values and reading one of them is how a test
+ * quietly stops covering the other.
+ */
+const gaps = Object.values(THEME).map((t) => t.silhouette.gap);
+assert.equal(new Set(gaps).size, 1, `the two themes disagree about the tray gap: ${gaps}`);
+const SILHOUETTE = THEME.light.silhouette;
 
 const INSET_PROFILES = [[0, 0], [20, 0], [44, 34], [59, 34], [62, 34], [70, 40]];
 

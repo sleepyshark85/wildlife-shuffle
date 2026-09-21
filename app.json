@@ -30,8 +30,8 @@
     },
     "owner": "sleepyshark.85",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#0D141B",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F2EDE3",
     "plugins": [
       "expo-status-bar",
       [
@@ -48,7 +48,7 @@
         {
           "image": "./assets/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#0D141B",
+          "backgroundColor": "#F2EDE3",
           "enableFullScreenImage_legacy": true
         }
       ]

@@ -37,13 +37,16 @@ import Animated, {
 
 import { hudHeight } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
-import { COLORS, SPACE, TYPE, hudScale } from '../theme.js';
+import { SPACE, hudScale, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 import { formatScore } from '../format.js';
 import { BuffaloChip, IconButton, StreakPill } from './Controls.js';
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 const ScoreValue = memo(function ScoreValue({ score, count, reduced, fontSize }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const shown = useSharedValue(score);
 
   useEffect(() => {
@@ -68,7 +71,7 @@ const ScoreValue = memo(function ScoreValue({ score, count, reduced, fontSize })
     text: formatScore(shown.value),
   }));
 
-  const type = [TYPE.score, { fontSize, lineHeight: fontSize }];
+  const type = [theme.type.score, { fontSize, lineHeight: fontSize }];
   return (
     <View
       accessible
@@ -94,6 +97,8 @@ const ScoreValue = memo(function ScoreValue({ score, count, reduced, fontSize })
 export const HudStats = memo(function HudStats({
   score, count, streak, buffalo, buffaloShrink, reduced, compact, column,
 }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   // AC-910d: one Dynamic Type decision, made by a pure function in theme.js.
   const { fontScale } = useWindowDimensions();
   const { large, score: scoreSize } = hudScale(fontScale, compact);
@@ -101,7 +106,7 @@ export const HudStats = memo(function HudStats({
     <View style={column ? styles.stack : styles.row}>
       <View>
         {large ? null : (
-          <Text allowFontScaling={false} style={TYPE.label}>SCORE</Text>
+          <Text allowFontScaling={false} style={theme.type.label}>SCORE</Text>
         )}
         <ScoreValue score={score} count={count} reduced={reduced} fontSize={scoreSize} />
       </View>
@@ -139,6 +144,7 @@ export const HudStats = memo(function HudStats({
 export const Hud = memo(function Hud({
   chrome, score, count, streak, buffalo, buffaloShrink, reduced, onPause, pauseMuted,
 }) {
+  const styles = STYLES[useTheme().name];
   return (
     <View style={[styles.hud, { height: hudHeight(chrome) }]}>
       <HudStats
@@ -155,14 +161,14 @@ export const Hud = memo(function Hud({
   );
 });
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   hud: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACE.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.hairline,
+    borderBottomColor: T.colors.hairline,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACE.lg, flex: 1 },
   stack: { gap: SPACE.md },
@@ -182,4 +188,4 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     backgroundColor: 'transparent',
   },
-});
+}));

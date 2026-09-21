@@ -69,12 +69,34 @@ const ProgressContext = createContext({
  */
 const CosmeticsContext = createContext(BASE_COSMETICS);
 
+/**
+ * And a THIRD, for the theme alone (AC-1501).
+ *
+ * Every screen in the app reads the theme and almost none of them read a
+ * cosmetic, so they are separated by what changes them: the theme is one of
+ * two frozen singletons and changes when the player picks the other one, while
+ * the cosmetics object is rebuilt whenever a record is. Folding the theme into
+ * `CosmeticsContext` would have re-rendered every chrome component in the app
+ * at the end of every run.
+ */
+const ThemeContext = createContext(BASE_COSMETICS.theme);
+
 export function useProgress() {
   return useContext(ProgressContext);
 }
 
 export function useCosmetics() {
   return useContext(CosmeticsContext);
+}
+
+/**
+ * The palette everything that is not an animal draws with.
+ *
+ * It comes off the SAVE, like every other preference (AC-906b): one blob, one
+ * schema version, and no second store to disagree with the first.
+ */
+export function useTheme() {
+  return useContext(ThemeContext);
 }
 
 export function ProgressProvider({ children }) {
@@ -189,15 +211,20 @@ export function ProgressProvider({ children }) {
       applyCosmetic, finishOnboarding],
   );
 
-  const { unlocks, lifetime, best } = save;
+  const { unlocks, lifetime, best, settings } = save;
+  // `settings` is in the dependency list because the THEME is a setting now. A
+  // memo that kept the old appearance after the player switched theme would be
+  // the state right and the screen wrong, which is §6.7's whole subject.
   const cosmetics = useMemo(
-    () => cosmeticsFor({ unlocks, lifetime, best }),
-    [unlocks, lifetime, best],
+    () => cosmeticsFor({ unlocks, lifetime, best, settings }),
+    [unlocks, lifetime, best, settings],
   );
 
   return (
     <ProgressContext.Provider value={value}>
-      <CosmeticsContext.Provider value={cosmetics}>{children}</CosmeticsContext.Provider>
+      <ThemeContext.Provider value={cosmetics.theme}>
+        <CosmeticsContext.Provider value={cosmetics}>{children}</CosmeticsContext.Provider>
+      </ThemeContext.Provider>
     </ProgressContext.Provider>
   );
 }

@@ -41,11 +41,13 @@ import { ROWS, trayMetrics } from '../layout.js';
 import { Z } from '../stacking.js';
 import { EASE, delay, timing } from '../motion.js';
 import { handoverWindow } from '../timeline.js';
-import { HANDOVER_MS, SEAM, SEAM_BUFFALO, SILHOUETTE } from '../theme.js';
-import { useCosmetics } from '../progressStore.js';
+import { HANDOVER_MS } from '../theme.js';
+import { useCosmetics, useTheme } from '../progressStore.js';
 
 const Flier = memo(function Flier({ animal, plan, cell, fromTop, bodyH, reduced }) {
   const cosmetics = useCosmetics();
+  const theme = useTheme();
+  const shadow = theme.silhouette;
   const style = cosmetics.species[animal.type] || cosmetics.species.rat;
   const buffalo = animal.type === SPECIES.buffalo.type;
   const toTop = (ROWS - 1) * cell;
@@ -80,16 +82,16 @@ const Flier = memo(function Flier({ animal, plan, cell, fromTop, bodyH, reduced 
     backgroundColor: interpolateColor(
       become.value,
       [0, 1],
-      [buffalo ? SILHOUETTE.buffaloFill : SILHOUETTE.fill, style.fill],
+      [buffalo ? shadow.buffaloFill : shadow.fill, style.fill],
     ),
     borderColor: interpolateColor(
       become.value,
       [0, 1],
-      [buffalo ? SILHOUETTE.buffaloRim : SILHOUETTE.edge, style.edge],
+      [buffalo ? shadow.buffaloRim : shadow.edge, style.edge],
     ),
-    borderWidth: SILHOUETTE.buffaloRimWidth
-      + ((buffalo ? 2 : 1.5) - SILHOUETTE.buffaloRimWidth) * become.value,
-    borderRadius: SILHOUETTE.radius + (5 - SILHOUETTE.radius) * become.value,
+    borderWidth: shadow.buffaloRimWidth
+      + ((buffalo ? 2 : 1.5) - shadow.buffaloRimWidth) * become.value,
+    borderRadius: shadow.radius + (5 - shadow.radius) * become.value,
   }));
 
   // Seams draw in and the glyph fades up on the same curve: both are species
@@ -108,7 +110,7 @@ const Flier = memo(function Flier({ animal, plan, cell, fromTop, bodyH, reduced 
             top: 3,
             bottom: 3,
             width: 1,
-            backgroundColor: buffalo ? SEAM_BUFFALO : SEAM,
+            backgroundColor: buffalo ? theme.seamBuffalo : theme.seam,
           },
           detailStyle,
         ]}

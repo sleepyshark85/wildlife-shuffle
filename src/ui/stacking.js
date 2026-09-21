@@ -31,6 +31,13 @@
  * before the animals, so it does not dim those.
  */
 export const Z = Object.freeze({
+  /**
+   * AC-1507: the natural background. The bottom of the stack, and the reason
+   * "the background cannot be behind an animal" is a fact about the layering
+   * rather than a promise about an alpha — everything above it that is not an
+   * empty cell is opaque.
+   */
+  texture: 0,
   cells: 0,
   pulse: 0,
   clears: 0,
@@ -75,14 +82,16 @@ export function topmost(candidates) {
 
 /** The board's child order, as `Board.js` writes it. A hygiene test checks it. */
 export const ORDER = Object.freeze({
-  cells: 0,
-  pulse: 1,
-  clears: 2,
-  targetScrim: 3,
-  recess: 4,
-  ghost: 5,
+  /** First child, so the cells paint over it at equal z (AC-1507). */
+  texture: 0,
+  cells: 1,
+  pulse: 2,
+  clears: 3,
+  targetScrim: 4,
+  recess: 5,
+  ghost: 6,
   /** Animals are the last children, so they are the last of the z=1 group. */
-  animals: 6,
+  animals: 7,
 });
 
 /**

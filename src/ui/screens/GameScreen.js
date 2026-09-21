@@ -28,10 +28,10 @@ import {
   RAIL_PAD, STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap,
 } from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
-import { useProgress, useAnnouncements } from '../progressStore.js';
+import { useAnnouncements, useProgress, useTheme } from '../progressStore.js';
 import { useSettings } from '../settings.js';
 import { useOnBackground } from '../useAppState.js';
-import { COLORS, MOTION, MOTION_SIZE, RADIUS, SPACE, TYPE } from '../theme.js';
+import { MOTION, MOTION_SIZE, RADIUS, SPACE, themed } from '../theme.js';
 import { useDragShared } from '../useDragShared.js';
 import { useGameRun } from '../useGameRun.js';
 import { useTurnClock } from '../useTurnClock.js';
@@ -57,6 +57,8 @@ import { AbilitySheet } from './AbilitySheet.js';
  * screen (gameplay.md §11).
  */
 export function GameScreen({ seed, difficulty, resumed = null, onboarding = null, onHowToPlay = null, onQuit }) {
+  const theme = useTheme();
+  const styles = STYLES[theme.name];
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [paused, setPaused] = useState(false);
@@ -295,6 +297,9 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
     <Board
       animals={run.view.animals}
       cell={cell}
+      // AC-1510: the ground is drawn from the RUN's seed, so each run's board
+      // is its own and fixed for the whole of it.
+      seed={seed}
       drag={drag}
       clock={clock}
       plan={plan}
@@ -350,8 +355,8 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
     // AC-116: a clear message, never a clipped or overflowing board.
     body = (
       <View style={styles.unsupported}>
-        <Text style={TYPE.title}>Screen too small</Text>
-        <Text style={[TYPE.body, styles.unsupportedCopy]}>
+        <Text style={theme.type.title}>Screen too small</Text>
+        <Text style={[theme.type.body, styles.unsupportedCopy]}>
           Wildlife Shuffle needs a taller window to show all fifteen rows. Resize
           the window, or turn off Display Zoom, and the board will come back.
         </Text>
@@ -503,8 +508,8 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bg },
+const STYLES = themed((T) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: T.colors.bg },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   wideRow: {
     flex: 1,
@@ -522,10 +527,10 @@ const styles = StyleSheet.create({
     // The rail's content width is what its controls have to fit in, and
     // `railSlots` is what reads it, so the padding is ITS constant (AC-126).
     paddingHorizontal: RAIL_PAD,
-    backgroundColor: COLORS.panel,
+    backgroundColor: T.colors.panel,
     borderRadius: RADIUS.card,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
   },
   railTop: { gap: SPACE.md, alignItems: 'flex-start' },
   railSpacer: { flex: 1 },
@@ -537,4 +542,4 @@ const styles = StyleSheet.create({
     gap: SPACE.md,
   },
   unsupportedCopy: { textAlign: 'center' },
-});
+}));

@@ -12,7 +12,8 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { COLORS, RADIUS, SPACE, TYPE } from '../theme.js';
+import { RADIUS, SPACE, themed } from '../theme.js';
+import { useTheme } from '../progressStore.js';
 import { useSettings } from '../settings.js';
 import {
   clearDiagnostics,
@@ -23,6 +24,7 @@ import { Button, Toggle } from '../components/Controls.js';
 import { Sheet } from './Sheet.js';
 
 export function SettingsSheet({ onClose }) {
+  const styles = STYLES[useTheme().name];
   const settings = useSettings();
   const [leaving, setLeaving] = useState(false);
   // Read once per open/refresh rather than per render: the report is a string
@@ -34,7 +36,7 @@ export function SettingsSheet({ onClose }) {
     <Sheet
       testID="settings"
       title="Settings"
-      subtitle="Sound and accessibility"
+      subtitle="Appearance, sound and accessibility"
       reduced={settings.reduced}
       visible={!leaving}
       onClosed={onClose}
@@ -45,6 +47,20 @@ export function SettingsSheet({ onClose }) {
           device's ringer switch, which silences sound on its own and leaves
           haptics alone (AC-1103); there is no API to read it and nothing here
           tries. */}
+      {/* AC-1501. The game OPENS bright — the owner did not ask for an option,
+          they asked for bright — so this reads as a departure from the default
+          exactly like the accessibility toggles do: off is the theme the app
+          ships in. The value is a STRING in the save rather than a boolean, so
+          the switch is translated here; `withSettings` refuses a coerced one
+          rather than storing `true` for "light" (src/ui/progress.js). */}
+      <View style={styles.rows}>
+        <Toggle
+          label="Dark theme"
+          caption="The slate board. Off is the bright one the game opens in."
+          value={settings.theme === 'dark'}
+          onChange={(on) => settings.set('theme', on ? 'dark' : 'light')}
+        />
+      </View>
       <View style={styles.rows}>
         <Toggle
           label="Sound"
@@ -68,7 +84,7 @@ export function SettingsSheet({ onClose }) {
         />
         <Toggle
           label="High contrast"
-          caption="White borders and brighter seams."
+          caption="Borders and seams in the ground's opposite."
           value={settings.highContrast}
           onChange={(on) => settings.set('highContrast', on)}
         />
@@ -123,18 +139,18 @@ export function SettingsSheet({ onClose }) {
   );
 }
 
-const styles = StyleSheet.create({
+const STYLES = themed((T) => StyleSheet.create({
   rows: { gap: SPACE.lg, marginVertical: SPACE.sm },
   actions: { flexDirection: 'row', gap: SPACE.sm },
   log: {
     maxHeight: 220,
-    backgroundColor: COLORS.panelSunken,
+    backgroundColor: T.colors.panelSunken,
     borderRadius: RADIUS.button,
     borderWidth: 1,
-    borderColor: COLORS.hairline,
+    borderColor: T.colors.hairline,
     padding: SPACE.md,
   },
   // Selectable so the player can long-press, copy and paste it to us; no
   // clipboard dependency, and nothing here ever reaches a console.
-  logText: { ...TYPE.body, fontSize: 11, lineHeight: 15, color: COLORS.ink },
-});
+  logText: { ...T.type.body, fontSize: 11, lineHeight: 15, color: T.colors.ink },
+}));
