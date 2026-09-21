@@ -8,7 +8,7 @@ const S={rat:1,fox:2,elk:3,elephant:4};
 const W={meadow:{rat:35,fox:30,elk:25,elephant:10},
          savanna:{rat:25,fox:28,elk:27,elephant:20},
          tundra:{rat:15,fox:25,elk:30,elephant:30}};
-const BANDS={meadow:[[2,4],[3,5],[4,6]],savanna:[[3,5],[4,6],[5,7]],tundra:[[4,6],[5,7],[6,8]]};
+const BANDS={meadow:[[2,4],[3,5]],savanna:[[2,4],[3,5],[4,6]],tundra:[[3,5],[4,6],[5,7]]};
 const WIDTH=9, CAP=WIDTH-1;
 let seed=4242; const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};
 const ri=(a,b)=>a+Math.floor(rnd()*(b-a+1));

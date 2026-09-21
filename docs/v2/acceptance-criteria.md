@@ -263,6 +263,13 @@ the **mean cells per turn is within ±0.15 of the band mean**, except at a diffi
 highest bands where the `W − 1` cap legitimately pulls it low — record those rather than
 tuning them away.
 
+**AC-306b — THE BAND FLOOR.** Given any difficulty, Then **no band's low may be below 2**, and
+no band's mean may sit below that difficulty's **mean animal size** (2.10 / 2.42 / 2.75).
+§5.2 draws `k ≥ 1`, so the minimum possible arrival is one animal; a band asking for less
+cannot be delivered and measures high. *(A 1–3 band on Meadow has a mean of 2.0 and measures
+2.41 cells/turn. It is not a band, it is a rounding artefact — which is why Meadow's starting
+band stayed at 2–4 in the retune while every other band moved.)*
+
 **AC-307** *(amended for the 9-wide board)* Given difficulty Meadow, Then the target lies in
 **2–4** at turn 1, **3–5** from turn 13 and **4–6** from turn 25, its ceiling. Given Tundra,
 **4–6** at turn 1, **5–7** from turn 13 and **6–8** from turn 25, its ceiling.
@@ -275,10 +282,19 @@ a batch that misses the target is not a defect, a *mean* that misses it is.
 **AC-307c** Given any batch, Then it never exceeds `BOARD.width − 1` cells regardless of how
 the rounding falls.
 
-**AC-308b — THE REALISED SPECIES MIX.** Given 3,000+ generated turns per difficulty, Then the
-**realised** share of each species is within **±2 percentage points** of its weight in
-`gameplay.md` §5.4, and the realised **mean drawn size** within **±0.10** of the intended
-2.10 / 2.42 / 2.75.
+**AC-308b — THE REALISED SPECIES MIX.** Given 3,000+ generated turns per difficulty, Then:
+
+- **Primary:** the realised **mean drawn size** is within **±0.10** of the intended
+  2.10 / 2.42 / 2.75, at **every** band. This is the quantity that sets difficulty, and it
+  holds everywhere.
+- **Diagnostic:** each species' realised share is within **±2 pp** of its §5.4 weight, widening
+  to **±4 pp at a difficulty's ceiling band**, where the `W − 1` cap legitimately shuts the
+  largest species out of the last slot. *(Measured worst case: Tundra 5–7 draws 18.0% rats
+  against a 15% intent, +3.0 pp, with mean drawn size still 2.66 against 2.75.)*
+
+*(The approved ±2 pp flat could not hold at ceiling bands — the design itself does not produce
+it, and `species-mix.mjs` shows so. Splitting the assertion puts the tight tolerance on the
+quantity that matters and the loose one on the diagnostic.)*
 
 *(Nothing asserted this before, which is why the defect survived every prior round: AC-306–308
 checked cell totals and band membership, never the mix. The approved algorithm drew Savanna at
@@ -296,13 +312,15 @@ because `Math.ceil(1.5) === Math.ceil(2)`.)*
 
 **AC-309** *(amended — the old wording demanded a 9-column batch "at any difficulty", which is
 unachievable by design: only Tundra's band reaches a high of 9, and only from turn 37.)*
-Given 500 batches generated at **Tundra's ceiling band (6–8, turn 25+)**, Then at least one
-occupies **8** columns — `BOARD.width − 1`, the maximum the invariant permits — and **none ever
-occupies 9**, which would be a self-clearing arrival. *(v1 C3: the 1-column buffer capped every batch at 8 of 10 and averaged 6.0.)*
+Given 500 batches at **Tundra's ceiling band (5–7, turn 25+)**, Then the maximum occupancy
+observed equals that band's high of **7**, and **no batch at any difficulty ever reaches
+`BOARD.width` = 9**, which would be a self-clearing arrival. *(The `W − 1` = 8 cap is now
+headroom rather than a binding constraint, since no band's high reaches it.)* *(v1 C3: the 1-column buffer capped every batch at 8 of 10 and averaged 6.0.)*
 
-**AC-309b** Given 500 batches generated at any difficulty and turn, Then no batch occupies 10
-columns, and the distribution of occupied-column counts matches the rolled targets exactly
-— which is the general proof that the buffer is gone.
+**AC-309b** *(amended for the 9-wide board and the count-first generator)* Given 500 batches
+at any difficulty and turn, Then **no batch ever occupies `BOARD.width` columns**, and the
+distribution of occupied-column counts tracks the rolled targets in the mean (AC-306) — the
+general proof that the 1-column buffer is gone.
 
 **AC-310** Given difficulty Savanna, Then a buffalo is queued on turns 10, 20, 30 … and on no
 other turn.
@@ -352,14 +370,19 @@ to the species colour, seams drawing in, glyph fading up, over the last 160 ms o
 flight. AC-301's proof is unaffected: it is still literally the same view arriving where the
 tray said it would.
 
-**AC-316 — INTERLEAVED GENERATION.** Given a batch is generated, Then each species is chosen
-against the free column runs that actually remain at that moment and is placed immediately
-before the next is chosen. Selection and placement are one loop, not two passes.
+**AC-316 — WITHDRAWN.** This required interleaved selection-and-placement, which AC-308c now
+forbids: choosing species against the remaining free runs is precisely the capacity-and-
+fragmentation filter that biased the species mix. The count-first generator (`gameplay.md`
+§5.2) supersedes it. *Left in place as a withdrawal so the number is never reused and so a
+reader of the superseded design finds the correction.*
 
-**AC-317** Given a rolled target of 9 that would be satisfied by sizes {1, 3, 5}, Then
-generation never deadlocks and never produces a short batch. *(The approved two-pass algorithm
-did: rat at `x=1` then elk at `x=4` leaves no 5-wide run for the elephant, and no fallback was
-specified.)*
+**AC-317** *(amended — the {1,3,5} case is now impossible: the cap is 8 and elephant is 4)*
+Given any rolled target, Then generation **cannot deadlock**, because §5.2 packs the batch
+contiguously from `x=0` and then scatters the free columns. Placement is not a search and has
+no failure mode. *(The superseded two-pass algorithm did deadlock — random placement fragmented
+the row — which is why interleaving was introduced, which in turn caused the species-mix
+defect. The contiguous-then-scatter placement removes the deadlock without introducing a
+filter.)*
 
 **AC-317b** Given the source tree, Then the batch generator contains **no retry loop, no
 backtracking and no placement-failure fallback** — `validStarts` is provably non-empty
@@ -367,12 +390,18 @@ whenever it is called, because a species only becomes a candidate once a free ru
 to hold it exists (`gameplay.md` §5.2 invariant 2). A fallback path in this function is a sign
 the invariant was broken, not a safety net.
 
-**AC-317c** Given the draw-count property, Then it is proven **exactly at `width: 40`**, and
-`width: 10` — the shipped width — is covered by a **one-sided bound**: over 72,000 batches the
-count never *exceeds* the single-pass bound. The exact equality does not hold at width 10
-because a forced placement consumes no draw when `nextInt` short-circuits a degenerate range.
-**Do not "fix" this test to run at width 10** — it will fail, and the failure is in the
-expectation, not the generator. One-sided at the shipped width is the direction that matters.
+**AC-317c** *(amended — the carve-out is obsolete and the property is now stronger)* Given the
+draw-count property, Then it holds **exactly at the shipped width**. The count-first generator
+draws `k` species from a pool that does not vary in length, so the degenerate-range
+short-circuit that forced the old width-40 carve-out cannot arise. The test now **proves** "no
+retry, no backtracking, no fallback" rather than asserting it at an unshipped width. *(The
+previous carve-out and its "do not fix this to run at width 10" warning are withdrawn — they
+described a property of an algorithm that no longer exists.)*
+
+**AC-318prev — THE FALSIFIED HYPOTHESIS, kept for the record.** The first band set predicted
+Meadow 100–150 / Savanna 60–90 / Tundra 35–55 and measured **73 / 35.5 / 27** — all three short,
+Savanna worst at −41%. Ordering held, so the shape was right and the magnitude was not. The
+bands in `gameplay.md` §5.5 are the retune; these ranges are the target they aim at again.
 
 **AC-318 — PACING, RE-MEASUREMENT REQUIRED.** Given 30 seeds per difficulty played by the
 deterministic greedy bot with perfect information, Then median turns-per-run are **measured
@@ -390,6 +419,15 @@ difficulty: realised species mix (AC-308b), mean cells per turn per band (AC-306
 run, maximum batch occupancy (AC-309), and the **median and 90th-percentile final score** —
 the last of which nothing needs yet, but which is what the §13 ability thresholds must be
 priced against rather than guessed.
+
+**AC-318d — THE SHAPE, NOT ONLY THE MAGNITUDE.** Given the re-measurement, Then the **ratios
+between adjacent medians** are reported alongside the medians. Target roughly **1.8 and 1.6**;
+first measurement gave **2.06 and 1.31**, i.e. Savanna sitting far too close to Tundra. *(The
+difficulties are spaced linearly in cells while run length is nonlinear in cells, so equal
+cell-spacing compresses the hard end. Lowering every band uniformly cannot fix this — it moves
+all three without changing their ratios. If magnitude lands and the ratios stay near 2.0/1.3,
+the **per-difficulty ramp interval** is the next and only change: a slower ramp stretches long
+runs far more than short ones.)*
 
 **AC-318c** Given the pacing ranges are missed, Then tuning proceeds **bands first, ramp
 interval second, species weights last**. The weights now do exactly what they say
@@ -495,17 +533,29 @@ unaffected.
 static state rather than motion, and only its 110 ms fade is animated, which already sits
 inside the ≤120 ms cross-fade budget.
 
-**AC-425** Given High Contrast is enabled, Then the origin instead takes a **2 pt dashed
-`#FFFFFF` outline at 70%** with no fill, dashed **6 on / 4 off** against the destination
-ghost's 3 on / 3 off so the two remain distinguishable by rhythm. *(A recess is a low-contrast
-device by nature; High Contrast trades the register deliberately.)*
+**AC-425** *(amended — dash rhythm is not expressible in React Native)* Given High Contrast is
+enabled, Then the origin takes a **2 pt SOLID `#FFFFFF` outline at 70%** with no fill, against
+the destination ghost's **dashed** outline. *(A recess is a low-contrast device by nature, so
+High Contrast trades the register deliberately — but RN exposes only `borderStyle: 'dashed'`
+with a platform-chosen pattern, so two dash rhythms cannot be distinguished. **Solid versus
+dashed is achievable and reads better anyway**: the origin is a fact, the destination is a
+proposal. I am not adding SVG or per-segment views for a dash pattern.)*
+
+**AC-1405b** Given the thresholds are priced, Then they are set per difficulty from **measured
+score percentiles**, not from absolute point values — e.g. a first charge at roughly the 35th
+percentile of that difficulty's final-score distribution, so every difficulty earns its first
+charge at a comparable point in a comparable run.
+
+**AC-425b** Given High Contrast, Then the origin and destination outlines are distinguishable
+by **three** independent properties — line style (solid vs dashed), colour (white vs accent or
+red) and position — so no single one of them is load-bearing.
 
 ---
 
 ## AC-5xx · Clearing, chains, buffalo
 
-**AC-501** Given all 10 columns of a row are occupied and no buffalo is in that row, When the
-clear resolves, Then every animal in that row is removed.
+**AC-501** Given all **`BOARD.width`** columns of a row are occupied and no buffalo is in that
+row, When the clear resolves, Then every animal in that row is removed.
 
 **AC-502** Given a row clears, Then gravity is applied afterwards and every animal above
 settles to its lowest non-colliding position.
@@ -720,8 +770,9 @@ reflow as it ticks.
 §7.3 is reproduced — a 4th consecutive clearing turn, two rows in step 1, one buffalo shrink
 in step 2 — Then the score increases by exactly **800** (600 + 200).
 
-**AC-617b** Given that same example except that step 2 *retires* the buffalo rather than
-shrinking it, Then step 2 pays `(50 + 500) × 2 × 2.0 =` **2200**.
+**AC-617b** *(amended — retirement bonus rose 500 → 650)* Given that same example except that
+step 2 *retires* the buffalo rather than shrinking it, Then step 2 pays
+`(50 + 650) × 2 × 2.0 =` **2800**.
 
 ---
 
@@ -1031,7 +1082,17 @@ memoized component that does not re-render, and animals are the board's only dyn
 `"Fox, size 2, row 4, columns 3 to 4"`.
 
 **AC-902** Given VoiceOver is active, Then the tray exposes a label naming each incoming
-animal, its columns, and the total cell count.
+animal **by species**, its columns, and the total cell count — **deliberately more detail than
+the silhouette strip shows a sighted player** (AC-315).
+
+**AC-902b — WHY THAT IS NOT AN INCONSISTENCY.** Given the silhouette withholds species, Then
+VoiceOver still names it, because **parity is about what a player can act on, not about
+matching the quantity of information on screen.** A sighted player sees the footprint directly
+and loses only flavour; a VoiceOver user has no shape to perceive, so replacing "fox at columns
+3 to 4" with "a two-wide shape at columns 3 to 4" would withhold *information* from the one
+audience that cannot see the strip, in order to match a treatment that only exists visually.
+The species name is also the most compact way to convey size — "fox" carries "2 wide". This is
+on purpose, not an oversight.
 
 **AC-903** Given VoiceOver is active and a clear occurs, Then the score change is announced
 via a polite live region.
@@ -1340,8 +1401,15 @@ they describe the difficulty curve, and a curve containing an optional player in
 not a curve. Abilities are measured separately.
 
 **AC-1405** Given a player crosses a score threshold, Then one charge is granted, **at most 3
-are held at once**, and thresholds escalate. *(Provisional: 1,500 / 4,000 / 8,000 / 14,000 /
-22,000 / 32,000 — to be re-priced against AC-318b's measured score distribution.)*
+are held at once**, and thresholds escalate. **Thresholds are still unpriced.**
+
+*(A score distribution now exists — Meadow median 3,290 / p90 8,130; Savanna 1,385 / 5,275;
+Tundra 692.5 / 2,100 — but it was measured on the pre-retune bands and **must not be priced
+against**. Doing so would repeat exactly the mistake the bands made. The draft
+1,500 / 4,000 / 8,000… is now visibly wrong against real data: on Tundra a median run scores
+692, so a first charge at 1,500 would never be earned on the hardest difficulty. Price these
+only after AC-318's re-measurement, and price them **per difficulty** — the medians differ by
+4.7×, so one ladder cannot serve all three.)*
 
 **AC-1406** Given a turn, Then using an ability **is the player's action** for that turn. Move,
 pass, or ability — the one-action rule (`gameplay.md` §6.2) admits no exemption.
