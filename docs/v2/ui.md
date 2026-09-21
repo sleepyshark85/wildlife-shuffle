@@ -406,11 +406,10 @@ shrink visibly removes one. Additional treatment:
 |---|---|
 | **Rest** | As specified above. |
 | **Grabbed** | Scale 1.04, `shadow 0 6px 16px rgba(0,0,0,.45)`, edge brightens 12%, 2 pt lift, over 90 ms. Driven from the gesture's `onBegin` worklet, so the lift lands on the same frame as the touch; the selection haptic fires with it. |
-| **Dragging** | Follows the finger with **0 ms** smoothing — positioned by the same UI-thread frame that delivers the touch (§8.3) — and snaps to the nearest column over 110 ms. v1 had an empty `dropping: {}` style object (`src/components/Animal.js:51`) while the README advertised "scale + shadow" — there was no drag feedback at all. |
+| **Dragging** | Follows the finger with **0 ms** smoothing — positioned by the same UI-thread frame that delivers the touch (§8.3) — **within the legal slide range only** (§5.6) — and snaps to the nearest column over 110 ms. v1 had an empty `dropping: {}` style object (`src/components/Animal.js:51`) while the README advertised "scale + shadow" — there was no drag feedback at all. |
 | **Origin** | The cells the animal has left render as a **recess** — see §5.5. It persists for the whole drag and fades over 110 ms on release. |
-| **Drop target — legal** | A 2 pt `accent` dashed ghost at the destination columns, fill `rgba(255,194,75,.10)`. |
-| **Drop target — illegal** | The ghost turns `illegal` red and the **swept path is shown blocked**: the obstructing animal gets a 2 pt red rim. The player sees *why* before releasing. This is the fix for v1's silent rejection (`docs/v1-review.md` C5). |
-| **Illegal release** | Shake + red rim, §8. Pure announcement — it locks nothing, so the next drag can begin on the following frame. |
+| **Drop target** | A 2 pt `accent` dashed ghost at the destination columns, fill `rgba(255,194,75,.10)`. There is no illegal variant: the body cannot reach an illegal column, so the ghost never has one to draw (§5.6, AC-408). |
+| **Blocked contact** | The finger is pushing past the limit. The body is stopped dead against its neighbour and **the neighbour** takes a 2 pt `illegal` red rim for as long as the push lasts, plus one light-impact tick on contact. §5.6. |
 | **Clearing** | White flash then collapse, §8. |
 | **Danger** | Any animal in rows 11–13 gets a 1 pt `kill-line` outer rim at 40%. |
 
@@ -471,13 +470,15 @@ something is not.**
 - **No zero-displacement suppression.** The body starts on top of the recess and uncovers it
   progressively as the drag moves off — the animal walking off its own footprint. Gating it
   would add a rule to hide something already hidden.
-- **Fades over 110 ms on release, tracking whatever the body does.** One rule for all three
-  outcomes: accepted, rejected, or cancelled.
-- **On a rejected move it does not outlive the shake.** The body returns to the origin over
+- **Fades over 110 ms on release, tracking whatever the body does.** One rule for every
+  outcome: accepted, released at the origin, or cancelled. *(The approved list said
+  "accepted, rejected, or cancelled". §5.6 removed the rejected drop; the rule is unchanged.)*
+- **On a release at the origin it does not outlive the body's return.** The body returns over
   110 ms and the recess fades over the same 110 ms, so they converge to nothing together. A
   recess still showing under a body that has come home would be marking "where this came
-  from" as the place it now is, which is meaningless and reads as a second piece. The shake
-  then plays on the body alone.
+  from" as the place it now is, which is meaningless and reads as a second piece.
+- **Releasing here is now the only way to cancel a drag** (§5.6), which is what makes this a
+  mechanism rather than a memory aid.
 
 #### Thread, motion and contrast
 
@@ -499,6 +500,86 @@ something is not.**
   per-segment views to express a dash pattern would be disproportionate.
 - **No conflict with the anticipation wash** (§8.2b), which also touches cell grounds: that
   runs during the ARRIVAL push-up and the drag happens in READY. They cannot overlap.
+
+### 5.6 The body stops at its neighbour *(supersedes the approved collision affordance)*
+
+**The owner's report, from a device:** *"when dragging an animal, I shouldn't be able to drag
+it over another animal in the same row. I can now, although when I drop it, it go back to the
+original row. So the logic is correct, but the visualize is not."*
+
+The approved design did this on purpose. The body was clamped to the board's edges but
+**deliberately not to its neighbours**, on the reasoning that pushing into a neighbour is how
+the player discovers it is there, with the red destination ghost and the blocker's rim
+carrying the explanation (AC-407 as approved, `AnimalView.js:357-362`). The owner played it.
+It reads as broken, and they are right — for a reason bigger than the ghost.
+
+**Two animals sharing a cell is not a legal state of this game at any instant.** The entire
+ruleset is that they do not. Drawing one, even for the length of a drag that will be rejected,
+is the presentation asserting something the engine would refuse. That is the same failure
+class as the arrivals that rendered at opacity 0 and the animals that visibly crossed while
+falling (`development-process.md` §6.7): right state, wrong appearance. The rule that
+generalises all three is **the board may not show a placement the commit will not honour.**
+
+#### The rule
+
+- The body is clamped to `[minX, maxX] × cell` — the legal slide range from the same snapshot
+  the ghost already used (`src/ui/occupancy.js`, AC-832).
+- Because `slideRange` already initialises `minX = 0` and `maxX = width − size`, **the board
+  edges and the neighbours are one clamp**, not two. The old bounds-only clamp is replaced.
+- Every column the drag can produce is therefore legal, so **every release either commits or
+  is a no-op at the origin**. There is no rejected drop any more (AC-406).
+- The arithmetic is a pure, import-free `'worklet'` in `src/ui/dragClamp.js` so `node --test`
+  sweeps the very positions the UI thread renders — the `trajectory.js` precedent, applied to
+  the one function that now decides where a dragged body may be (AC-407c).
+
+#### A hard stop, not a rubber band
+
+The body stops **dead**. No damped over-travel, no compression.
+
+At `maxX` the body's edge is already flush with the blocker's, so *any* over-travel is
+overlap — offering the owner 6 pt of the thing they reported as broken is arguing about degree
+with someone who has told you the kind is wrong. And compressing the body instead would
+animate an animal's **width**, which is the one property this game reserves for the buffalo
+shrink; borrowing the central mechanic's vocabulary for a boundary effect would be a far worse
+trade than the one it avoids.
+
+What a rubber band would have bought is the reassurance that the touch is still tracked. That
+is bought instead by **feedback that costs no pixels**: the blocker's red rim while the push
+lasts, and one light-impact tick at the moment of contact (§8, AC-407d, AC-407g). Contact
+engages at 6 pt of overshoot and releases at 2 pt, so a finger resting on the boundary cannot
+flutter the rim or machine-gun the tick.
+
+#### What the red rim now means, and why the red ghost goes
+
+The rim on the blocking animal is the **only red on the board during a drag**, and it is the
+answer to the one question a hard stop raises: *why did it stop?* It is not redundant noise
+now that the body is physically stopped — it is the difference between "a wall" and "a dropped
+touch", and it names which animal is the wall.
+
+The destination ghost loses its red state entirely, for two independent reasons:
+
+1. **It would be a lie.** A release from that state now commits a legal move. A red ghost
+   would promise a rejection that cannot happen — the owner's own complaint, pointing the
+   other way.
+2. **It would be invisible.** `maxX × cell` is grid-aligned, so at a limit the ghost sits
+   exactly under the body and is covered by it. The frames where a red ghost would be visible
+   at all are the frames where it is wrong.
+
+AC-407's original job was to stop an illegal target from *looking* legal, so the player did not
+spend a turn discovering it. That job is discharged by there being no illegal target to reach.
+
+#### What this costs
+
+A drag that overshoots a blocker and is released now **commits the packed-against move and
+consumes the turn**, where before it was rejected for free. That is the whole of the trade and
+it is worth taking: the outcome of a drag no longer depends on whether the player happened to
+overshoot into an illegal column; shoving a piece until it stops is the commonest intended
+move in a packing game and was previously the one move that could not be expressed by shoving;
+and the escape hatch is untouched — drag back into the origin recess and release there, for no
+turn (AC-402). **That raises the recess from a memory aid to the cancel mechanism**, which is
+what §5.5 always claimed it was.
+
+---
 
 ## 6. The tray — the preview contract, made visible
 
@@ -600,9 +681,9 @@ its own time while they carry on playing. See §8.1.
 | Moment | Duration | Easing | Gates input | What it communicates |
 |---|---:|---|:---:|---|
 | Grab lift | 90 ms | `spring(.34,1.4,.64,1)` | no | The piece is yours now |
-| Drag follow | 0 ms | — | — | The piece is under your thumb |
+| Drag follow | 0 ms | — | — | The piece is under your thumb, within its legal range (§5.6) |
 | Snap to column | 110 ms | `cubic-bezier(.22,1,.36,1)` | **yes** | The move committed to a column |
-| Illegal move | 260 ms | `cubic-bezier(.36,.07,.19,.97)` | no | 3 × 6 pt shake + 2 pt red rim + `notificationError` haptic |
+| Blocked contact | **0 ms** | — | no | The body stops dead; the **neighbour** takes a 2 pt red rim + one `impactLight` tick (§5.6) |
 | Gravity fall | 200 ms | `cubic-bezier(.55,0,1,.45)` | **yes** | Accelerating — it *fell* |
 | Land squash | 140 ms | `spring(.34,1.56,.64,1)` | no | It has weight and has stopped |
 | Clear flash | **320 ms** | 60 attack, 260 decay | no | peak **0.92** body / **0.22** row wash |
@@ -629,7 +710,7 @@ board whose pieces are mid-flight is unfair. Structural time is the only thing t
 toward the budget in §8.2.
 
 **Announcement** — flash, floating `+N`, score count-up, screen shake, land squash, particle
-burst, buffalo crack shard, the illegal-move shake. These **never** gate input and are
+burst, buffalo crack shard. These **never** gate input and are
 explicitly allowed to outlive the lock and to be still playing when the next turn begins. A
 new player action does not cancel them; they simply finish.
 
@@ -649,9 +730,11 @@ the old table would have missed:
   *then* goes. Steps 2+ of the same cascade stay strictly concurrent — by then the player is
   watching a cascade and the announcing job is done, and a lead on every step would push the
   realistic worst case into compression it does not currently need.
-- **An illegal move locks nothing.** The shake is pure announcement. The player can start
-  their next drag on the very next frame, which is exactly what someone who has just been
-  told "no" wants to do.
+- **Being blocked locks nothing.** Contact with a neighbour is a rim and a tick, not a state
+  the player has to wait out: the drag continues under the same finger, and the next drag can
+  begin on the very next frame. *(This used to be said of the illegal-move shake. §5.6 removed
+  the shake by removing the rejected drop; the principle moved to the moment that replaced
+  it.)*
 - **Game over dims and slides at the same time**, not one after the other. The dim starts at
   t=0 and the sheet at t=120, both done by 400 ms, so the player reaches their score in 400 ms
   rather than 580. The dim is an opacity-animated overlay view, **never** an animated
@@ -969,8 +1052,9 @@ The contract:
 ### 8.4 Reduce Motion
 
 When `AccessibilityInfo.isReduceMotionEnabled` is true: every transform becomes a ≤ 120 ms
-cross-fade, the illegal-move shake becomes a static 400 ms red rim, the danger pulse becomes
-a static 10 % wash, and screen shake is disabled. Cascade steps still play in sequence at the
+cross-fade, the danger pulse becomes a static 10 % wash, and screen shake is disabled. The
+blocked-contact stop is arithmetic rather than animation and is unchanged (§5.6, AC-407h);
+the illegal-move shake it replaced is gone, and so is that shake's static-rim substitute. Cascade steps still play in sequence at the
 §8.2 intervals so the chain remains countable. No information is carried by motion alone, so
 nothing is lost — and the input-lock budget only ever gets shorter.
 
@@ -1171,7 +1255,6 @@ Short, active, never cute. The game never apologises and never explains twice.
 |---|---|
 | Action bar, idle | `YOUR MOVE` |
 | Action bar, resolving | `RESOLVING…` |
-| Action bar, blocked | `BLOCKED` |
 | Pass button | `Pass` |
 | Tray label | `NEXT ARRIVAL` / `6 CELLS` |
 | Buffalo shrink | `BUFFALO −1` |
@@ -1181,6 +1264,11 @@ Short, active, never cute. The game never apologises and never explains twice.
 | Game over heading | `Run over · Savanna` |
 | New best | `NEW BEST · previous 11,205` |
 | Difficulties | `Meadow` · `Savanna` · `Tundra` |
+
+**`BLOCKED` is gone** (§5.6, AC-406). It announced a rejected drop, and there is no longer such
+a thing; the action bar has no blocked state left to label. It could not be retargeted to the
+mid-drag contact either — the action bar is React, and a word appearing there while the finger
+is down would be a re-render mid-drag, which AC-831 forbids outright.
 
 Difficulty names are habitats, not Easy/Normal/Hard, because "Hard" is a judgement about the
 player and a habitat is a description of the place. They also make a straight-faced promise
@@ -1489,9 +1577,12 @@ Peak levels in dBFS. Everything is quiet: this is a game played on a train.
 | **Last Stand** | metal, with the danger pulse | root −4 | 500 ms | −8 |
 | **unlock** | wood, rising 0 / +2 / +4 / +7 | — | 800 ms | −8 |
 
-**The illegal move is the only unpitched cue in the game.** Everything else has a note;
-rejection has none. That is the sound of the board not answering, and it needs no volume to
-land.
+**The illegal move is the only unpitched cue in the game**, and since §5.6 it fires at
+**contact** rather than on release — the frame the body stops against its neighbour. Everything
+else has a note; a wall has none. That is the sound of the board not answering, and it needs
+no volume to land. Its haptic drops from `notificationError` to `impactLight` for the same
+reason: a half-second three-tap pattern was sized for a once-per-mistake announcement, not for
+a bump that can happen twice in one drag (AC-1102).
 
 **Ability cues borrow their species' pitch**, so Stampede is low and Burrow is high — the
 scope ladder (§13.1) audible without a new vocabulary.

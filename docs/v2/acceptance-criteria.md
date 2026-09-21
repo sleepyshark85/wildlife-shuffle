@@ -480,17 +480,146 @@ destination, so animals tunnelled through their neighbours. Verified by executio
 **AC-405** Given an animal, Then it can only be moved horizontally; its `y` is never changed
 by a player action.
 
-**AC-406 — ILLEGAL MOVE FEEDBACK.** Given the player releases a drag on an illegal target,
-Then the animal shakes (3 × 6 pt, 260 ms), shows a 2 pt red rim, fires an error haptic, and
-the action bar reads `BLOCKED`. The turn does not advance. *(v1 C5: rejected moves produced
-no feedback of any kind.)*
+**AC-406** *(amended — the rejected drop no longer exists; see AC-407)* Given any release of a
+drag, Then it is **never** illegal: the body cannot reach an illegal column (AC-407b), so the
+release either commits the column the body is standing in or, if that is the origin, does
+nothing (AC-402). **The rejection shake, its 2 pt red rim on the dragged body, the
+notification-error haptic and the action bar's `BLOCKED` label are removed** — they have no
+trigger left, and an animation that can no longer occur is dead code.
 
-**AC-407** Given the player is dragging toward an illegal target, Then **before release** the
-destination ghost is red and the obstructing animal is outlined in red. *(v1's drag preview
-clamped to bounds only and never checked collisions, so an illegal target looked legal.)*
+*(The approved text read: "Given the player releases a drag on an illegal target, Then the
+animal shakes (3 × 6 pt, 260 ms), shows a 2 pt red rim, fires an error haptic, and the action
+bar reads `BLOCKED`." It fixed v1 C5 — rejected moves produced no feedback of any kind. That
+defect class is now **eliminated rather than fixed**: under AC-407 there is no move that
+silently does nothing, because there is no move the board did not already show you.)*
 
-**AC-408** Given the player is dragging toward a legal target, Then the destination ghost is
-an accent dashed outline at those exact columns.
+**AC-407 — THE BODY STOPS AT ITS NEIGHBOUR. *This supersedes an approved decision.*** Given
+the player drags an animal, Then the dragged body is clamped to the legal slide range
+`[minX, maxX]` and **is never drawn over another animal**. While the finger pushes past that
+limit the body stays against it, and the **obstructing animal takes a 2 pt red rim** for as
+long as the push continues (AC-407d). The destination ghost is **never red** (AC-408).
+
+*(**Why this overturns AC-407 as approved.** The approved rule was the opposite: the body was
+clamped to the board's edges but deliberately **not** to its neighbours, and the collision was
+explained after the fact by a red destination ghost plus the blocker's rim — "pushing into a
+neighbour is how the player finds out it is there". The owner played it on a device and
+reported: "when dragging an animal, I shouldn't be able to drag it over another animal in the
+same row. I can now, although when I drop it, it goes back to the original row. So the logic
+is correct, but the visualise is not."*
+
+*That is the general fault, not a detail of the ghost: **the board showed a placement the
+commit would not honour.** An overlap is not a legal state of this game at any instant — the
+whole ruleset is that two animals do not share a cell — so drawing one, however briefly, is
+the presentation contradicting the engine. That is the same class of bug as the invisible
+arrivals and the crossing falls (`development-process.md` §6.7), and it is the class this
+rewrite exists to kill.*
+
+*A future reader must not "fix" this back. Unclamping the body to expose the collision trades
+a correct picture for an explanation that can be given without lying — and is given, by
+AC-407d.)*
+
+**AC-407b — THE CLAMP IS THE SLIDE RANGE, AND IT SUBSUMES THE BOARD CLAMP.** Given a drag in
+flight, Then the body's pixel position is `clamp(startPx + translationX, minX × cell,
+maxX × cell)`, where `minX`/`maxX` are the snapshot `slideRange` took at gesture start
+(AC-832). *(`slideRange` initialises `minX = 0` and `maxX = width − size`, so the board edges
+and the neighbours are the **same** clamp — the separate bounds clamp at
+`AnimalView.js:363-366` is replaced by this one, not added to. AC-404 remains true and is now
+true by the same arithmetic.)*
+
+**AC-407c — THE CLAMP IS A PURE FUNCTION, SWEPT IN TIER 1.** Given the clamp, Then it lives in
+**`src/ui/dragClamp.js`, which imports nothing**, is marked `'worklet'`, and takes every value
+it needs as an argument. It exports one function with this contract:
+
+```
+clampDrag(startPx, translationX, cell, minX, maxX, wasPressed)
+  -> { px, col, pressed }
+```
+
+| | contract |
+|---|---|
+| `px` | `minX × cell ≤ px ≤ maxX × cell`, for every input, whenever `minX ≤ maxX`. |
+| `col` | `Math.round(px / cell)`, re-clamped to `[minX, maxX]`. **Always a legal column.** |
+| `pressed` | `-1`, `0` or `+1` — which limit the *unclamped* finger is pushing past (AC-407d). |
+| purity | No imports, no shared values, no allocation beyond the returned object. |
+| identity | Inside the legal range the clamp changes nothing: `px === startPx + translationX`. |
+| monotonicity | `px` is non-decreasing in `translationX`. |
+| contact | `pressed ≠ 0` implies `px` is exactly at a limit. |
+
+*(`src/ui/trajectory.js` imports nothing for exactly this reason — `development-process.md`
+§6.7: anything that must be checkable off-device must import nothing that only runs
+on-device. A drag is not a trajectory and does not belong in that file; `occupancy.js` is
+React-thread code that reads the animals array, and this runs in the gesture worklet on every
+touch frame. It gets its own file.)*
+
+**AC-407d — THE BLOCKER IS DERIVED FROM THE FINGER, NOT FROM THE BODY.** Given the body is at
+a limit, Then `blockedId` is set — and the obstructing animal's 2 pt red rim lit — from the
+**unclamped** finger position, i.e. when `pressed ≠ 0`, naming `leftBlockerId` or
+`rightBlockerId` from the same snapshot. It clears when the finger comes back inside the
+range, and on `onFinalize` by any route. *(This is the half of the affordance that survives
+and it is now **load-bearing rather than supplementary**: the rim is the only red on the board
+during a drag, and it is the answer to the one question a hard stop raises — "why did it
+stop?" Without it the stop could read as a dropped touch. It is not redundant noise; it is
+what is left of AC-407's explanation once the lie is removed.)*
+
+**AC-407e — CONTACT ENGAGES WITH HYSTERESIS.** Given the finger overshoots a limit, Then
+`pressed` engages at **6 pt** of overshoot and disengages at **2 pt**, so a finger resting on
+the boundary cannot flutter the rim or retrigger the cue. The thresholds are constants in
+`dragClamp.js` and the 4 pt band is swept in Tier 1. *(A player whose body is at the limit
+because that is simply where their finger is has not been blocked by anything and gets no rim;
+only pushing further lights it.)*
+
+**AC-407f — HARD STOP. NO RUBBER BAND, AND NO SQUASH.** Given the body reaches a limit, Then
+it **stops dead**. There is no damped over-travel and no compression against the neighbour.
+*(Two reasons, both decisive. First, at `maxX` the body's edge is already flush with the
+blocker's, so **any** over-travel is overlap — offering the owner 6 pt of the thing they just
+reported as broken is arguing about degree with someone who told you the kind is wrong.
+Second, compressing the body instead would animate an animal's **width**, and width is the
+game's central mechanic: the only thing permitted to change an animal's width is the buffalo
+shrink (AC-508/AC-812). The fingertip feedback a rubber band would have given is delivered by
+AC-407g instead, which costs no pixels.)*
+
+**AC-407g — THE STOP IS FELT, NOT ONLY SEEN.** Given `pressed` transitions from `0`, Then the
+**illegal cue fires once** (AC-1101e, AC-1102) at the moment of contact, gated by the Haptics
+and Sound toggles like every other cue (AC-1104). It does not repeat while the push is held
+and re-arms only when `pressed` returns to `0`. *(The cue moves from release to contact — the
+same moment in the player's intent, now reported when it happens instead of afterwards.)*
+
+**AC-407h — REDUCE MOTION CHANGES NOTHING HERE.** Given Reduce Motion is enabled, Then the
+clamp is unaffected: it is arithmetic on a position, not an animation, and there is no
+over-travel to shorten. *(AC-1103b already holds the cue steady. The only Reduce Motion clause
+this area had was the shake substitution, which AC-907 loses with the shake.)*
+
+**AC-407i — THE ENGINE STILL REFUSES ILLEGAL MOVES.** Given the UI can no longer *produce* an
+illegal column, Then `checkMove`'s rejection in the reducer is **kept, and its tests with it**
+(AC-403, AC-404, `test/board.test.js`). *(The clamp is a presentation guarantee resting on a
+snapshot; the rule is the engine's. Deleting the reducer's check because the UI now behaves
+would make the engine's correctness depend on the view's, which is the inversion this
+architecture exists to prevent. AC-409's declined second-finger commit still returns the body
+home silently, as it already does — that is a cancel, not a player error, and it must not be
+given feedback that blames the player.)*
+
+**AC-407j — WHAT THIS COSTS, STATED.** Given a player drags well past a blocker and releases,
+Then the move to the blocked-against column **commits and consumes the turn**, where under the
+approved rule an overshoot was rejected and the turn was free. *(This is the one real trade.
+It is accepted: the outcome of a drag no longer depends on whether the player happened to
+overshoot into an illegal column, packing a row by shoving a piece until it stops is the most
+common intended move in the game and was previously the one move that could not be expressed
+by shoving, and the escape hatch is unchanged — drag back to the origin recess and release
+there for no turn at all (AC-402, AC-416). **The recess is now the only way to cancel a drag,
+which raises it from a memory aid to a mechanism.**)*
+
+**AC-408** *(amended — the ghost can no longer be illegal)* Given a drag in progress, Then the
+destination ghost is drawn at `col` (AC-407c) and is **always** the legal treatment: a 2 pt
+`accent` dashed outline with fill `rgba(255,194,75,.10)`. The red ghost, and the `ghostLegal`
+shared value that selected it, are removed.
+
+*(Two reasons it is not merely allowed to go red from the unclamped finger. It would be a
+**lie**: under AC-407 a release from that state commits a legal move, so a red ghost would
+promise a rejection that cannot happen — the owner's complaint pointing the other way. And it
+would be **invisible**: `maxX × cell` is grid-aligned, so at a limit the ghost sits exactly
+under the body and is covered by it. AC-407's original job — stop an illegal target looking
+legal, so the player does not spend a turn on it — is discharged by there being no illegal
+target to reach.)*
 
 **AC-409** Given two fingers drag two different animals simultaneously, Then neither drag's
 origin is corrupted and at most one move is committed. *(v1 D3: `dragStartXRef` was a single
@@ -536,19 +665,25 @@ either ground.
 **AC-419 — THREE REGISTERS, ONE OUTLINE.** Given a drag in progress, Then the board shows the
 origin **recessed**, the body **solid** and the destination **outlined** — three different
 kinds of treatment, not three outlines in different colours. Any change that gives the origin
-a second dashed outline in the default theme is a defect.
+a second dashed outline in the default theme is a defect. *(A fourth register is now in play
+while the finger pushes past a limit: the **blocker rimmed** in red, AC-407d. It is on an
+animal rather than on a cell, it is the only red on the board during a drag, and it does not
+compete with the three above.)*
 
 **AC-420** Given a drag begins, Then the recess appears in the same `onBegin` worklet frame as
 the grab lift, and **is not suppressed at zero displacement** — the body simply covers it and
 uncovers it as the drag moves off.
 
-**AC-421** Given a drag ends by any route — accepted, rejected, or cancelled — Then the recess
-fades over **110 ms**, tracking the body.
+**AC-421** *(amended — "rejected" is no longer one of the routes; AC-406)* Given a drag ends by
+any route — **accepted, released at the origin, or cancelled** — Then the recess fades over
+**110 ms**, tracking the body. One rule for every route, as before.
 
-**AC-422** Given a move is **rejected** (AC-406), Then the recess fades over the same 110 ms as
-the body's return, so the two converge to nothing together, and the shake plays on the body
-alone. The recess **does not outlive the shake**. *(A recess under a body that has come home
-marks "where this came from" as the place it now is, and reads as a second piece.)*
+**AC-422** *(amended — there is no rejected move to outlive; AC-406)* Given a drag is
+**released at the origin** (AC-402) or **cancelled** (AC-129), Then the recess fades over the
+same 110 ms as the body's return, so the two converge to nothing together. *(A recess under a
+body that has come home marks "where this came from" as the place it now is, and reads as a
+second piece. The approved text tied this to the rejection shake; the rule it states is
+independent of the shake and survives it.)*
 
 **AC-423** Given a drag is in progress, Then the recess costs **zero** React commits: its
 origin is fixed at gesture start and written once as a shared value in `onBegin`. AC-831 is
@@ -615,9 +750,10 @@ score percentiles**, not from absolute point values — e.g. a first charge at r
 percentile of that difficulty's final-score distribution, so every difficulty earns its first
 charge at a comparable point in a comparable run.
 
-**AC-425b** Given High Contrast, Then the origin and destination outlines are distinguishable
-by **three** independent properties — line style (solid vs dashed), colour (white vs accent or
-red) and position — so no single one of them is load-bearing.
+**AC-425b** *(amended — the destination can no longer be red; AC-408)* Given High Contrast,
+Then the origin and destination outlines are distinguishable by **three** independent
+properties — line style (solid vs dashed), colour (white vs accent) and position — so no
+single one of them is load-bearing.
 
 ---
 
@@ -1005,8 +1141,12 @@ and no animated `filter` property is used anywhere in the app.
 **AC-818** Given an animal is grabbed, Then the lift animation begins on the same frame as the
 touch-down event and completes over 90 ms.
 
-**AC-819** Given the player releases a drag on an illegal target, Then input is **not** locked:
-a new drag may begin on the next frame, while the shake is still playing.
+**AC-819** *(amended — there is no illegal release to announce; AC-406)* Given the player
+pushes the body against a limit and the contact cue fires (AC-407g), Then input is **not**
+locked and no turn is consumed: the player may keep dragging on the very next frame, and
+releasing at the origin still costs nothing. *(The approved text said the same thing about the
+rejection shake — an illegal move locks nothing. The principle is unchanged; only the moment
+it applies to has moved from release to contact.)*
 
 ### Input-lock budget *(Revision 2)*
 
@@ -1132,8 +1272,12 @@ mounted `GestureHandlerRootView` and `GameGrid.js:30` used `PanResponder` anyway
 React learns the outcome on release only, through a single `runOnJS` call carrying the final
 column.
 
-**AC-832** Given the player is mid-drag, Then the legal/illegal destination ghost updates at
-touch rate, computed in the gesture worklet from an occupancy snapshot taken at gesture start.
+**AC-832** *(amended — the ghost is no longer legal/illegal; AC-408)* Given the player is
+mid-drag, Then the body's clamp, its destination ghost and the blocker rim all update at touch
+rate, computed in the gesture worklet by `clampDrag` (AC-407c) from an occupancy snapshot
+taken at gesture start. **The snapshot is still taken once, at `onBegin`** — nothing may move
+the goalposts mid-drag, which is now a statement about where the body can *go*, not only about
+what colour a ghost is.
 
 **AC-833** Given a turn is animating, Then the JS thread performs no work beyond scheduling —
 the reducer has already resolved the entire turn before the first frame plays.
@@ -1194,9 +1338,11 @@ seams are 1.5 pt white at 55%.
 until AsyncStorage lands under AC-10xx they are session-scoped, which is a deliberate deferral
 rather than an omission.
 
-**AC-907** Given OS Reduce Motion is enabled, Then every transform animation becomes a
-≤120 ms cross-fade, the illegal-move shake becomes a static 400 ms red rim, the danger pulse
-becomes a static wash, and screen shake is disabled.
+**AC-907** *(amended — the illegal-move shake no longer exists; AC-406)* Given OS Reduce Motion
+is enabled, Then every transform animation becomes a ≤120 ms cross-fade, the danger pulse
+becomes a static wash, and screen shake is disabled. *(The shake's 400 ms static-red-rim
+substitute goes with it. Nothing replaces it: the blocker rim it would have imitated is
+already static, and already shown to everyone — AC-407d, AC-407h.)*
 
 **AC-908** Given a deuteranopia or protanopia simulation, Then every animal's size remains
 determinable from width and panel count alone.
@@ -1469,8 +1615,13 @@ rather than an unrelated one.)*
 ambience between actions. *(A puzzle game that hums is one people mute, and muting it would
 take the sixteen cues with it. The silence is what lets short cues carry meaning.)*
 
-**AC-1101e** Given the illegal-move cue, Then it is the **only unpitched cue in the game**.
-*(Everything else has a note; rejection has none.)*
+**AC-1101e** *(amended — the cue moves from release to contact; AC-407g)* Given the
+illegal-move cue, Then it fires **when the body first presses against a limit**, not on
+release, and it remains the **only unpitched cue in the game**. *(Everything else has a note;
+a wall has none. The retarget suits it better than the moment it left: an unpitched thud is
+what contact with something solid sounds like, and the cue now reports the event as it happens
+rather than summarising it afterwards. It is still one of AC-1101's sixteen — the vocabulary
+does not shrink.)*
 
 **AC-1101f** Given an ability fires, Then its cue takes **its species' own pitch** — so
 Stampede is low and Burrow is high, making §13.1's scope ladder audible without a new
@@ -1484,7 +1635,7 @@ are enabled, Then:
 | grab | selection |
 | **snap** | **light impact** |
 | land | light impact |
-| illegal move | notification-error |
+| **illegal move** *(now: contact, AC-407g)* | **light impact** |
 | row clear | medium impact |
 | **buffalo shrink** | **medium impact** (`gameplay.md` §6.4) |
 | **buffalo retired** | **heavy impact** (`gameplay.md` §6.4) |
@@ -1494,6 +1645,13 @@ are enabled, Then:
 | ability fired | medium impact |
 | charge granted | selection |
 | Last Stand | heavy impact |
+
+*(**Why the illegal cue's haptic drops from notification-error to light impact.**
+`notificationError` is a three-tap pattern lasting roughly half a second. It was sized for a
+once-per-mistake announcement after a release. AC-407g fires this cue mid-drag, at contact,
+possibly more than once in a drag — that pattern would be a hammer, and it would still be
+playing after the player had moved on. A light impact is the bump a boundary makes, and it
+matches `land` deliberately: **a contact is a landing, sideways.**)*
 
 **AC-1103** *(confirmed — and the reason is now recorded, because it is the kind of thing that
 gets "fixed")* Given the device ringer switch is set to silent, Then no sound plays and
