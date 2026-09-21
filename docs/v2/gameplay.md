@@ -378,20 +378,20 @@ did not do at all.
 
 | | **Meadow** (easy) | **Savanna** (default) | **Tundra** (hard) |
 |---|---|---|---|
-| Starting cell band | 2–4 | 3–5 | 4–6 |
-| Band ceiling | **4–6** | **5–7** | **6–8** |
+| Starting cell band | 2–4 | **2–4** | **3–5** |
+| Band ceiling | **3–5** | **4–6** | **5–7** |
 | Ramp | +1 to both ends every **12 turns**, until the ceiling | | |
 | Species weights | small-heavy | balanced | large-heavy |
-| Mean arrival | 3.0 → 5.0 cells/turn | 4.0 → 6.0 | 5.0 → 7.0 |
-| **as a fraction of the 9-wide row** | **33% → 56%** | **44% → 67%** | **56% → 78%** |
+| Mean arrival | 3.0 → 4.0 cells/turn | 3.1 → 4.9 | 3.9 → 5.8 |
+| **as a fraction of the 9-wide row** | **33% → 44%** | **33% → 56%** | **44% → 67%** |
 | Buffalo every | 12 turns | 10 turns | 8 turns |
 
 Ramp schedule, explicitly:
 
 ```
-Meadow    t1: 2–4   t13: 3–5   t25: 4–6 (ceiling)
-Savanna   t1: 3–5   t13: 4–6   t25: 5–7 (ceiling)
-Tundra    t1: 4–6   t13: 5–7   t25: 6–8 (ceiling)
+Meadow    t1: 2–4   t13: 3–5 (ceiling)
+Savanna   t1: 2–4   t13: 3–5   t25: 4–6 (ceiling)
+Tundra    t1: 3–5   t13: 4–6   t25: 5–7 (ceiling)
 ```
 
 **Why a ramp at all.** Without it the game has no arc: the difficulty of turn 5 equals the
@@ -442,6 +442,72 @@ These do not cancel in any way I can compute, which is exactly why the pacing nu
 measurement request rather than a prediction. The owner's report that the game felt easy is
 addressed principally by the first row of that table, which is a defect fix and not a tuning
 change.
+
+### 5.6a The first measurement, and the retune
+
+The bands in §5.5 are the **second** set. The first were a hypothesis derived from
+fraction-of-row, and the bot falsified them:
+
+| | Meadow | Savanna | Tundra |
+|---|---:|---:|---:|
+| hypothesis | 100–150 | 60–90 | 35–55 |
+| measured median | **73** | **35.5** | **27** |
+| measured mean / min / max | 84.2 / 31 / 282 | 43.0 / 21 / 90 | 28.1 / 19 / 43 |
+
+**All three short, and Savanna worst at −41%.** The ordering held, so the shape was right and
+the magnitude was not. The owner's original complaint was that the game felt *easy*; the
+species-mix fix corrected that defect and the three changes together **overshot**. These are
+also optimistic numbers — the bot has perfect information, so a human does worse.
+
+**The retune, and why it is not uniform.** Every ceiling drops by 1. Savanna's and Tundra's
+starting bands drop by 1. **Meadow's starting band does not**, and that is a finding rather
+than a choice:
+
+> **A band cannot ask for less than one animal.** §5.2 draws `k ≥ 1`, so the minimum arrival
+> is a single animal — 2.10 cells on Meadow, 2.42 on Savanna, 2.75 on Tundra. A band of 1–3
+> has a mean of 2.0, **below Meadow's floor**, and measures 2.41 cells/turn rather than 2.0.
+> **No band's low may be below 2**, at any difficulty, and a band whose mean sits under the
+> difficulty's mean animal size is not a band, it is a rounding artefact.
+
+That floor is new to this document and is now AC-306b.
+
+**Consequence to watch: Meadow and Savanna now share a starting band** (2–4). For the first
+twelve turns they differ only in species mix — real, since Savanna's arrivals come in fewer,
+chunkier pieces (3.01 vs 3.12 cells/turn in 1.43 vs 1.29 animals) — but it is a subtler
+distinction than two different bands. If the difficulty choice feels indistinct early, the
+fix is to restore Savanna to 3–5 and take the magnitude back out of its **ramp interval**
+instead, not to re-lower Meadow past its floor.
+
+### 5.6b The shape is wrong too, and the ramp is the lever for it
+
+The magnitude is not the only problem. Median ratios between adjacent difficulties:
+
+```
+Meadow / Savanna  =  73 / 35.5  =  2.06
+Savanna / Tundra  =  35.5 / 27  =  1.31
+```
+
+**Savanna sits far too close to Tundra.** The cause is structural: the difficulties are spaced
+**linearly in cells** while run length is **nonlinear in cells** — as arrivals approach the
+rate a player can clear, run length collapses. Equal cell-spacing therefore produces unequal
+run-length spacing, compressed at the hard end, which is exactly the measured shape.
+
+**Lowering every band uniformly does not fix this** — it moves all three without changing their
+ratios. Spacing needs a different lever, and the right one is the **ramp interval per
+difficulty** (e.g. Meadow 16 / Savanna 12 / Tundra 10), because a slower ramp stretches long
+runs much more than short ones and therefore widens the easy end where the compression is
+worst.
+
+**I have deliberately not changed both at once.** §5.7's ordering — bands first, ramp second,
+weights last — exists so that a measurement can attribute a change to a cause. This pass moves
+bands only. **If the re-measurement shows the magnitude fixed and the ratios still near
+2.0 / 1.3, the ramp intervals are the next and only change.** Target ratios are roughly
+1.8 / 1.6, which for medians near 110 / 60 / 38 is an even progression.
+
+**Not acting on: within-difficulty spread.** Meadow's 31–282 range is 9×. Some of that is
+genuine (a light band is sustainable when the sequence is kind) and some is 30 seeds making a
+single lucky run the maximum. Worth watching across a larger sample; not worth tuning against
+one number.
 
 ### 5.7 What the developer should measure
 
@@ -927,6 +993,9 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D39 | Bands retuned down after the first bot measurement; ramp left alone deliberately | All three medians came in short. Bands are the first lever and moving two at once would make the next measurement unattributable (§5.6a). |
+| D40 | No band's low may be below 2 | `k ≥ 1` means the minimum arrival is one animal, so a band under the difficulty's mean animal size cannot be delivered (§5.6a, AC-306b). |
+| D41 | VoiceOver names species although the silhouette hides it | Parity is about what a player can act on, not about matching the quantity of information on screen (AC-902b). |
 | D38 | The origin of a drag is marked as a **recess**, not a third outline | Past/present/future get three visual registers — recessed, solid, outlined — so only one of the three is an outline and the board does not read as a diagram (`ui.md` §5.5). |
 | D33 | Board narrowed to 9 columns; elephant 4 / buffalo 5; species mix fixed — bands re-derived from scratch | Each change alone forces a re-derivation, so three sequential adjustments cost more than one derivation and the intermediate states are not worth measuring (§5.6). |
 | D34 | The band controls the MEAN cells/turn, not each batch's total | §5.2 draws a whole number of animals so the realised mix can match §5.4; per-batch exactness was what biased the mix (§5.2). |

@@ -481,11 +481,14 @@ something is not.**
   cross-fade budget. When everything else has been made quieter, the affordance that prevents
   a wasted turn is the last thing that should go.
 - **High Contrast trades the register.** A recess is a low-contrast device by nature, so under
-  High Contrast the origin instead takes a **2 pt dashed `#FFFFFF` outline at 70%** with no
-  fill. That does put three outlines on the board — but High Contrast has already changed the
-  vocabulary (animal borders go to 2.5 pt white), and for a player who needs it, legibility
-  beats elegance. The dash pattern is 6 on / 4 off against the destination ghost's 3 on / 3
-  off, so the two remain distinguishable by rhythm.
+  High Contrast the origin instead takes a **2 pt solid `#FFFFFF` outline at 70%** with no
+  fill, against the destination ghost's **dashed** one. That does put two outlines on the
+  board — but High Contrast has already changed the vocabulary (animal borders go to 2.5 pt
+  white), and for a player who needs it, legibility beats elegance. **Solid versus dashed, not
+  two dash rhythms:** React Native exposes only `borderStyle: 'dashed'` with a
+  platform-chosen pattern, so rhythm is not expressible — and solid-versus-dashed reads better
+  regardless, because the origin is a fact and the destination is a proposal. Adding SVG or
+  per-segment views to express a dash pattern would be disproportionate.
 - **No conflict with the anticipation wash** (§8.2b), which also touches cell grounds: that
   runs during the ARRIVAL push-up and the drag happens in READY. They cannot overlap.
 
