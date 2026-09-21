@@ -1080,6 +1080,9 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D58 | Dark-only is superseded; both themes ship | The owner saw it on a real phone — evidence none of us had. §1's argument was correct and was overtaken (`ui.md` §1, §16). |
+| D59 | The size→lightness ramp keeps its direction on light; the **edge** carries the contrast floor | The ramp is an ordering and orderings are ground-independent — what breaks is the rat's absolute contrast, which is a narrower and cheaper problem. Inverting would keep monotonicity and discard the meaning (`ui.md` §16.1). |
+| D60 | The background is visible only through empty cells; animals are opaque | Satisfies the owner's constraint by construction rather than restraint — no future alpha change can put texture behind an animal (`ui.md` §16.3). |
 | D55 | The audio identity is struck wood, with metal reserved for the buffalo and no music at all | Pitch falls as size rises, so the audio carries the same property the whole visual system exists to make legible (`ui.md` §15). |
 | D56 | Cascades ascend a pentatonic scale, not chromatically | A chromatic run is sour by six steps; the rare deep cascade is the best thing that happens in the game and should not be when the audio turns dissonant (`ui.md` §15.4). |
 | D57 | A new best suppresses the game-over cue | They land within one commit and read as a mess; the dominant fact is the best, and the sheet already says the run is over (`ui.md` §15.6). |

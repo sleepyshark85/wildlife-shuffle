@@ -1576,8 +1576,9 @@ arrive unchanged.
 and one unfolded shot, the unfolded one showing the stage-W rail layout, captured from the
 Xcode 27.1 simulator rather than from the estimated dimensions in `ui.md` §3.2.
 
-**AC-1211** Given `app.json`, Then `userInterfaceStyle` is `"dark"` and the app renders
-identically regardless of the OS appearance setting.
+**AC-1211 — SUPERSEDED by AC-1513.** The approved version required
+`userInterfaceStyle: "dark"` and identical rendering regardless of the OS appearance setting.
+Both themes now ship (`ui.md` §16); the app follows the device setting with a manual override.
 
 ---
 
@@ -1819,3 +1820,74 @@ threshold crossing nor Last Stand. *(A bloom behind the Game Over sheet helps no
 
 **AC-1417** Given any ability resolves, Then the input-lock budget (AC-822) still holds — every
 ability animation in `ui.md` §13.4 is an announcement over an ordinary structural resolution.
+
+---
+
+## AC-15xx · Light theme and natural background
+
+`ui.md` §16. Supersedes §1's dark-only ruling, which is kept in place as superseded rather
+than deleted.
+
+**AC-1501 — BOTH THEMES SHIP.** Given the app, Then it supports a **dark** and a **light**
+theme, following the device setting with a manual override in Settings.
+
+**AC-1502 — THE SIZE→LIGHTNESS RAMP KEEPS ITS DIRECTION IN BOTH THEMES.** Given either theme,
+Then fill lightness **descends monotonically with size** across the four drawable species,
+with buffalo off the ramp. *(The ramp is an ordering and an ordering is ground-independent —
+"heavier is darker" is why it reads at all. Inverting it on light would keep the monotonicity
+and throw away the meaning. **Do not invert it.**)*
+
+**AC-1503 — THE FILL CARRIES SIZE, THE EDGE CARRIES THE FLOOR.** Given any species in either
+theme, Then it is separable from its board ground at **≥ 3:1** by its fill **or** its edge.
+*(WCAG 1.4.11's non-text floor — these are solid shapes, not glyphs. A rat on light reads at
+1.68:1 on fill alone and 4.05:1 on edge; the edge is what makes it visible, which is why the
+floor is specified against the better of the two rather than against the fill.)*
+
+**AC-1504 — THE SCRIPT IS THE QA SURFACE.** Given `node docs/v2/theme-contrast.mjs`, Then it
+exits 0: every species clears AC-1503 in both themes, both ramps satisfy AC-1502, and both
+textures clear AC-1507. *(§1 objected that a second theme doubles the visual QA surface. It
+does. This is what pays for it — re-run it after any palette change.)*
+
+**AC-1505** Given the light theme, Then the buffalo keeps its rim at **`#9C6D14`**, not
+`#E8B44A`, which reads at 1.9:1 on bone and would look like a smudge. It remains the **only
+rimmed piece in either theme** — that, not the specific yellow, is what carries "a different
+kind of object".
+
+**AC-1506** Given the light theme, Then the origin recess (§5.5) works **by construction**: it
+is specified as the cell ground darkened 55%, so it is a taupe hole on bone and a near-black
+one on slate. A hole is darker than its surround in both themes. **Verify rather than assume.**
+
+**AC-1507 — THE BACKGROUND IS ONLY EVER VISIBLE THROUGH EMPTY CELLS.** Given the natural
+background, Then the texture lives on the **board ground**, empty cells are semi-transparent,
+and **animals are fully opaque** — so the background cannot be behind an animal. *(This
+satisfies the owner's "don't make the background too strong that make it hard to see the
+animals" structurally rather than by restraint: no future alpha change can reintroduce it.)*
+
+**AC-1508** Given the background texture, Then its contrast against the board ground is
+**≤ 1.25:1**, asserted by AC-1504. *(Measured 1.111:1 for the grain, 1.213:1 for the tracks.
+The number is what turns "not too strong" from a judgement each change re-litigates into a
+check that fails.)*
+
+**AC-1509** Given the background, Then it is **one texture, not one per difficulty**. *(Habitat
+grounds would triple the surface the species fills must survive against — §1's objection by
+another door — and they are already spoken for: Night Savanna and the Tundra palette are
+unlock content.)*
+
+**AC-1510** Given the background, Then its element positions are drawn from **the run's seed**
+and are **static within the run**. No motion: the only animated thing on the board is the
+game.
+
+**AC-1511 — THE TEXTURE IS SUPPRESSED IN THE DANGER BAND.** Given rows 11–14, Then they render
+**flat**, with no texture beneath the tint and pulse. *(Three competing layers in the one place
+the player most needs to read quickly. Where warmth and urgency conflict, urgency wins.)*
+
+**AC-1512** Given High Contrast in either theme, Then its borders take **the ground's
+opposite** — white on dark, `#14201A` on light — and the same applies to §5.5's origin outline
+(AC-425) and §5.2's numeral chip, which flips to a bone chip with dark ink. *(2.5 pt white
+borders vanish on bone.)*
+
+**AC-1513** Given `app.json`, Then `userInterfaceStyle` is **not** `"dark"` and AC-1211 is
+superseded: the app follows the device setting.
+
+**AC-1514** Given the App Store screenshots (AC-1210), Then they are **reshot** after the
+theme lands, and the set shows the theme the app opens in by default.
