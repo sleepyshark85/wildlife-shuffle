@@ -1254,3 +1254,128 @@ button takes a single `#E8B44A` pulse, and a `LAST STAND` label rises from it. I
 same moment the danger band first lights (§7), so the two read as one event — *you are in
 trouble, here is one more thing you can do about it* — rather than as a reward arriving
 inexplicably beside a warning.
+
+---
+
+## 14. Records and Collection (S8, S9)
+
+These were one row each in §2 and nobody designed them. They were built from §9's content list
+against existing tokens, which is why they are consistent — but they are **the two screens a
+returning player sees most often after Home**, and Collection in particular is doing
+motivational work that a content list cannot specify.
+
+Both are **reading surfaces** (§10): full Dynamic Type to AccessibilityXXXL, scrollable,
+`allowFontScaling` untouched, behind the shared `FullScreen` shell.
+
+### 14.1 Records (S8)
+
+**The question this screen answers is "am I getting better?"** — not "what are my totals". That
+ordering decides the layout: the recent-runs list is the thing that answers it, so it is not
+at the bottom under the aggregates.
+
+```
+┌─────────────────────────────────────────┐
+│  ‹ Back            RECORDS              │
+│                                         │
+│  🔥 4 day streak                        │   streak first — it is the
+│  ─────────────────────────────────────  │   only number that decays
+│  [ Meadow ] [ Savanna ] [ Tundra ]      │   segmented, governs BESTS only
+│                                         │
+│  BEST SCORE                             │
+│  12,480                                 │   34/800 tabular, accent
+│  ┌────────┬────────┬────────┐           │
+│  │   4    │   47   │   31   │           │
+│  │ CHAIN  │ TURNS  │  ROWS  │           │
+│  └────────┴────────┴────────┘           │
+│                                         │
+│  RECENT RUNS                            │
+│  Today      Savanna   12,480   47 turns │
+│  Today      Tundra     3,210   22 turns │
+│  Yesterday  Savanna    9,870   41 turns │
+│  …                              (10)    │
+│                                         │
+│  LIFETIME                               │
+│  Games played              38           │
+│  Rows cleared             412           │
+│  Buffalo retired            7           │
+│  Perfect clears             2           │
+└─────────────────────────────────────────┘
+```
+
+**The difficulty selector governs the bests block only; recent runs shows all difficulties
+with a chip.** Bests are inherently per-difficulty — that is what makes them comparable — but
+the run diary is chronological, and a session in which someone dropped from Tundra to Savanna
+is a truer picture when it is not filtered into invisibility.
+
+- **Dates are relative** — `Today`, `Yesterday`, then `12 Sep`. A returning player is asking
+  about today; an absolute date makes them do the arithmetic.
+- **Lifetime sits last and smallest.** These are slow-moving numbers that reward a glance, not
+  study.
+- **Unachieved values render `—`, never `0`.** Zero is a score you got; an em-dash is one you
+  have not got yet, and the difference matters on a first-run screen.
+- Empty state: the tiles show `—` and the list reads *"No runs yet."* Nothing apologises.
+
+### 14.2 Collection (S9)
+
+Four unlocks, all cosmetic (`gameplay.md` §9). This screen's job is to make the next one feel
+reachable, which a bare `0 / 10` does not.
+
+```
+┌─────────────────────────────────────────┐
+│  ‹ Back          COLLECTION             │
+│                                         │
+│  ┌─────────────────────────────────────┐│
+│  │ ▓▓▓▓▓  NIGHT SAVANNA        LOCKED  ││  preview always visible,
+│  │ ▓▓▓▓▓  board theme                  ││  dimmed to 45% while locked
+│  │ ████████░░  7 / 10 buffalo retired  ││
+│  │ Buffalo arrive every 10 turns on    ││  ← how, not just what
+│  │ Savanna. Five completed rows on one ││
+│  │ retires it.                         ││
+│  └─────────────────────────────────────┘│
+│  ┌─────────────────────────────────────┐│
+│  │ ▓▓▓▓▓  TUNDRA PALETTE       LOCKED  ││
+│  │ Best so far 12,480 of 25,000        ││  ← single-event: no bar
+│  │ One run. Chains and streaks multiply│││
+│  │ faster than rows do.                ││
+│  └─────────────────────────────────────┘│
+│  ┌─────────────────────────────────────┐│
+│  │ 🐀🐀🐀  RAT KING         ✓ EQUIPPED ││  unlocked: full colour
+│  └─────────────────────────────────────┘│
+└─────────────────────────────────────────┘
+```
+
+**Three decisions, each of which a content list would have missed:**
+
+1. **Locked items show their preview, dimmed to 45% — never hidden.** You should be able to see
+   what you are playing for. A locked card with no preview is a tease; a dimmed one is a goal.
+
+2. **Cumulative and single-event conditions do not look the same.** "Retire 10 buffalo" and
+   "clear 500 rows" accumulate, so they get a **progress bar plus counter**. "Score 25,000 in
+   one run" and "clear 4 rows in one step" do **not** accumulate — you are not 50% of the way
+   to a 25,000 run — so they get **"Best so far 12,480 of 25,000"** and no bar. Showing a
+   half-full bar for a target that resets every run is a lie about how close you are.
+
+3. **Every card carries a one-line hint on *how*, not just the condition.** "Retire 10 buffalo"
+   is a requirement; "Buffalo arrive every 10 turns on Savanna" is something a player can act
+   on this evening. This is the motivational work, and it is the line most worth writing
+   carefully.
+
+**Unlocked items can be equipped**, one board theme and one animal set at a time, with the
+defaults always available — an unlock you cannot apply is not an unlock. Equipping changes
+appearance only and never a rule, spawn or score (AC-1011).
+
+### 14.3 Copy
+
+| Context | String |
+|---|---|
+| Records heading | `RECORDS` |
+| Streak | `🔥 4 day streak` · `🔥 1 day streak` |
+| Bests, unachieved | `—` |
+| Recent, empty | `No runs yet.` |
+| Collection, locked | `LOCKED` |
+| Collection, unlocked | `✓ EQUIPPED` / `EQUIP` |
+| Cumulative progress | `7 / 10 buffalo retired` |
+| Single-event progress | `Best so far 12,480 of 25,000` |
+| Single-event, none yet | `Not yet — best run 3,210` |
+
+Hints name a difficulty where one is materially better, because "play more" is not a hint.

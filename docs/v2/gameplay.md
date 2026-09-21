@@ -888,9 +888,22 @@ right; the implementation is precisely what AC-1002 forbids.
 **v2 stores a replay, not a board:**
 
 ```
-ws.resume.v1 = { schemaVersion, engineVersion, seed, difficulty, moves[], digest }
+ws.resume.v1 = { schemaVersion, engineVersion, seed, difficulty,
+                 start: { runIndex, nextAnimalId },     // see below
+                 moves[], digest }
               moves[] = [{ t: 'M', id, x } | { t: 'P' }, ...]     // one per turn
 ```
+
+**`start` is not optional bookkeeping.** Animal ids are namespaced by `runIndex` and numbered
+from `nextAnimalId`, and both **carry across a restart** so that no two animals in an app
+session ever share an id (AC-214). A run reached through **Play Again** therefore mints ids
+that a fresh `createRun(seed, difficulty)` cannot reproduce, and every stored move then names
+an animal that does not exist. The rule the omission broke:
+
+> **The record must carry every input `createRun` consumes**, not only the ones that feel like
+> a seed. Carried state is invisible until something carries it, so a resume test that only
+> ever exercises the first run of a session cannot catch this — AC-1014c exercises Play Again
+> specifically.
 
 Resume re-runs the engine from turn 1, applying each move. Three reasons this beats a
 snapshot, and the first is the one that decides it:
@@ -912,8 +925,18 @@ The `digest` — a cheap hash of the reconstructed board — is checked after re
 also discards. Losing a run to an app update is acceptable; silently resuming the wrong one is
 not.
 
-**When it is written:** on `AppState` transition to `inactive`/`background`, and nowhere else.
-That is neither during a turn nor in the render path, so AC-1002 stands unamended. Moves are
+**When it is written:** **whenever the player leaves the run, by any route** — `AppState`
+going to `inactive`/`background`, *and* quitting to Home. Never per turn, never on a timer,
+never from the render path, so AC-1002 stands unamended: its prohibition is about writing
+during a turn or from render, and a deliberate quit is neither.
+
+*(An earlier draft said "on backgrounding, and nowhere else". Read literally that means a
+player who quits to Home without ever backgrounding gets no resume offer at all — the feature
+silently not working for anyone who plays that way. The intent was "don't write per turn"; I
+expressed it by naming the single trigger I happened to have in mind.)*
+
+**One truth.** The offer on Home reflects exactly what is on disk — the in-memory record is a
+cache of what was written, never a second source — so the two can never disagree. Moves are
 appended in memory as they happen and serialised once, on the way out.
 
 **The trade-off, stated plainly.** A hard crash mid-run loses the run, where v1's 1 Hz timer
@@ -993,6 +1016,8 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D44 | The resume record carries `start: {runIndex, nextAnimalId}` | Ids carry across a restart, so a run reached by Play Again cannot be reproduced from seed and difficulty alone. The record must carry every input `createRun` consumes (§9). |
+| D45 | The resume record is written whenever the player leaves the run, including quitting to Home | "Only on backgrounding" read literally means the feature never works for a player who quits instead (§9). |
 | D42 | The 3-charge cap is justified as the recovery/reset dial, not as burst prevention | Bursting is already impossible — an ability is the turn's action — so the approved rationale credited the cap for the one-action rule's work, and framed as a failure mode the behaviour the owner asked for (§13.2a). |
 | D43 | Last Stand: one charge on first entering the danger band, ignoring the cap, once per run | Charges come from clearing and a struggling player is not clearing, so the score ladder cannot reach the player who most needs help. Without it the assist mechanic is rich-get-richer (§13.2b). |
 | D39 | Bands retuned down after the first bot measurement; ramp left alone deliberately | All three medians came in short. Bands are the first lever and moving two at once would make the next measurement unattributable (§5.6a). |
