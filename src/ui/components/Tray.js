@@ -1,9 +1,30 @@
 // The tray — the preview contract, made visible (ui.md §6).
 //
 // v1 rendered a row of flat occupancy squares and then re-rolled the positions
-// anyway. v2 renders the ACTUAL animals, at the board's cell width, in their
-// exact spawn columns, in their exact species colours, with their exact panel
-// counts. The engine guarantees the batch arrives verbatim (AC-301).
+// anyway: it did not show WHAT was coming, only where, and the where was a lie.
+//
+// v2 now renders SILHOUETTES — shadows at the board's cell width, in their
+// exact spawn columns, with each animal's own outline preserved, and the
+// engine still guarantees the batch arrives verbatim (AC-301).
+//
+// Why that does not reopen v1's defect: a silhouette is less SPECIFIC, not
+// less true. It states the footprint and the columns exactly, and size is the
+// only property that changes how a piece behaves, so everything a player can
+// plan against survives. v1 misrepresented; this withholds flavour. The two
+// are different acts and only the second is honest (ui.md §6.1).
+//
+// Two things therefore may NOT be dropped, and both are load-bearing:
+//
+//   - per-animal outlines (AC-315b). A fox at column 3 and two rats at columns
+//     3 and 4 must paint as one 2-wide shadow and two 1-wide ones. Merging
+//     them would state a footprint the batch does not have, which is back to
+//     misrepresenting. SILHOUETTE.gap is what keeps them apart.
+//   - the buffalo's gold rim (AC-315c). A buffalo refuses to clear, so hiding
+//     one withholds a RULE rather than a flavour.
+//
+// What is genuinely lost is the pleasure of seeing a herd of elephants coming.
+// That is a real cost and it was the owner's call, recorded here so it is not
+// mistaken for a free change.
 
 import React, { memo, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -14,11 +35,18 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { SPECIES } from '../../engine/constants.js';
-import { trayMetrics } from '../layout.js';
+import { traySilhouettes, trayMetrics } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
-import { COLORS, COPY, MOTION, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, TYPE } from '../theme.js';
+import { COLORS, COPY, MOTION, RADIUS, SILHOUETTE, TYPE } from '../theme.js';
 
 /**
+ * AC-902 is deliberately NOT narrowed to match the silhouettes: VoiceOver
+ * still names each incoming animal. Hiding the species is a visual choice
+ * about flavour, and taking it away from the one audience that cannot see the
+ * strip at all would be removing information rather than withholding
+ * decoration. Recorded because AC-902 and AC-315 now describe different
+ * amounts of detail, and that is on purpose.
+ *
  * The tray's label row is 14 pt at full chrome and 10 at compact, so its 10 pt
  * labels can grow by about a third before the row cannot hold them (AC-910c).
  * The strip's animals are board, not text, and never scale (AC-910).
@@ -48,7 +76,7 @@ function HazardRule({ width, height }) {
 }
 
 function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced }) {
-  const { labelH, stripH, ruleH, bodyH, glyph } = trayMetrics(cell, compact);
+  const { labelH, stripH, ruleH, bodyH } = trayMetrics(cell, compact);
 
   // The batch on screen while an arrival is in flight is the NEXT one: the
   // engine advanced the queue in the same reducer call that emptied it. So the
@@ -78,50 +106,25 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced }) {
         <Text maxFontSizeMultiplier={TRAY_FONT_CAP} style={TYPE.label}>{cells} CELLS</Text>
       </View>
       <Animated.View style={[styles.strip, { width: boardW, height: stripH }, revealStyle]}>
-        {queue.map((animal) => {
-          const style = SPECIES_STYLE[animal.type] || SPECIES_STYLE.rat;
-          const buffalo = animal.type === SPECIES.buffalo.type;
-          const seams = [];
-          for (let i = 1; i < animal.size; i += 1) {
-            seams.push(
-              <View
-                key={i}
-                style={{
-                  position: 'absolute',
-                  left: i * cell,
-                  top: 3,
-                  bottom: 3,
-                  width: 1,
-                  backgroundColor: buffalo ? SEAM_BUFFALO : SEAM,
-                }}
-              />,
-            );
-          }
+        {traySilhouettes(queue, cell, SILHOUETTE.gap).map((shape) => {
+          const buffalo = shape.type === SPECIES.buffalo.type;
           return (
             <View
-              key={animal.id}
+              key={shape.id}
               style={{
                 position: 'absolute',
-                left: animal.x * cell,
+                left: shape.left,
                 top: (stripH - bodyH) / 2,
-                width: animal.size * cell,
+                width: shape.width,
                 height: bodyH,
-                borderRadius: 4,
-                borderWidth: buffalo ? 2 : 1.5,
-                borderColor: style.edge,
-                backgroundColor: style.fill,
-                alignItems: 'center',
-                justifyContent: 'center',
+                borderRadius: SILHOUETTE.radius,
+                backgroundColor: buffalo ? SILHOUETTE.buffaloFill : SILHOUETTE.fill,
+                borderWidth: buffalo ? SILHOUETTE.buffaloRimWidth : 0,
+                borderColor: buffalo ? SILHOUETTE.buffaloRim : 'transparent',
+                borderTopWidth: buffalo ? SILHOUETTE.buffaloRimWidth : 1,
+                borderTopColor: buffalo ? SILHOUETTE.buffaloRim : SILHOUETTE.edge,
               }}
-            >
-              {seams}
-              <Text
-                allowFontScaling={false}
-                style={{ fontSize: glyph, lineHeight: glyph * 1.2, color: style.glyph }}
-              >
-                {(SPECIES[animal.type] || SPECIES.rat).emoji}
-              </Text>
-            </View>
+            />
           );
         })}
       </Animated.View>

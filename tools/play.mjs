@@ -88,7 +88,8 @@ function main() {
 
   if (args.pacing) {
     const rows = measurePacing();
-    const lines = ['AC-318 pacing — 30 seeds per difficulty, deterministic greedy bot', ''];
+    const lines = ['AC-318 pacing — 30 seeds per difficulty, deterministic greedy bot',
+      'A measurement, not a gate: AC-318 is a starting hypothesis (gameplay.md §5.7).', ''];
     lines.push('difficulty  median    mean   min   max   median score');
     for (const [difficulty, row] of Object.entries(rows)) {
       lines.push(

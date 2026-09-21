@@ -17,19 +17,24 @@ import { fileURLToPath } from 'node:url';
 
 import { ACTIONS, createRun, reduce } from '../src/engine/engine.js';
 import { turnTimeline } from '../src/ui/timeline.js';
-import { BOARD } from '../src/engine/constants.js';
+import { BOARD, SPECIES } from '../src/engine/constants.js';
 import { buildReplay, inDangerBand } from '../src/ui/replay.js';
 import { runReducer } from '../src/ui/useGameRun.js';
 import {
   MOTION, MOTION_SIZE, NUMERAL, SPECIES_STYLE, brighten, contrast,
 } from '../src/ui/theme.js';
-import { animal, fullRow, rowExcept } from './helpers.js';
+import { LAST, animal, fullRow, rowExcept } from './helpers.js';
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-/** The AC-504d fixture: a settled board whose cascade runs 10 steps deep. */
+/**
+ * The AC-504d fixture as the reducer sees it: a settled 9-wide board whose
+ * cascade runs 7 steps. The 10-wide 10-step board is kept in resolve.test.js,
+ * where the width is a parameter; the reducer reads BOARD.width, so it needs a
+ * board the narrowed game could actually reach.
+ */
 function deepChainBoard() {
-  const file = path.join(TEST_DIR, 'fixtures', 'deep-board.json');
+  const file = path.join(TEST_DIR, 'fixtures', 'deep-board-9.json');
   return JSON.parse(readFileSync(file, 'utf8')).map((a, i) => ({ ...a, id: `deep-${i}` }));
 }
 
@@ -41,20 +46,22 @@ function deepChainBoard() {
  * then both rows complete in one step. A genuine step 2 needs an animal that
  * could not move until a clear released it.
  *
- *   row 2        . . . . . . . . . R      the rider, held up by the fox
- *   row 1        R R R R R R R R F F      full: this is what clears first
- *   row 0        R R R R R R R R R .      one short, at column 9
+ *   row 2        . . . . . . . . R      the rider, held up by the fox
+ *   row 1        R R R R R R R F F      full: this is what clears first
+ *   row 0        R R R R R R R R .      one short, in the last column
  *
- * Row 1 clears; the rider drops two rows into column 9; row 0 completes.
+ * Row 1 clears; the rider drops two rows into the last column; row 0
+ * completes. Every column index here is derived from BOARD.width — the drawing
+ * is nine wide because the board is.
  */
 function cascadeBoard() {
-  const rider = animal('rat', 9, 2);
+  const rider = animal('rat', LAST, 2);
   return {
     rider,
     board: [
-      ...rowExcept(0, [9]),
-      ...Array.from({ length: 8 }, (_, x) => animal('rat', x, 1)),
-      animal('fox', 8, 1),
+      ...rowExcept(0, [LAST]),
+      ...Array.from({ length: BOARD.width - 2 }, (_, x) => animal('rat', x, 1)),
+      animal('fox', LAST - 1, 1),
       rider,
     ],
   };
@@ -129,15 +136,15 @@ test('AC-511 a cleared animal is drawn exactly once, at the row it left from', (
   // the clear happening in a row that is not the row that cleared.
   const drawn = plan.departures.find((d) => d.id === rider.id);
   assert.equal(drawn.y, 0);
-  assert.equal(drawn.x, 9);
+  assert.equal(drawn.x, LAST);
 });
 
 test('AC-807/AC-511 an animal that falls before it clears leaves from where it landed', () => {
   // The rat is floating three rows above the gap it completes. The turn's own
   // SETTLE gravity drops it; the clear then takes it. Drawing it leaving from
   // row 3 would show the clear happening in a row that did not clear.
-  const faller = animal('rat', 9, 3);
-  const { after, plan } = turnOn([...rowExcept(0, [9]), faller]);
+  const faller = animal('rat', LAST, 3);
+  const { after, plan } = turnOn([...rowExcept(0, [LAST]), faller]);
 
   const gravity = after.lastTurn.events.find((e) => e.type === 'GRAVITY');
   assert.deepEqual(gravity.moved, [{ id: faller.id, fromY: 3, toY: 0 }]);
@@ -147,8 +154,8 @@ test('AC-807/AC-511 an animal that falls before it clears leaves from where it l
 test('an animal that falls and SURVIVES is given the fall to play', () => {
   // The same drop, with the row one short so nothing clears: now it is the
   // board's own animal and the plan has to move it.
-  const faller = animal('rat', 8, 3);
-  const { plan } = turnOn([...rowExcept(0, [8, 9]), faller]);
+  const faller = animal('rat', LAST - 1, 3);
+  const { plan } = turnOn([...rowExcept(0, [LAST - 1, LAST]), faller]);
   const move = plan.moves[faller.id];
   // One key, not three: the ARRIVAL phase lifts it a row and gravity puts it
   // straight back, which is a round trip to where it already was.
@@ -166,8 +173,8 @@ test('an animal that has left the board is not left behind in `moves`', () => {
   // appearing in `departures`. Nothing iterates `moves` instead of the board
   // today, which is the only reason it never drew the same animal flying in
   // and collapsing at once.
-  const queue = [animal('fox', 8, 0)];
-  const { after, plan } = turnOn([...rowExcept(0, [8, 9])], queue);
+  const queue = [animal('fox', LAST - 1, 0)];
+  const { after, plan } = turnOn([...rowExcept(0, [LAST - 1, LAST])], queue);
   assert.ok(plan.departures.length > 0, 'the fixture must clear on ARRIVAL');
 
   const live = new Set(after.animals.map((a) => a.id));
@@ -252,17 +259,18 @@ test('AC-811 the screen shakes at three rows in one step, and not at two', () =>
 
 // ---- the cap is presentation only (AC-825) ------------------------------
 
-test('AC-825 a 10-step cascade replays as at most 6 units and still pays 17,100', () => {
+test('AC-825 a 7-step cascade replays as at most 6 units and still pays 15,450', () => {
   const before = { ...createRun({ seed: 1 }), streak: 5, animals: deepChainBoard(), queue: [] };
   const after = runReducer(before, { type: ACTIONS.PASS });
 
   // The engine resolved and scored every step (AC-504c/504d), untouched.
-  assert.equal(after.score, 17100);
-  assert.equal(after.stats.longestChain, 10);
+  assert.equal(after.score, 15450);
+  assert.equal(after.stats.longestChain, 7);
   assert.equal(after.stats.buffaloRetired, 1);
 
   const steps = after.lastTurn.events.filter((e) => e.type === 'CLEAR_STEP');
-  assert.ok(steps.length >= 10, `only ${steps.length} steps in the fixture`);
+  assert.ok(steps.length >= 7, `only ${steps.length} steps in the fixture`);
+  assert.ok(steps.length > 6, 'the fixture must exceed the cap, or the fold is untested');
 
   // ...and the replay folds them into 6 animated units, losing nobody.
   const units = new Set(after.plan.departures.map((d) => `${d.flashAt}/${d.collapseAt}`));
@@ -275,25 +283,31 @@ test('AC-825 a 10-step cascade replays as at most 6 units and still pays 17,100'
 // ---- buffalo (AC-508, AC-812) -------------------------------------------
 
 test('AC-508/AC-812 a shrinking buffalo gets a new width and a shard, not a departure', () => {
-  // A complete row containing a size-4 buffalo: everything else in the row
+  // A complete row containing a full-size buffalo: everything else in the row
   // goes, the buffalo loses one segment, and the row does NOT clear (AC-506).
+  // The rats fill whatever the buffalo does not — the buffalo grew from 4 cells
+  // to 5 and the board narrowed from 10 to 9 in the same round, and a literal
+  // 6 would have been wrong twice over.
   const buff = animal('buffalo', 0, 0);
-  const board = [buff, ...Array.from({ length: 6 }, (_, i) => animal('rat', 4 + i, 0))];
+  const rats = BOARD.width - SPECIES.buffalo.size;
+  const board = [buff, ...Array.from({ length: rats }, (_, i) => animal('rat', SPECIES.buffalo.size + i, 0))];
   const { after, plan } = turnOn(board);
 
   const step = after.lastTurn.events.find((e) => e.type === 'CLEAR_STEP');
-  assert.deepEqual(step.shrunk, [{ id: buff.id, fromSize: 4, toSize: 3 }]);
+  assert.deepEqual(step.shrunk, [
+    { id: buff.id, fromSize: SPECIES.buffalo.size, toSize: SPECIES.buffalo.size - 1 },
+  ]);
   assert.equal(step.clearedRows.length, 0, 'a buffalo row does not clear');
 
   assert.equal(plan.departures.some((d) => d.id === buff.id), false);
   assert.deepEqual(plan.moves[buff.id].size, {
     at: plan.departures[0].collapseAt,
     dur: MOTION.buffaloShrink,
-    to: 3,
+    to: SPECIES.buffalo.size - 1,
   });
   // The segment that came off is the trailing one: the buffalo keeps its x.
   assert.equal(plan.shards.length, 1);
-  assert.equal(plan.shards[0].x, buff.x + 3);
+  assert.equal(plan.shards[0].x, buff.x + SPECIES.buffalo.size - 1);
   // AC-813: a buffalo row is not announced as "going", because it is not.
   assert.equal(plan.flashes.length, 0);
   // ...but the player is told what happened.
@@ -305,8 +319,8 @@ test('AC-508/AC-812 a shrinking buffalo gets a new width and a shard, not a depa
 test('AC-615/AC-615b the score waits for the board to say so', () => {
   // An ARRIVAL clear: the shape where the count-up used to finish 233-249 ms
   // before the row it was paying for had even flashed.
-  const queue = [animal('fox', 8, 0)];
-  const { after, plan } = turnOn([...rowExcept(0, [8, 9])], queue);
+  const queue = [animal('fox', LAST - 1, 0)];
+  const { after, plan } = turnOn([...rowExcept(0, [LAST - 1, LAST])], queue);
   assert.ok(after.lastTurn.score > 0, 'the fixture must actually score');
 
   const firstFlash = Math.min(...plan.departures.map((d) => d.flashAt));
@@ -372,8 +386,8 @@ test('AC-509b the chip is given the body\'s own timeline, not the commit', () =>
 // ---- anticipation (AC-824d) ---------------------------------------------
 
 test('AC-824d an ARRIVAL clear washes the row it is about to complete', () => {
-  const queue = [animal('fox', 8, 0)];
-  const { after, plan } = turnOn([...rowExcept(0, [8, 9])], queue);
+  const queue = [animal('fox', LAST - 1, 0)];
+  const { after, plan } = turnOn([...rowExcept(0, [LAST - 1, LAST])], queue);
 
   const step = after.lastTurn.events.find(
     (e) => e.type === 'CLEAR_STEP' && e.phase !== 'SETTLE',
@@ -392,17 +406,18 @@ test('AC-824d an ARRIVAL clear washes the row it is about to complete', () => {
 });
 
 test('AC-824d the wash knows which cells are the gap and which are bodies', () => {
-  // Columns 0-7 are already standing; the tray's fox lands on 8 and 9 and
-  // completes the row. So exactly two cells are "the gap the arrival fills",
+  // Every column but the last two is already standing; the tray's fox lands on
+  // those two and completes the row. So exactly two cells are "the gap the arrival fills",
   // and they are the two the fox is about to occupy.
-  const queue = [animal('fox', 8, 0)];
-  const { plan } = turnOn([...rowExcept(0, [8, 9])], queue);
+  const queue = [animal('fox', LAST - 1, 0)];
+  const { plan } = turnOn([...rowExcept(0, [LAST - 1, LAST])], queue);
 
   const [row] = plan.anticipate.rows;
   assert.equal(row.occupied.length, BOARD.width);
   assert.deepEqual(
     row.occupied,
-    [true, true, true, true, true, true, true, true, false, false],
+    // Derived, not written out: the fox lands on the last two columns.
+    Array.from({ length: BOARD.width }, (_, c) => c < BOARD.width - 2),
   );
 
   // The question is NOT "which columns are full" — by the time the plan is
@@ -440,7 +455,7 @@ test('AC-824d a SETTLE clear is not anticipated: it has nothing to wait for', ()
 
 test('AC-809 every animal from the tray is given a flight from the tray', () => {
   const queue = [animal('fox', 0, 0), animal('elk', 4, 0)];
-  const { after, plan } = turnOn([animal('rat', 9, 0)], queue);
+  const { after, plan } = turnOn([animal('rat', LAST, 0)], queue);
 
   for (const arriving of queue) {
     const move = plan.moves[arriving.id];

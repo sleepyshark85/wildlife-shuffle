@@ -1,6 +1,8 @@
 // Design tokens, verbatim from docs/v2/ui.md §4 and §9. Values are not
 // negotiable and are not re-derived anywhere else.
 
+import { SCORE } from '../engine/constants.js';
+
 export const COLORS = Object.freeze({
   bg: '#0D141B',
   panel: '#131E28',
@@ -104,6 +106,63 @@ export function brighten(hex, amount) {
   const b = lift(value & 255);
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }
+
+/**
+ * ui.md §6.2 — the tray's silhouettes.
+ *
+ * A silhouette is LESS SPECIFIC than the animal, not less true (§6.1): it
+ * states the footprint and the columns exactly, which is the whole of what a
+ * player can plan against, because size is the only property that changes how
+ * a piece behaves. The two rules that follow from that are both here rather
+ * than in the component:
+ *
+ *   - `gap` is why AC-315b holds. Two 1-wide shadows side by side must not
+ *     paint as one 2-wide shadow, or the preview would be stating a footprint
+ *     the batch does not have, which is misrepresentation rather than
+ *     withholding.
+ *   - buffalo keeps its rim, because a buffalo refuses to clear and hiding
+ *     that withholds a RULE rather than a flavour (AC-315c).
+ */
+export const SILHOUETTE = Object.freeze({
+  fill: '#2C3A47',
+  edge: '#3C4C5B',
+  radius: 3,
+  /** 1 pt of daylight between adjacent animals, so outlines never merge. */
+  gap: 1,
+  buffaloRim: 'rgba(232,180,74,.6)',
+  buffaloRimWidth: 1.5,
+  /** The faint ox-blood tint that says "this one is different". */
+  buffaloFill: '#3A2E38',
+});
+
+/**
+ * AC-315e: the last 160 ms of the 260 ms arrival, in which the same view
+ * resolves from silhouette to animal. It is not a duration the budget owns —
+ * the flight already costs `MOTION.arrival` and this runs inside it.
+ */
+export const HANDOVER_MS = 160;
+
+/**
+ * ui.md §5.5 — the origin recess.
+ *
+ * Expressed as an OVERLAY rather than as a colour, deliberately: "the origin's
+ * cells take their existing ground darkened by 55%" is exactly black at 0.55
+ * over whatever is there, which is what keeps it correct over the danger
+ * band's #2A1D24 as well as the normal #1A2833 without the component ever
+ * having to know which one it is standing on.
+ */
+export const RECESS = Object.freeze({
+  /** The ground, darkened by 55%. */
+  darken: 'rgba(0,0,0,.55)',
+  /** The dragged animal's species fill, at 12%: what ties the hole to the hand. */
+  tintAlpha: 0.12,
+  /** 1 pt along the top of the footprint: what makes it read as pressed in. */
+  topEdge: 'rgba(255,255,255,0.06)',
+  topEdgeWidth: 1,
+  /** AC-425: High Contrast trades the register for an outline it can see. */
+  highContrastEdge: 'rgba(255,255,255,0.7)',
+  highContrastWidth: 2,
+});
 
 export const SEAM = 'rgba(0,0,0,.22)';
 export const SEAM_BUFFALO = 'rgba(232,180,74,.5)';
@@ -276,6 +335,7 @@ export const COPY = Object.freeze({
   pass: 'Pass',
   trayLabel: 'NEXT ARRIVAL',
   buffaloShrink: 'BUFFALO −1',
-  buffaloDown: 'BUFFALO DOWN  +500',
+  /** Derived: the retirement bonus rose 500 -> 650 and this said 500. */
+  buffaloDown: `BUFFALO DOWN  +${SCORE.buffaloRetire}`,
   perfect: 'PERFECT  +1000',
 });

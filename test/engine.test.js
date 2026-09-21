@@ -12,6 +12,8 @@ import {
   MAX_BATCH_CELLS,
   PHASE,
   PHASE_ORDER,
+  SCORE,
+  SPECIES,
   STATUS,
   STREAK_TURNS_AT_CAP,
 } from '../src/engine/constants.js';
@@ -32,14 +34,25 @@ import { filledRows } from '../src/engine/board.js';
 import { resolveClears } from '../src/engine/resolve.js';
 import { summariseEvents } from '../src/engine/summary.js';
 import { chooseAction } from '../tools/bot.mjs';
-import { animal, fullRow, rowExcept } from './helpers.js';
+import { bandForTurn } from '../src/engine/spawn.js';
+import { LAST, animal, fullRow, rowExcept } from './helpers.js';
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = path.join(TEST_DIR, '..', 'src', 'engine');
 
-/** The AC-504d fixture: a settled board whose cascade runs 10 steps deep. */
+/**
+ * The AC-504d fixture, as the REDUCER sees it: a settled 9-wide board whose
+ * cascade runs 7 steps deep, found by directed search over valid boards.
+ *
+ * The published fixture is 10 wide and stays that way in resolve.test.js,
+ * because `resolveClears` takes its width as a parameter and a 10-step cascade
+ * is worth keeping. The reducer does not take a width — it reads BOARD.width —
+ * so running the old board through it silently stopped clearing anything
+ * (4,650 instead of 17,100). This is the same board-narrowing drift as the
+ * column literals, in fixture form.
+ */
 function deepChainBoard() {
-  const file = path.join(TEST_DIR, 'fixtures', 'deep-board.json');
+  const file = path.join(TEST_DIR, 'fixtures', 'deep-board-9.json');
   return JSON.parse(readFixture(file, 'utf8')).map((a, i) => ({ ...a, id: `deep-${i}` }));
 }
 
@@ -195,8 +208,17 @@ test('AC-301/302/1306 the tray is a promise: 200 consecutive turns, zero toleran
   let state = createRun({ seed: 1, difficulty: 'meadow' });
   let checked = 0;
 
+  let runs = 1;
   for (let i = 0; i < 200; i++) {
-    assert.equal(state.status, STATUS.READY, `run ended after ${i} turns`);
+    // The tray contract is about arrivals, not about how long a run lasts.
+    // This used to assert READY here, which quietly made it a pacing test too:
+    // at 9 columns the greedy bot tops out around turn 72 on Meadow and the
+    // TRAY test failed. Run length is measured in test/pacing.test.js, where it
+    // can be read; here it just restarts and keeps checking arrivals.
+    if (state.status !== STATUS.READY) {
+      state = reduce(state, { type: ACTIONS.RESTART, seed: state.seed + 1 });
+      runs += 1;
+    }
     const promised = state.queue.map((a) => ({ id: a.id, type: a.type, x: a.x, size: a.size }));
     const next = reduce(state, chooseAction(state));
     const arrival = next.lastTurn.events.find((e) => e.type === 'ARRIVAL');
@@ -208,6 +230,7 @@ test('AC-301/302/1306 the tray is a promise: 200 consecutive turns, zero toleran
     state = next;
   }
   assert.equal(checked, 200);
+  assert.ok(runs >= 2, 'the restart path is exercised, not just asserted');
 });
 
 test('AC-312 each advance generates exactly one new batch', () => {
@@ -233,7 +256,16 @@ test('AC-313 a run opens on a seeded board at turn 1 with a tray and no score', 
   assert.equal(state.status, STATUS.READY);
   assert.ok(state.animals.length > 0, 'two arrival batches have already landed');
   assert.ok(state.queue.length > 0, 'the tray shows the batch for turn 1');
-  assert.ok(queueCells(state) >= 3 && queueCells(state) <= 5, 'Savanna turn 1 band');
+  // The band is the TARGET the tray is drawn against, not a per-batch
+  // guarantee: count-first draws a whole number of animals, so one tray
+  // scatters around it (AC-307b). What holds for a single run is the cap; the
+  // band shows up in the mean.
+  assert.ok(queueCells(state) >= 1 && queueCells(state) <= MAX_BATCH_CELLS);
+  const [low, high] = bandForTurn('savanna', 1);
+  let cells = 0;
+  for (let seed = 0; seed < 400; seed++) cells += queueCells(createRun({ seed, difficulty: 'savanna' }));
+  const mean = cells / 400;
+  assert.ok(mean > low && mean < high, `Savanna turn 1 tray mean ${mean.toFixed(2)} outside ${low}-${high}`);
 });
 
 // ---- AC-4xx: the rules half of movement ---------------------------------
@@ -311,15 +343,15 @@ test('AC-411/412 Pass always advances the turn, even with no legal move', () => 
 
 test('AC-601/602 a single completed row scores exactly 100 on the first clear', () => {
   const base = createRun({ seed: 4 });
-  const mover = animal('rat', 8, 0);
-  const state = { ...base, animals: [...rowExcept(0, [8, 9]), mover], queue: [] };
-  const next = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+  const mover = animal('rat', LAST - 1, 0);
+  const state = { ...base, animals: [...rowExcept(0, [LAST - 1, LAST]), mover], queue: [] };
+  const next = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: LAST });
   assert.equal(next.score, 0, 'column 8 is now empty, so nothing completed');
 
   // A survivor high up keeps this from also being a Perfect Clear.
   const state2 = {
     ...base,
-    animals: [...rowExcept(0, [9]), animal('rat', 9, 4), animal('fox', 0, 8)],
+    animals: [...rowExcept(0, [LAST]), animal('rat', LAST, 4), animal('fox', 0, 8)],
     queue: [],
   };
   const next2 = reduce(state2, { type: ACTIONS.PASS });
@@ -334,10 +366,10 @@ test('AC-606b three consecutive single-row clears pay 100, 130 and 160', () => {
   let state = base;
   const perTurn = [];
   for (let i = 0; i < 3; i++) {
-    const mover = animal('rat', 8, 6);
-    state = { ...state, animals: [...rowExcept(0, [9]), mover, survivor()], queue: [] };
+    const mover = animal('rat', LAST - 1, 6);
+    state = { ...state, animals: [...rowExcept(0, [LAST]), mover, survivor()], queue: [] };
     const before = state.score;
-    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: LAST });
     perTurn.push({ gained: state.score - before, mult: state.lastTurn.streakMult, streak: state.streak });
   }
 
@@ -354,9 +386,9 @@ test('AC-606c the multiplier reaches x3.0 on the sixth clearing turn and stops',
   let state = base;
   const mults = [];
   for (let i = 0; i < 8; i++) {
-    const mover = animal('rat', 8, 6);
-    state = { ...state, animals: [...rowExcept(0, [9]), mover, animal('fox', 0, 9)], queue: [] };
-    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+    const mover = animal('rat', LAST - 1, 6);
+    state = { ...state, animals: [...rowExcept(0, [LAST]), mover, animal('fox', 0, 9)], queue: [] };
+    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: LAST });
     mults.push(state.lastTurn.streakMult);
   }
   assert.deepEqual(mults, [1.0, 1.3, 1.6, 2.0, 2.5, 3.0, 3.0, 3.0]);
@@ -412,9 +444,9 @@ test('AC-608 a turn with no clear in either phase resets the streak', () => {
 
 test('AC-613 a perfect clear pays a flat 1000 and pins the streak to its cap', () => {
   const base = createRun({ seed: 4 });
-  const mover = animal('rat', 8, 1);
-  const state = { ...base, animals: [...rowExcept(0, [9]), mover], queue: [] };
-  const next = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+  const mover = animal('rat', LAST - 1, 1);
+  const state = { ...base, animals: [...rowExcept(0, [LAST]), mover], queue: [] };
+  const next = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: LAST });
 
   assert.equal(next.animals.length, 0);
   assert.equal(next.score, 1100, '100 for the row plus a flat 1000');
@@ -519,7 +551,7 @@ test('AC-506 a buffalo in another row is untouched when a row clears beneath it'
   assert.equal(next.stats.rowsCleared, 1, 'the non-buffalo row cleared');
   const buffalo = currentBuffalo(next);
   assert.ok(buffalo, 'the buffalo is still on the board');
-  assert.equal(buffalo.size, 4, 'and at full size: its own row was never complete');
+  assert.equal(buffalo.size, SPECIES.buffalo.size, 'and at full size: its own row was never complete');
   assert.equal(buffalo.y, 0, 'it settled onto the floor');
   assert.equal(next.score, 100);
 });
@@ -546,25 +578,29 @@ test('AC-507/610/611 a buffalo ground down to nothing retires and pays out', () 
 
   assert.equal(currentBuffalo(state), undefined, 'the buffalo left the board');
   assert.equal(state.stats.buffaloRetired, 1);
-  assert.equal(state.score, 550, '50 for the final shrink plus 500 for retirement');
+  assert.equal(state.score, 50 + SCORE.buffaloRetire, '50 for the final shrink plus retirement');
 });
 
 test('AC-610 a buffalo shrink scores 50 and the row refuses to clear', () => {
   const base = createRun({ seed: 12 });
-  const state = { ...base, animals: [animal('buffalo', 0, 0), ...rowExcept(0, [0, 1, 2, 3])], queue: [] };
+  // The gaps are the buffalo's own footprint, derived: it grew from 4 cells
+  // to 5 this round, and a hard-coded gap list would have left column 4 doubly
+  // occupied rather than failing.
+  const footprint = Array.from({ length: SPECIES.buffalo.size }, (_, i) => i);
+  const state = { ...base, animals: [animal('buffalo', 0, 0), ...rowExcept(0, footprint)], queue: [] };
   const next = reduce(state, { type: ACTIONS.PASS });
 
   assert.equal(next.score, 50);
   assert.equal(next.stats.rowsCleared, 0);
   assert.equal(next.stats.buffaloShrinks, 1);
-  assert.equal(currentBuffalo(next).size, 3);
+  assert.equal(currentBuffalo(next).size, SPECIES.buffalo.size - 1);
 });
 
 test('AC-513 a perfect clear does not sneak in an extra turn', () => {
   const base = createRun({ seed: 4 });
-  const mover = animal('rat', 8, 1);
-  const state = { ...base, animals: [...rowExcept(0, [9]), mover], queue: [] };
-  const next = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+  const mover = animal('rat', LAST - 1, 1);
+  const state = { ...base, animals: [...rowExcept(0, [LAST]), mover], queue: [] };
+  const next = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: LAST });
   assert.equal(next.turn, state.turn + 1, 'exactly one turn passed');
   assert.equal(next.status, STATUS.READY);
 });
@@ -583,8 +619,11 @@ test('AC-313b/c/d seeding uses turn 1 bands, no buffalo, and scores nothing', ()
       assert.equal(state.turn, 1);
       // AC-313b: both seeding batches and Q(1) are drawn from turn 1's band, so
       // the opening board can never exceed two turn-1 batches' worth of cells.
-      const [, high] = [0, { meadow: 4, savanna: 5, tundra: 6 }[difficulty]];
-      assert.ok(state.animals.reduce((n, a) => n + a.size, 0) <= high * 3);
+      // Two seeding batches have landed. Each is capped at W-1 by AC-303, and
+      // that cap — not the band — is what bounds the opening board, because a
+      // batch scatters around its target (AC-307b).
+      assert.ok(state.animals.reduce((n, a) => n + a.size, 0) <= MAX_BATCH_CELLS * 2,
+        `${difficulty} seed ${seed} opened over the two-batch cap`);
     }
   }
 });
@@ -858,9 +897,12 @@ test('AC-504d/706c/706d the committed fixture reported through the reducer', () 
     { type: ACTIONS.PASS },
   );
 
-  assert.equal(next.score, 17100);
-  assert.equal(next.stats.rowsCleared, 6);
-  assert.equal(next.stats.longestChain, 10, 'AC-706d: the true cascade depth, not a capped one');
+  // AC-504d's published figures were derived from the 10-wide board and do not
+  // survive the narrowing. Reported for re-derivation, not edited into the AC:
+  // 7 steps, 4 rows, 1 retirement, 15,450 at streak x3.0.
+  assert.equal(next.score, 15450);
+  assert.equal(next.stats.rowsCleared, 4);
+  assert.equal(next.stats.longestChain, 7, 'AC-706d: the true cascade depth, not a capped one');
   assert.equal(next.stats.buffaloRetired, 1);
   assert.equal(next.lastTurn.streakMult, 3.0, 'streak 5 incremented to 6 pays at the cap');
 
@@ -869,12 +911,12 @@ test('AC-504d/706c/706d the committed fixture reported through the reducer', () 
     (e) => e.type === 'CLEAR_STEP' && e.retiredIds.length > 0,
   );
   assert.ok(retirement, 'buffaloRetired 1 must correspond to a scored event');
-  assert.ok(retirement.score >= 500);
+  assert.ok(retirement.score >= SCORE.buffaloRetire);
 
   const record = runRecord(next);
-  assert.equal(record.longestChain, 10);
+  assert.equal(record.longestChain, 7);
   assert.equal(record.buffaloRetired, 1);
-  assert.equal(record.score, 17100);
+  assert.equal(record.score, 15450);
 });
 
 // ---- AC-607b/c: the pill and the raw counter are different things -------
@@ -884,9 +926,9 @@ test('AC-607b/c the raw streak keeps climbing past the cap; the pill does not', 
   let state = base;
   const seen = [];
   for (let i = 0; i < 9; i++) {
-    const mover = animal('rat', 8, 6);
-    state = { ...state, animals: [...rowExcept(0, [9]), mover, animal('fox', 0, 9)], queue: [] };
-    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+    const mover = animal('rat', LAST - 1, 6);
+    state = { ...state, animals: [...rowExcept(0, [LAST]), mover, animal('fox', 0, 9)], queue: [] };
+    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: LAST });
     seen.push({ raw: state.streak, pill: streakPill(state).mult });
   }
 
@@ -927,9 +969,9 @@ test('longestStreak records the best streak of the run, not the last', () => {
   const base = createRun({ seed: 4 });
   let state = base;
   for (let i = 0; i < 4; i++) {
-    const mover = animal('rat', 8, 6);
-    state = { ...state, animals: [...rowExcept(0, [9]), mover, animal('fox', 0, 9)], queue: [] };
-    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+    const mover = animal('rat', LAST - 1, 6);
+    state = { ...state, animals: [...rowExcept(0, [LAST]), mover, animal('fox', 0, 9)], queue: [] };
+    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: LAST });
   }
   assert.equal(state.streak, 4);
   state = reduce({ ...state, animals: [animal('rat', 0, 0)], queue: [] }, { type: ACTIONS.PASS });
@@ -941,9 +983,9 @@ test('AC-706e longestStreak is carried by the ADVANCE event, not folded separate
   const base = createRun({ seed: 4 });
   let state = base;
   for (let i = 0; i < 4; i++) {
-    const mover = animal('rat', 8, 6);
-    state = { ...state, animals: [...rowExcept(0, [9]), mover, animal('fox', 0, 9)], queue: [] };
-    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: 9 });
+    const mover = animal('rat', LAST - 1, 6);
+    state = { ...state, animals: [...rowExcept(0, [LAST]), mover, animal('fox', 0, 9)], queue: [] };
+    state = reduce(state, { type: ACTIONS.MOVE, id: mover.id, x: LAST });
   }
 
   const advance = state.lastTurn.events.find((e) => e.type === 'ADVANCE');

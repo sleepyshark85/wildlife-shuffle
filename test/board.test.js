@@ -14,6 +14,7 @@ import {
   freeRuns,
   moveAnimal,
 } from '../src/engine/board.js';
+import { BOARD } from '../src/engine/constants.js';
 import { animal, fullRow, rowExcept } from './helpers.js';
 
 test('AC-206 an animal with nothing beneath it falls to y=0', () => {
@@ -44,7 +45,7 @@ test('AC-206 gravity is idempotent on a settled board', () => {
   assert.deepEqual(applyGravity(board), board);
 });
 
-test('filledRows finds only rows with all ten columns occupied', () => {
+test('filledRows finds only rows with every column occupied', () => {
   const board = [...fullRow(0), ...rowExcept(1, [7])];
   assert.deepEqual(filledRows(board), [0]);
 });
@@ -68,7 +69,7 @@ test('AC-403 a move may not cross another animal in the same row (swept path)', 
 });
 
 test('AC-403 the swept path is checked in both directions', () => {
-  const mover = animal('fox', 8, 3);
+  const mover = animal('fox', BOARD.width - 2, 3);
   const blocker = animal('elk', 3, 3);
   assert.equal(checkMove([mover, blocker], mover.id, 0), MOVE_BLOCKED);
   assert.equal(checkMove([mover, blocker], mover.id, 6), MOVE_OK);
