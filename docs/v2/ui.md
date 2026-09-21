@@ -21,9 +21,17 @@ that is the entire chrome budget.
 animal as the same `#2255dd` rectangle (`src/components/Animal.js:31`), distinguished only
 by an emoji and its width. v2 encodes size **four** ways, redundantly (§5.2).
 
-**Dark only.** `userInterfaceStyle: "dark"` in `app.json`. A dark ground is what lets five
-saturated species fills separate at a 36 pt cell, and a light theme would double the visual
-QA surface for no gameplay gain. This is a decision, not an omission.
+**~~Dark only.~~ SUPERSEDED — both themes ship.** See §16.
+
+> The original ruling: *"A dark ground is what lets five saturated species fills separate at a
+> 36 pt cell, and a light theme would double the visual QA surface for no gameplay gain. This
+> is a decision, not an omission."*
+>
+> **Both halves were true and the conclusion was overtaken.** The owner saw the game on a real
+> phone — the first time it existed outside a test harness — and judged the cost worth paying:
+> *"Should have more bright theme. Dark is … dark."* The QA surface does double, and §16 pays
+> for it with `theme-contrast.mjs` rather than with vigilance. Kept rather than deleted,
+> because the argument was correct and the evidence that beat it was a kind none of us had.
 
 ---
 
@@ -1516,3 +1524,113 @@ in public wants exactly this.
 would read as a mess. The emotionally dominant fact is the best, not the ending — and the
 Game Over sheet already says the run is over, in the one channel that cannot be muted. One
 moment, one sound.
+
+---
+
+## 16. The light theme, and the natural background
+
+The owner, on a real phone: *"Should have more bright theme. Dark is … dark."* and
+*"let's add a real light theme and probably some natural background (don't make the background
+too strong that make it hard to see the animals)."*
+
+That second sentence is the whole brief for §16.3 and it is a good one. §16.2 makes it a
+number.
+
+### 16.1 The ramp survives, and the fix is the edge
+
+**This is the decision the rest of the theme hangs on**, and the framing it arrived with is
+worth correcting first, because it changes which fix is right.
+
+The worry was that on a light ground the ramp *points the wrong way*. It does not. The ramp is
+an **ordering** — rat lighter than elephant — and an ordering is ground-independent: the
+elephant is still the darkest block, and *heavier is darker* is still the intuition doing the
+work. What actually breaks is narrower and fixable: **the rat's absolute contrast against a
+light ground**. The cue does not invert; the smallest animal gets hard to see.
+
+So:
+
+| option | ruling |
+|---|---|
+| **Invert the ramp on light** — elephant lightest | **No.** It would trade a real cue for a contrast problem that has a cheaper fix. "Big things are heavy and dark" is *why* the ramp reads at all; inverting it keeps the monotonicity and throws away the meaning. |
+| **Keep the ramp, accept a weaker cue, lean on the other three** | **No.** §5.2 says any one cue can be missed and all four cannot — that is a reason not to *rely* on three, not a licence to degrade one on purpose. |
+| **Move size onto saturation** | **No.** A weaker perceptual channel, and it would re-open §10's colour-blind analysis where fox and elk already collide at distance 20. |
+| **Keep the ramp's direction; shift its range; let the edge carry the floor** | **Yes.** |
+
+> **The fill carries the size encoding. The edge carries the visibility floor.**
+
+The fill's lightness still descends with size in both themes. The **edge** is what guarantees
+every animal is separable from its ground, and because it is specified per theme it adapts
+where the fill cannot. A rat on light is a pale amber block that would read at only 1.68:1 on
+its fill alone — and 4.05:1 on its edge, which is what makes it visible.
+
+**The light ramp is better spaced than the dark one**, which was an accident worth keeping:
+
+```
+dark   L*  86 > 68 > 61 > 46      gaps 18, 7, 16
+light  L*  71 > 58 > 46 > 33      gaps 13, 12, 13
+```
+
+### 16.2 The palettes, and the script that keeps them honest
+
+`node docs/v2/theme-contrast.mjs` asserts all three properties on every publish: every species
+separable from its board ground by fill **or** edge at **≥ 3:1** (WCAG 1.4.11, the non-text
+floor — these are solid shapes, not glyphs), the ramp monotonic in both themes, and the
+background texture under its ceiling. **The doubled QA surface §1 warned about is paid for by
+this script rather than by remembering.**
+
+| | dark board `#16212C` | light board `#E6DFD2` |
+|---|---|---|
+| Rat (1) | fill `#FFD166` edge `#D9A83C` | fill `#D8A63A` edge `#8A6416` |
+| Fox (2) | fill `#F58A47` edge `#C96A2C` | fill `#D4712F` edge `#94430F` |
+| Elk (3) | fill `#5FA45C` edge `#427A40` | fill `#3F7A3E` edge `#284E27` |
+| Elephant (4) | fill `#5B6E88` edge `#3F4F66` | fill `#3E4F66` edge `#26303F` |
+| **Buffalo (5)** | fill `#8C3B4A` rim `#E8B44A` | fill `#7A2E3C` rim **`#9C6D14`** |
+
+**Light surfaces:** app ground `#F2EDE3` (warm bone, not white — "natural" starts here and
+white is not a colour found outdoors), board `#E6DFD2`, empty cell `#DDD5C6`, cell line
+`#CBC1AE`, hairline `#C2B7A2`. **Light ink:** `#1C2A22`, muted `#5A6A5E`, dim `#7D8C81`.
+**Light accent** `#B06B12` — `#FFC24B` disappears on bone.
+
+**The buffalo keeps its reading, with a repriced gold.** `#E8B44A` against bone is 1.9:1 and
+would look like a smudge; `#9C6D14` holds 3.44:1 and is still unmistakably metal. It remains
+the only rimmed piece in either theme, which is the part that carries *"a different kind of
+object"* — not the specific yellow.
+
+**The recess works on light by construction and is confirmed, not assumed.** §5.5 specifies it
+as "the cell ground **darkened 55%**", which is ground-relative: on bone it is a taupe hole,
+on slate a near-black one. A hole is darker than its surround in both themes, which is what
+makes it read as absence either way.
+
+**High Contrast becomes ground-relative.** 2.5 pt white borders vanish on bone, so HC takes
+**the ground's opposite**: white on dark, `#14201A` on light. Same for §5.5's origin outline
+(AC-425) and §5.2's numeral chip, which flips to a bone chip with dark ink.
+
+### 16.3 The natural background
+
+**One texture, not three.** Per-difficulty habitat grounds are the obvious move and I am
+rejecting it: it would triple the surface the species fills must survive against — §1's
+objection arriving by another door — and **habitat grounds are already spoken for**, since
+Night Savanna and the Tundra palette are unlock content (§9). Difficulty is legible from Home
+and the HUD; the board does not need to carry it too.
+
+**The background is only ever visible through empty cells.** This is the structural move that
+satisfies the owner's constraint by construction rather than by restraint:
+
+> The texture lives on the **board ground**. Empty cells are semi-transparent so it reads
+> through them. **Animals are fully opaque.** The background therefore *cannot* be behind an
+> animal, and "too strong to see the animals" is not a thing a future change can reintroduce
+> by nudging an alpha.
+
+**What it is:** a static, tileable organic grain — dry earth, paper fibre — at `#DCD4C5` on
+light and `#1B2733` on dark, plus sparse faint animal tracks at no more than `#D5CBB8`.
+Positions are drawn from **the run's seed**, so each run's ground is its own and fixed within
+the run. No motion, ever: the only animated thing on the board is the game.
+
+**Ceiling: 1.25:1 against the board ground**, asserted by the script. Measured 1.111:1 for the
+grain and 1.213:1 for the tracks. This is what turns *"don't make it too strong"* from a
+judgement each future change re-litigates into a check that fails.
+
+**The texture is suppressed in the danger band.** Rows 11–14 render flat. A texture under a
+tint under a pulse is three things competing in the one place the player most needs to read
+quickly, and where warmth and urgency conflict, urgency wins. It also earns something: **the
+textured world stops where the danger begins.**

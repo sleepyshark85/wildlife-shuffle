@@ -167,6 +167,38 @@ having either way.
 
 ---
 
+## Q9 · Which theme does the app open in, for a player with no device preference?
+
+`ui.md` §16 ships both and follows the device setting, with a manual override. That answers
+almost everyone. It does not answer what a *screenshot* shows, or what someone whose phone is
+set to "automatic" sees at 3pm.
+
+The owner's words were *"should have more bright theme"*, which reads as a preference and not
+only as a request for the option to exist.
+
+**Recommendation: light is the default**, and the App Store screenshots are shot in light. The
+request was made after seeing the dark one and finding it wanting; honouring it means leading
+with the bright one, not burying it behind a setting. Overruling this is a one-line change and
+a reshoot — cheap now, less cheap after the listing is up.
+
+---
+
+## Q10 · Does the natural background belong on Home and the sheets, or only on the board?
+
+§16.3 puts the texture on the **board ground only**, so it can never sit behind an animal.
+Home, Records, Collection and the sheets stay flat.
+
+That is the safe reading of the owner's constraint, and it may be *too* safe: "natural
+background" might have meant the app's whole surface, and the board is the one place the
+constraint bites. The screens where nothing has to stay legible against it are the screens
+where it is free.
+
+**Recommendation: extend it to Home only**, at the same 1.25:1 ceiling, and leave Records,
+Collection and all sheets flat because they are reading surfaces (§10). Home is the screen a
+returning player sees first and the one that currently carries the least character.
+
+---
+
 ## Things I decided rather than asking you
 
 Listed so you can overrule any of them. Rationale for each is in `gameplay.md` §12.
