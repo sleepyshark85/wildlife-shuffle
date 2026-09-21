@@ -17,8 +17,9 @@ exists).
 | **1** | Rules engine, headless | 2xx–7xx | **Merged** · PR #2, re-landed #3 |
 | **2** | React state layer and board | 1xx, 4xx, 13xx | **Merged** · PR #5 |
 | **3** | Motion, visual states, accessibility | 5xx, 8xx, 9xx | **Merged** · PR #9 |
-| **4** | Meta progression and persistence | 10xx | **Built, awaiting independent verification** |
-| **5** | Polish — sound, haptics, juice | 11xx | Not started |
+| **4** | Meta progression and persistence | 10xx | **Merged** · PR #18 |
+| **D** | Abilities — a layer, not a slice | 14xx | **Merged** · PR #22, #25 |
+| **5** | Polish — sound, haptics | 11xx | In progress |
 | **6** | App Store readiness | 12xx | Not started |
 
 Slices 1–3 are a complete, shippable game. 4–6 are layers the owner can approve or defer
@@ -210,6 +211,42 @@ Tests 220 → 263 (43 new). 50 planted faults, all caught.
 
 ---
 
+## Layer D — Abilities
+
+*Merged.* Five abilities, one per species, **scope scaling with size**: rat acts on one animal,
+fox on one turn's actions, elk on one species, elephant on the board's layout, buffalo on time.
+It shipped out of order relative to Slices 5 and 6, which is the layer model working rather
+than a problem with it — layers are defined by independence, and pulling this forward without
+disturbing anything is the evidence the boundary was drawn correctly.
+
+**Two rules are structural rather than remembered.** An ability runs inside the ACTION phase,
+of which there is exactly one, so it can never be taken *as well as* a move. And `score` is
+written in exactly one place — the fold of the event stream — so spending cannot deduct it, a
+property a hygiene grep enforces by auditing every score write for a subtraction.
+
+**The self-limiting guarantee is measured, not argued.** 270 runs across three spending
+policies: zero failed to end. A freeze-abusing bot gains **+16% turns and +4% score** — it buys
+survival and not points, which is the whole property.
+
+**Abilities cost 1–3 charges, priced from measured value**, after a flat price let Stampede
+(+194%) dominate Burrow (+11%) at 24× the value for the same cost. *Scope follows size; price
+follows value — two ladders, and forcing them to agree would be dishonest.* Hold the Line has
+the largest scope in the set and the smallest score effect, because it buys turns not points.
+
+**Last Stand** grants one charge the first time an animal enters the danger band — regardless of
+score, regardless of the cap, once per run. It exists because the score ladder structurally
+cannot reach the player who needs help: charges come from clearing, and a player in trouble is
+not clearing.
+
+**The defect worth remembering**: the cancel scrim sat above the animals in z-order, so tapping
+a valid target read as "tapped outside, cancel" and **two of the five abilities could not be
+used at all** — with a code comment four lines above asserting the opposite. It shipped through
+327 passing tests. The fix gave z-order one owner and added a hit-test check; fixing it then
+exposed a second defect, because an invalid target that no longer falls through *swallows* the
+tap instead.
+
+---
+
 ## Slices 5–6, not started
 
 | | Contents |
@@ -259,7 +296,7 @@ node docs/v2/layout-sweep.mjs     # must be 0 overflowing
 truth — `docs/development-process.md` §6.4 records the time that cost a whole review.
 
 Test counts locate the slice: **118** = Slice 1, **161** = Slice 2, **194** = Slice 3,
-**263** = Slice 4.
+**263** = Slice 4, **344** = Layer D.
 
 ### 2. Know the shape of the work
 
