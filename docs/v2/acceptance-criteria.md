@@ -32,11 +32,18 @@ are verified independently and do not gate Layer F.
 
 ## AC-1xx · Board, layout, device fit
 
-**AC-101** Given the app is running on any supported iPhone, When the Game screen is shown,
-Then the board is exactly 10 columns by 15 rows.
+**AC-101** *(amended — board narrowed to 9 on owner request)* Given the app is running on any
+supported iPhone, When the Game screen is shown, Then the board is exactly **9 columns by 15
+rows**.
 
-**AC-102** Given the Game screen on iPhone 15 (393 × 852 pt), Then the cell size is 36 pt and
-the board measures 360 × 540 pt.
+**AC-101b** Given the source tree, Then board width is read from **one constant**
+(`BOARD.width`) everywhere — in the engine, the bands, the spawn cap, the layout formula and
+the tests. **A hard-coded 9 or 10 anywhere is a defect.** *(This is AC-126's rule applied to
+the board itself, and it is what made narrowing the board a constant edit rather than a
+rewrite.)*
+
+**AC-102** *(amended)* Given the Game screen on iPhone 15 (393 × 852 pt), Then the cell size
+is **39 pt** and the board measures **351 × 585 pt**.
 
 **AC-103** *(amended — a device list cannot cover hardware that has not shipped; see AC-119)*
 Given **any** supported viewport, When the Game screen is shown, Then the entire board, HUD,
@@ -231,33 +238,57 @@ the fault without a debugger: the step count reached, the run seed, and the turn
 
 ## AC-3xx · Spawning & the preview contract
 
-**AC-301 — THE PREVIEW CONTRACT.** Given the tray displays a batch of animals at specific
-columns, When the Arrival phase places that batch, Then every animal arrives with **exactly
-the species and exactly the `x` shown in the tray**, with no exceptions and no re-rolling.
+**AC-301 — THE PREVIEW CONTRACT.** Given the tray displays a batch at specific columns, When
+the Arrival phase places that batch, Then every animal arrives with **exactly the species,
+size and `x` the tray depicted** — the silhouette's footprint and columns are exact even
+though its species is not shown (AC-315), with no exceptions and no re-rolling.
 *(v1 C2: `gameStore.js:101-135` re-rolled every column at spawn time; `validNextAnimals` at
 `:80-89` was dead code.)*
 
 **AC-302** Given 200 consecutive turns are played, Then AC-301 holds on all 200. Zero
 tolerance.
 
-**AC-303** Given a batch is generated, Then it occupies **at most 9** of the 10 columns.
+**AC-303** *(amended)* Given a batch is generated, Then it occupies **at most `BOARD.width − 1`**
+columns — 8 of 9. Expressed against the constant, never as a literal.
 
 **AC-304** Given a batch is generated, Then no two animals in it overlap.
 
 **AC-305** Given a batch is generated, Then every animal is fully within bounds:
-`0 ≤ x` and `x + size ≤ 10`.
+`0 ≤ x` and `x + size ≤ BOARD.width`.
 
-**AC-306** *(amended — now an equality)* Given difficulty Savanna, Then the batch occupies
-**exactly** the turn's rolled target, and that target lies in 3–5 at turn 1, 4–6 from turn 13,
-5–7 from turn 25, and 6–8 from turn 37. *(Guaranteed by §5.2 invariant 3; a batch short of its
-target is a defect, not a tolerance.)*
+**AC-306** *(amended — the band is a control on the MEAN, no longer a per-batch equality; see
+`gameplay.md` §5.2)* Given difficulty Savanna, Then the rolled target lies in **3–5** at turn
+1, **4–6** from turn 13 and **5–7** from turn 25, which is its ceiling; and over 3,000+ turns
+the **mean cells per turn is within ±0.15 of the band mean**, except at a difficulty's two
+highest bands where the `W − 1` cap legitimately pulls it low — record those rather than
+tuning them away.
 
-**AC-307** *(amended)* Given difficulty Meadow, Then the target lies in 2–4 at turn 1, 3–5 from
-turn 13, 4–6 from turn 25 and **5–7 from turn 37**, which is its ceiling. Given Tundra, 4–6 at
-turn 1, rising to a 7–9 ceiling. In both cases the batch occupies exactly the target.
+**AC-307** *(amended for the 9-wide board)* Given difficulty Meadow, Then the target lies in
+**2–4** at turn 1, **3–5** from turn 13 and **4–6** from turn 25, its ceiling. Given Tundra,
+**4–6** at turn 1, **5–7** from turn 13 and **6–8** from turn 25, its ceiling.
 
-**AC-307b** Given any batch at any difficulty and turn, Then the number of columns it occupies
-equals the rolled target exactly — never fewer, never more.
+**AC-307b** *(amended — exact equality no longer holds and this is deliberate)* Given any
+batch, Then its cell total scatters around the rolled target rather than matching it, because
+§5.2 draws a whole number of animals. **Stochastic rounding keeps the expectation on target**;
+a batch that misses the target is not a defect, a *mean* that misses it is.
+
+**AC-307c** Given any batch, Then it never exceeds `BOARD.width − 1` cells regardless of how
+the rounding falls.
+
+**AC-308b — THE REALISED SPECIES MIX.** Given 3,000+ generated turns per difficulty, Then the
+**realised** share of each species is within **±2 percentage points** of its weight in
+`gameplay.md` §5.4, and the realised **mean drawn size** within **±0.10** of the intended
+2.10 / 2.42 / 2.75.
+
+*(Nothing asserted this before, which is why the defect survived every prior round: AC-306–308
+checked cell totals and band membership, never the mix. The approved algorithm drew Savanna at
+48.9% rats against a weight of 25 and 6.6% elephants against 20 — mean drawn size 1.81 against
+2.42, every difficulty about 0.7 of a cell lighter than specified. **The owner reporting that
+the game "felt easy" was a defect report, not a tuning preference.**)*
+
+**AC-308c** Given the generator, Then **no species is ever excluded from a draw for fitting
+reasons** — the only permitted exclusion is the hard board limit `size ≤ CAP − filled`. A
+candidate pool filtered by largest-free-run is the specific mistake AC-308b exists to catch.
 
 **AC-308** Given Meadow, Savanna and Tundra are each played for 50 turns, Then the three runs
 produce measurably different mean cells-per-turn. *(v1 C1: Normal and Hard were identical
@@ -265,8 +296,9 @@ because `Math.ceil(1.5) === Math.ceil(2)`.)*
 
 **AC-309** *(amended — the old wording demanded a 9-column batch "at any difficulty", which is
 unachievable by design: only Tundra's band reaches a high of 9, and only from turn 37.)*
-Given 500 batches generated at **Tundra, turn 37 or later**, Then at least one occupies 9
-columns. *(v1 C3: the 1-column buffer capped every batch at 8 of 10 and averaged 6.0.)*
+Given 500 batches generated at **Tundra's ceiling band (6–8, turn 25+)**, Then at least one
+occupies **8** columns — `BOARD.width − 1`, the maximum the invariant permits — and **none ever
+occupies 9**, which would be a self-clearing arrival. *(v1 C3: the 1-column buffer capped every batch at 8 of 10 and averaged 6.0.)*
 
 **AC-309b** Given 500 batches generated at any difficulty and turn, Then no batch occupies 10
 columns, and the distribution of occupied-column counts matches the rolled targets exactly
@@ -297,8 +329,28 @@ normally, **but the run still opens at score 0**, with streak 0 and no clearing 
 **AC-314** Given the same run seed, When the run is replayed with the same player inputs,
 Then every batch generated is identical.
 
-**AC-315** Given the tray, Then it renders the batch as animal bodies in species colours at
-their real columns, and displays the batch's total cell count.
+**AC-315** *(amended — the tray now shows silhouettes; see `ui.md` §6)* Given the tray, Then it
+renders the batch as **silhouettes** at the board's cell width, in their exact spawn columns,
+with no glyph, no panel seams and no species colour, and displays the batch's total cell count.
+
+**AC-315b — PER-ANIMAL OUTLINES.** Given two adjacent arrivals, Then their silhouettes are
+**visibly separate** — a fox at column 3 and two rats at columns 3 and 4 produce different
+shapes, one 2-wide shadow against two 1-wide ones. *(Size is the only property that affects
+how a piece behaves, so footprint is the plan-relevant information. A merged shadow would lose
+it and would cross from "less specific" into misleading.)*
+
+**AC-315c** Given a buffalo in the batch, Then its silhouette **keeps its gold rim**. A buffalo
+behaves differently — it refuses to clear — so hiding it would withhold *mechanical* rather
+than cosmetic information. The line: hide what is cosmetic, keep what changes the rules.
+
+**AC-315d** Given the tray, Then the strip is **18 pt** tall and the tray block **31 pt**,
+returning 14 pt to the board (`ui.md` §3.2).
+
+**AC-315e — SHADOW BECOMES ANIMAL.** Given the arrival push-up, Then the **same views** travel
+from the strip into row 0 and resolve from silhouette to animal as they cross — fill blooming
+to the species colour, seams drawing in, glyph fading up, over the last 160 ms of the 260 ms
+flight. AC-301's proof is unaffected: it is still literally the same view arriving where the
+tray said it would.
 
 **AC-316 — INTERLEAVED GENERATION.** Given a batch is generated, Then each species is chosen
 against the free column runs that actually remain at that moment and is placed immediately
@@ -322,16 +374,26 @@ because a forced placement consumes no draw when `nextInt` short-circuits a dege
 **Do not "fix" this test to run at width 10** — it will fail, and the failure is in the
 expectation, not the generator. One-sided at the shipped width is the direction that matters.
 
-**AC-318 — PACING.** Given 30 seeds per difficulty played by the deterministic greedy bot with
-perfect information, Then median turns-per-run fall in these ranges:
+**AC-318 — PACING, RE-MEASUREMENT REQUIRED.** Given 30 seeds per difficulty played by the
+deterministic greedy bot with perfect information, Then median turns-per-run are **measured
+and reported before any band is changed**. The previously approved ranges — Meadow 100–150,
+Savanna 60–90, Tundra 35–55 — were measured on a **10-wide board with the biased species
+mix** and both of those premises are now false, so they are a starting hypothesis rather than
+an acceptance gate until re-measured.
 
-| | Meadow | Savanna | Tundra |
-|---|---:|---:|---:|
-| Acceptance range | 100–150 | 60–90 | 35–55 |
+**Measure after all three changes are in, never between them** (`gameplay.md` §5.7): the
+species-mix fix makes the game substantially harder, elephant 5→4 makes it easier, and the
+narrower row does both. They do not cancel in any computable way.
 
-*(Measured against the approved bands: Meadow 240 — out of range, which is why its ceiling
-moved to 5–7; Savanna 75.5 and Tundra 48.2 — both in range and unchanged.)* Re-run this after
-any band, weight or ramp change. *(v1 rendered flat green
+**AC-318b — THE MEASUREMENT SET.** Given the re-measurement run, Then it reports, per
+difficulty: realised species mix (AC-308b), mean cells per turn per band (AC-306), turns per
+run, maximum batch occupancy (AC-309), and the **median and 90th-percentile final score** —
+the last of which nothing needs yet, but which is what the §13 ability thresholds must be
+priced against rather than guessed.
+
+**AC-318c** Given the pacing ranges are missed, Then tuning proceeds **bands first, ramp
+interval second, species weights last**. The weights now do exactly what they say
+(AC-308b), so changing them alters the game's character rather than its pace. *(v1 rendered flat green
 occupancy squares that said nothing about what was coming.)*
 
 ---
@@ -391,6 +453,53 @@ dropped mid-resolution.
 **AC-415** Given any animal on any device, Then its touch target is at least 44 × 44 pt,
 achieved with `hitSlop` where the rendered body is smaller.
 
+### The origin recess *(a v1 affordance v2 had dropped)*
+
+**AC-416 — THE ORIGIN IS MARKED FOR THE WHOLE DRAG.** Given the player is dragging an animal,
+Then the cells it started in render as a **recess** for the entire drag, so the player never
+has to remember where the piece began. *(v1 shipped this as the "Original Position Ghost";
+v2's design dropped it. The owner's stated cost is concrete: a move is one per turn with no
+undo, so losing the origin means either committing an unintended move or spending the next
+action putting it back.)*
+
+**AC-417** Given the origin recess, Then it renders as the cell ground **darkened 55%** plus
+the dragged animal's species fill at **12%**, with a 1 pt `rgba(255,255,255,0.06)` inner top
+edge — **no outline, no dashes, and no `accent` colour**, which the destination ghost owns.
+
+**AC-418** Given an animal is dragged within the danger band, Then the recess darkens the
+band's own `#2A1D24` ground rather than painting a fixed colour, so it reads correctly on
+either ground.
+
+**AC-419 — THREE REGISTERS, ONE OUTLINE.** Given a drag in progress, Then the board shows the
+origin **recessed**, the body **solid** and the destination **outlined** — three different
+kinds of treatment, not three outlines in different colours. Any change that gives the origin
+a second dashed outline in the default theme is a defect.
+
+**AC-420** Given a drag begins, Then the recess appears in the same `onBegin` worklet frame as
+the grab lift, and **is not suppressed at zero displacement** — the body simply covers it and
+uncovers it as the drag moves off.
+
+**AC-421** Given a drag ends by any route — accepted, rejected, or cancelled — Then the recess
+fades over **110 ms**, tracking the body.
+
+**AC-422** Given a move is **rejected** (AC-406), Then the recess fades over the same 110 ms as
+the body's return, so the two converge to nothing together, and the shake plays on the body
+alone. The recess **does not outlive the shake**. *(A recess under a body that has come home
+marks "where this came from" as the place it now is, and reads as a second piece.)*
+
+**AC-423** Given a drag is in progress, Then the recess costs **zero** React commits: its
+origin is fixed at gesture start and written once as a shared value in `onBegin`. AC-831 is
+unaffected.
+
+**AC-424** Given Reduce Motion is enabled, Then the origin recess is **still shown**. It is a
+static state rather than motion, and only its 110 ms fade is animated, which already sits
+inside the ≤120 ms cross-fade budget.
+
+**AC-425** Given High Contrast is enabled, Then the origin instead takes a **2 pt dashed
+`#FFFFFF` outline at 70%** with no fill, dashed **6 on / 4 off** against the destination
+ghost's 3 on / 3 off so the two remain distinguishable by rhythm. *(A recess is a low-contrast
+device by nature; High Contrast trades the register deliberately.)*
+
 ---
 
 ## AC-5xx · Clearing, chains, buffalo
@@ -439,7 +548,8 @@ awarded is **17,100**, `stats.rowsCleared` is 6, `stats.longestChain` is 10, and
 **AC-505** Given two rows complete in the same step, Then both clear in that single step (not
 sequentially).
 
-**AC-506 — BUFFALO SHRINK.** Given a row is complete and contains a buffalo of size `n > 1`,
+**AC-506 — BUFFALO SHRINK.** Given a row is complete and contains a buffalo of size `n > 1`
+(buffalo spawns at **size 5**),
 When the clear resolves, Then every non-buffalo animal in the row is removed, the buffalo's
 size becomes `n − 1`, the buffalo's `x` is unchanged, and **the row does not clear**.
 
@@ -449,8 +559,8 @@ Then the buffalo is removed from the board and marked retired.
 **AC-508** Given a buffalo shrinks, Then its rendered body loses exactly one panel and the
 panel count equals the new size.
 
-**AC-509** Given a buffalo is on the board, Then the HUD buffalo chip is visible and shows its
-remaining segments filled and its spent segments dimmed.
+**AC-509** Given a buffalo is on the board, Then the HUD buffalo chip is visible with **five**
+segments, showing its remaining segments filled and its spent segments dimmed.
 
 **AC-509b** Given a buffalo shrinks, Then the chip's segment fades on the **same 260 ms
 timeline as the body's shrink**, not on the React commit. *(Slice 3 measured the chip reading
@@ -569,13 +679,18 @@ turn: it strictly increases under rules 1 and 2, and **only rule 3 ever lowers i
 **AC-610** Given a buffalo shrinks, Then the score increases by 50 (before multipliers) and
 that step counts toward chain depth.
 
-**AC-611** *(amended — the approved wording read as 500 flat; it is both terms)* Given the row
-completion that retires a buffalo, Then the score increases by **550** before multipliers —
-50 for the shrink plus 500 for the retirement. Taking the last segment is still taking a
+**AC-611** *(amended twice — both terms, and the bonus rose with the buffalo's size)* Given
+the row completion that retires a buffalo, Then the score increases by **700** before
+multipliers — 50 for the shrink plus **650** for the retirement. Taking the last segment is still taking a
 segment.
 
-**AC-611b** Given a buffalo is carried from size 4 to retirement with every completion at
-chain depth 1 and streak ×1.0, Then it has paid exactly **700** in total (50 + 50 + 50 + 550).
+**AC-611b** *(amended for buffalo size 5)* Given a buffalo is carried from size **5** to
+retirement with every completion at chain depth 1 and streak ×1.0, Then it has paid exactly
+**900** in total (50 × 4 + 700) across **five** row completions, against the 500 those rows
+would have paid as ordinary clears. *(The +400 premium is deliberate: the bonus rose 500 → 650
+because a size-5 buffalo costs a fifth completion and blocks 55% of a 9-wide row rather than
+40% of a 10-wide one. A flat reward against a growing imposition would invert §6.4's
+incentive.)*
 
 **AC-612** Given a buffalo row resolves, Then that row does **not** count toward `n` in the
 simultaneous-rows table.
@@ -1199,3 +1314,73 @@ twice.** A referenced-but-undefined AC is silently unverifiable — the develope
 and the tester verifies it by number, and neither discovers it is missing. *(This AC exists
 because AC-609e and AC-609f were cited from two documents for a full review cycle before they
 were written.)* Re-run it after any edit to `docs/v2/`.
+
+---
+
+## AC-14xx · Special abilities (Layer D)
+
+Structure per `gameplay.md` §13 and `ui.md` §13. **Every threshold is provisional pending
+AC-318b** — the economy is priced in score and the score distribution for a 9-wide board with
+a corrected species mix does not exist yet. This group **blocks nothing in Slices 4–6.**
+
+**AC-1401** Given a run, Then five abilities exist, one per species: Rat **Burrow** (remove one
+animal), Fox **Dart** (three moves this turn), Elk **Migrate** (remove every animal of one
+species), Elephant **Stampede** (left-pack every row, then gravity), Buffalo **Hold the Line**
+(no arrivals for 3 turns).
+
+**AC-1402** Given any ability, Then it is available regardless of whether that species is on
+the board.
+
+**AC-1403 — SPENDING COSTS NO SCORE.** Given a charge is spent, Then the player's score is
+**unchanged**. Thresholds are gates, not purchases. *(If spending deducted score, the
+leaderboard would reward never using the mechanic.)*
+
+**AC-1404** Given AC-318's pacing measurement, Then it is run with **abilities disabled** —
+they describe the difficulty curve, and a curve containing an optional player intervention is
+not a curve. Abilities are measured separately.
+
+**AC-1405** Given a player crosses a score threshold, Then one charge is granted, **at most 3
+are held at once**, and thresholds escalate. *(Provisional: 1,500 / 4,000 / 8,000 / 14,000 /
+22,000 / 32,000 — to be re-priced against AC-318b's measured score distribution.)*
+
+**AC-1406** Given a turn, Then using an ability **is the player's action** for that turn. Move,
+pass, or ability — the one-action rule (`gameplay.md` §6.2) admits no exemption.
+
+**AC-1407** Given Fox's Dart, Then the player may make up to three moves that turn, and the
+turn resolves after the third or when they choose to end it early.
+
+**AC-1408** Given clears caused by an ability, Then they score normally. *(The ability → clears
+→ score → charge loop is bounded by the escalating thresholds and the 3-charge cap.)*
+
+**AC-1409 — RUNS STILL ALWAYS END.** Given unlimited skilled play with abilities, Then a run
+still terminates. *(The economy is self-limiting: charges come from score, score from
+clearing, clearing from arrivals. A player cannot freeze their way to an unbounded run because
+freezing stops the supply of the thing that buys freezes.)*
+
+**AC-1410** Given Hold the Line, Then no arrival occurs for the next 3 turns, and the tray
+greys out and displays `FROZEN · n` counting down. *(The tray's contract is that it shows what
+is coming; when nothing is coming it must say so, or the contract reads as broken.)*
+
+**AC-1411** Given Stampede, Then every row's animals slide left to close gaps **within** that
+row, then gravity applies. It never completes a row by itself — a seven-cell row still holds
+seven cells afterwards.
+
+**AC-1412** Given Migrate, Then every animal of the chosen species leaves the board, and
+buffalo is **not** a selectable target.
+
+**AC-1413** Given an ability is armed, Then **no charge is spent until the player confirms**;
+opening the sheet and reading it costs nothing.
+
+**AC-1414 — CANCEL IS ALWAYS ONE TAP AND ALWAYS FREE.** Given a targeting state, Then Cancel,
+or a tap outside any valid target, returns to `YOUR MOVE` **without spending the charge**. *(A
+player who arms the wrong ability and cannot back out has been punished for exploring the
+system, which is the opposite of what an assist mechanic is for.)*
+
+**AC-1415** Given zero charges, Then the abilities button is disabled but **still visible**, and
+the action bar does not reflow.
+
+**AC-1416** Given a resume, Then charges are reconstructed by replaying the run: an ability use
+is a third move type `{ t: 'A', ability, target }` in `moves[]` and nothing new is persisted.
+
+**AC-1417** Given any ability resolves, Then the input-lock budget (AC-822) still holds — every
+ability animation in `ui.md` §13.4 is an announcement over an ordinary structural resolution.

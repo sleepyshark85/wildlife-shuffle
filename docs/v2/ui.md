@@ -82,7 +82,7 @@ row of three choices rather than a settings gate in front of the game.
 └─────────────────────────────────────────────┘  ← 852 pt
 ```
 
-Fixed heights: HUD 52, tray block 45 (14 label + 28 strip + 3 rule), action bar 48.
+Fixed heights: HUD 52, tray block 31 (10 label + 18 strip + 3 rule — §6), action bar 48.
 The HUD pins under the top safe inset, the action bar pins above the bottom safe inset, and
 the **board + tray group is a flex child centred in whatever remains**. That rule is what
 makes the layout survive every device without per-device special cases.
@@ -122,29 +122,29 @@ Four stages, evaluated in order, first one that fits wins:
 
 | Stage | Chrome budget | Cell range | When |
 |---|---:|---|---|
-| **W — Wide** | 77 (HUD + action bar move to a side rail) | 30–48 | Screen ≥ 600 pt wide |
-| **0 — Comfortable** | 177 (52 HUD + 48 action + 45 tray + 32 gaps) | 30–44 | The common case |
-| **1 — Compact** | 144 (44 + 44 + 36 + 20) | 30–44 | Stage 0 would drop below a 30 pt cell |
-| **2 — Minimum** | 144 | 24–44 | Stage 1 would still drop below 30 |
+| **W — Wide** | 63 (HUD + action bar move to a side rail) | 30–48 | Screen ≥ 600 pt wide |
+| **0 — Comfortable** | 163 (52 HUD + 48 action + 31 tray + 32 gaps) | 30–44 | The common case |
+| **1 — Compact** | 134 (44 + 44 + 26 + 20) | 30–44 | Stage 0 would drop below a 30 pt cell |
+| **2 — Minimum** | 134 | 24–44 | Stage 1 would still drop below 30 |
 | **3 — Unsupported** | — | — | Even a 24 pt cell will not fit |
 
 ```js
 function boardLayout(screenW, screenH, insetTop, insetBottom) {
   const fit = (chrome, lo, hi) => {
     const availH = screenH - insetTop - insetBottom - chrome;
-    const raw = Math.floor(Math.min((screenW - 32) / 10, availH / 15));
+    const raw = Math.floor(Math.min((screenW - 32) / BOARD.width, availH / 15));
     return { cell: Math.min(raw, hi), ok: raw >= lo, chrome };
   };
-  if (screenW >= 600) { const w = fit(77, 30, 48);  if (w.ok) return { stage: 'wide',    ...w }; }
-  const s0 = fit(177, 30, 44);  if (s0.ok) return { stage: 'comfortable', ...s0 };
-  const s1 = fit(144, 30, 44);  if (s1.ok) return { stage: 'compact',     ...s1 };
-  const s2 = fit(144, 24, 44);  if (s2.ok) return { stage: 'minimum',     ...s2 };
-  return { stage: 'unsupported', cell: null, chrome: 144 };
+  if (screenW >= 600) { const w = fit(63, 30, 48);  if (w.ok) return { stage: 'wide',    ...w }; }
+  const s0 = fit(163, 30, 44);  if (s0.ok) return { stage: 'comfortable', ...s0 };
+  const s1 = fit(134, 30, 44);  if (s1.ok) return { stage: 'compact',     ...s1 };
+  const s2 = fit(134, 24, 44);  if (s2.ok) return { stage: 'minimum',     ...s2 };
+  return { stage: 'unsupported', cell: null, chrome: 134 };
 }
 ```
 
 **Why chrome yields first.** The board is the game; the HUD, tray and action bar are
-supporting elements (§1). Chrome is 177 pt of supporting furniture against 450–720 pt of
+supporting elements (§1). Chrome is 163 pt of supporting furniture against 420–720 pt of
 board, so it is proportionally the more expendable. The ladder only engages on genuinely
 cramped viewports — 30 pt is the smallest cell that still reads comfortably at arm's length,
 and no current iPhone at default zoom falls below it.
@@ -169,16 +169,29 @@ construction, which is the property that matters. AC-119 makes this the standing
 
 | Device | pt | insets | stage | cell | board |
 |---|---|---|---|---:|---:|
-| iPhone SE (1st gen / 5s) | 320 × 568 | 0 / 0 | minimum | 28 | 280 × 420 |
-| iPhone SE 2 / SE 3 / 8 | 375 × 667 | 20 / 0 | comfortable | 31 | 310 × 465 |
-| iPhone 12 / 13 mini | 375 × 812 | 50 / 34 | comfortable | 34 | 340 × 510 |
-| **iPhone 14 / 15 / 16 (target)** | 393 × 852 | 59 / 34 | comfortable | **36** | 360 × 540 |
-| iPhone 17 / 18 Pro | 402 × 874 | 62 / 34 | comfortable | 37 | 370 × 555 |
-| iPhone 15 / 16 / 17 Plus | 430 × 932 | 59 / 34 | comfortable | 39 | 390 × 585 |
-| iPhone 16 / 17 / **18** Pro Max | 440 × 956 | 62 / 34 | comfortable | 40 | 400 × 600 |
-| **iPhone Duo, folded** | ~466 × 678 | est. | minimum | 29 | 290 × 435 |
-| **iPhone Duo, unfolded** | ~626 × 890 | est. | **wide** | 48 | 480 × 720 |
-| Display Zoom on a 393 × 852 | 320 × 693 | 59 / 34 | minimum | 28 | 280 × 420 |
+| iPhone SE (1st gen / 5s) | 320 × 568 | 0 / 0 | minimum | 28 | 252 × 420 |
+| iPhone SE 2 / SE 3 / 8 | 375 × 667 | 20 / 0 | comfortable | 32 | 288 × 480 |
+| iPhone 12 / 13 mini | 375 × 812 | 50 / 34 | comfortable | 37 | 333 × 555 |
+| **iPhone 14 / 15 / 16 (target)** | 393 × 852 | 59 / 34 | comfortable | **39** | 351 × 585 |
+| iPhone 17 / 18 Pro | 402 × 874 | 62 / 34 | comfortable | 41 | 369 × 615 |
+| iPhone 15 / 16 / 17 Plus | 430 × 932 | 59 / 34 | comfortable | 44 | 396 × 660 |
+| iPhone 16 / 17 / **18** Pro Max | 440 × 956 | 62 / 34 | comfortable | 44 | 396 × 660 |
+| **iPhone Duo, folded** | ~466 × 678 | est. | compact | 30 | 270 × 450 |
+| **iPhone Duo, unfolded** | ~626 × 890 | est. | **wide** | 48 | 432 × 720 |
+| Display Zoom on a 393 × 852 | 320 × 693 | 59 / 34 | compact | 31 | 279 × 465 |
+
+**Nine columns makes every device better off**, because the same screen width divides into
+fewer cells. The reference iPhone goes from a 36 pt cell to **39**, the Plus and Pro Max reach
+the 44 pt ceiling, the folded Duo climbs out of stage 2, and Display Zoom on a 393 × 852 no
+longer needs the minimum stage. The board's footprint barely moves — 351 × 585 against
+360 × 540 — but every cell in it is 8% larger.
+
+**That is a direct win for the four-cue size system (§5.2).** Panel seams, glyphs and the size
+numeral all scale with the cell, so the one thing the whole visual language exists to make
+legible got larger on every supported device. And the cue reads against a shorter row: a
+buffalo now spans 5 of 9 columns rather than 4 of 10, so "how many columns is this" is a
+question about a smaller number, asked of a body that covers more of the row. Counting 9
+columns is easier than counting 10.
 
 > **Sourcing caveat.** iPhone 18 and the iPhone Duo postdate my training data. The Duo's
 > existence and its 5.4″ / 7.6″ displays are well corroborated (Apple Newsroom, Bloomberg,
@@ -300,11 +313,15 @@ with an `ink`-weight value directly above it.
 | Rat 🐀 | 1 | `#FFD166` | `#D9A83C` | `#4A3708` | 86 |
 | Fox 🦊 | 2 | `#F58A47` | `#C96A2C` | `#46200A` | 69 |
 | Elk 🦌 | 3 | `#5FA45C` | `#427A40` | `#0F2D10` | 61 |
-| Elephant 🐘 | 5 | `#5B6E88` | `#3F4F66` | `#DCE6F2` | 46 |
-| **Buffalo 🐃** | 4 | `#8C3B4A` | `#E8B44A` (2 pt) | `#FFE3B0` | 36 |
+| Elephant 🐘 | **4** | `#5B6E88` | `#3F4F66` | `#DCE6F2` | 46 |
+| **Buffalo 🐃** | **5** | `#8C3B4A` | `#E8B44A` (2 pt) | `#FFE3B0` | 36 |
 
 **Lightness descends monotonically with size** for the four ordinary species, so a heavier
-animal is literally a heavier-looking block. Buffalo is deliberately **off the ramp**: it is
+animal is literally a heavier-looking block. The revert to elephant 4 / buffalo 5 **tidies
+this**: the drawable species now run 1, 2, 3, 4 contiguously, an unbroken sequence, with
+buffalo alone off it at 5. Under the old sizes elephant was the largest animal yet lighter
+than buffalo, which worked quietly against the reading. Buffalo is deliberately **off the
+ramp**: it is
 not a bigger animal, it is a different *kind* of object — the only piece that refuses to
 clear — so the ox-blood fill and 2 pt gold rim mark it as special rather than as "size 4".
 
@@ -368,7 +385,7 @@ shrink visibly removes one. Additional treatment:
 - Its seams are gold (`rgba(232,180,74,.5)`), not black, so the panel count reads as segments
   of a thing rather than shading.
 - **HUD chip.** Whenever a buffalo is on the board, a chip sits in the HUD: the glyph plus
-  four 5 × 12 pt bars, filled for remaining segments and at 22% opacity for spent ones. The
+  **five** 5 × 12 pt bars, filled for remaining segments and at 22% opacity for spent ones. The
   player should never have to hunt the board to find out how much buffalo is left.
 - **The chip and the body extinguish together.** The chip's segment fades over the same 260 ms
   as the body's shrink, on the same timeline — not on the React commit. Updating on commit
@@ -382,6 +399,7 @@ shrink visibly removes one. Additional treatment:
 | **Rest** | As specified above. |
 | **Grabbed** | Scale 1.04, `shadow 0 6px 16px rgba(0,0,0,.45)`, edge brightens 12%, 2 pt lift, over 90 ms. Driven from the gesture's `onBegin` worklet, so the lift lands on the same frame as the touch; the selection haptic fires with it. |
 | **Dragging** | Follows the finger with **0 ms** smoothing — positioned by the same UI-thread frame that delivers the touch (§8.3) — and snaps to the nearest column over 110 ms. v1 had an empty `dropping: {}` style object (`src/components/Animal.js:51`) while the README advertised "scale + shadow" — there was no drag feedback at all. |
+| **Origin** | The cells the animal has left render as a **recess** — see §5.5. It persists for the whole drag and fades over 110 ms on release. |
 | **Drop target — legal** | A 2 pt `accent` dashed ghost at the destination columns, fill `rgba(255,194,75,.10)`. |
 | **Drop target — illegal** | The ghost turns `illegal` red and the **swept path is shown blocked**: the obstructing animal gets a 2 pt red rim. The player sees *why* before releasing. This is the fix for v1's silent rejection (`docs/v1-review.md` C5). |
 | **Illegal release** | Shake + red rim, §8. Pure announcement — it locks nothing, so the next drag can begin on the following frame. |
@@ -389,6 +407,87 @@ shrink visibly removes one. Additional treatment:
 | **Danger** | Any animal in rows 11–13 gets a 1 pt `kill-line` outer rim at 40%. |
 
 ---
+
+### 5.5 The origin recess
+
+**The problem, in the owner's words:** *"when I'm dragging an animal out of its original
+location, keep the preview of the original location until I actually place it. Else I need to
+remember where it's originally been, which can cost me a turn."*
+
+v1 had this — `spec.md` called it the *Original Position Ghost*, a bright orange dashed
+outline — and v2's design dropped it. That was an omission, not a decision, and the cost the
+owner names is the right way to think about it: **a move is the scarcest resource in the game**
+(one per turn, no undo), so losing track of where a piece started means either committing a
+move you did not intend or spending your action putting it back. The origin marker is not
+decoration. It is what makes a drag **cancellable**, and cancellability is what lets a player
+explore a move before paying for it.
+
+#### Three things on screen, three visual registers — not three outlines
+
+Mid-drag the board carries the dragged body, the destination ghost, and now the origin. Adding
+a third dashed outline would turn the board into a diagram, and v1's orange is unavailable
+anyway: at `#FF9800` it sits almost on top of v2's `accent #FFC24B`, which the destination
+ghost already owns.
+
+The resolution is to stop competing for the same register. **These three are at different
+points in time, so they get different kinds of treatment:**
+
+| | time | register | treatment |
+|---|---|---|---|
+| **Origin** | past | **recessed** | a hole in the board |
+| **Body** | present | **solid** | full fill, lifted, shadowed |
+| **Destination** | future | **outlined** | 2 pt dashed, accent or red |
+
+Only one of the three is an outline. The past is the quietest thing on the board because it is
+a memory aid; the destination is the loud one because it is the thing that happens if you let
+go. **The origin reads as absence, which is semantically exact — it is the shape of where
+something is not.**
+
+#### Specification
+
+- **Recess:** the origin's cells take their existing ground **darkened by 55%**, plus the
+  dragged animal's species fill at **12%**. Darkening the ground rather than painting a fixed
+  colour keeps it correct over the danger band's `#2A1D24` as well as the normal `#1A2833`.
+- **Inner top edge:** 1 pt `rgba(255,255,255,0.06)` along the top of the footprint, which is
+  what makes it read as pressed in rather than merely dark.
+- **The species tint at 12% is doing real work**, not ornament: it is what ties the hole to the
+  piece in your hand, so a board with several vacated shapes on it could never be ambiguous.
+- **No outline, no dashes, no accent colour.**
+- **Shape is the whole footprint** — a 4-wide elephant leaves a 4-wide hole. At a 39 pt cell
+  that is 156 pt of shape, which is why a low-contrast treatment is sufficient: the cue is
+  carried by size, not by contrast.
+
+#### Lifecycle
+
+- **Appears on grab**, in the same `onBegin` worklet frame as the lift.
+- **No zero-displacement suppression.** The body starts on top of the recess and uncovers it
+  progressively as the drag moves off — the animal walking off its own footprint. Gating it
+  would add a rule to hide something already hidden.
+- **Fades over 110 ms on release, tracking whatever the body does.** One rule for all three
+  outcomes: accepted, rejected, or cancelled.
+- **On a rejected move it does not outlive the shake.** The body returns to the origin over
+  110 ms and the recess fades over the same 110 ms, so they converge to nothing together. A
+  recess still showing under a body that has come home would be marking "where this came
+  from" as the place it now is, which is meaningless and reads as a second piece. The shake
+  then plays on the body alone.
+
+#### Thread, motion and contrast
+
+- **Worklet, and cheaper than the destination ghost.** The origin is fixed at gesture start, so
+  it is one shared value written once in `onBegin` — where the destination ghost recomputes
+  every frame. **Zero React commits mid-drag** (AC-831) is unaffected.
+- **Reduce Motion: unchanged, and more important rather than less.** The recess is a static
+  state, not motion; only its 110 ms fade is animated and that already sits inside the ≤120 ms
+  cross-fade budget. When everything else has been made quieter, the affordance that prevents
+  a wasted turn is the last thing that should go.
+- **High Contrast trades the register.** A recess is a low-contrast device by nature, so under
+  High Contrast the origin instead takes a **2 pt dashed `#FFFFFF` outline at 70%** with no
+  fill. That does put three outlines on the board — but High Contrast has already changed the
+  vocabulary (animal borders go to 2.5 pt white), and for a player who needs it, legibility
+  beats elegance. The dash pattern is 6 on / 4 off against the destination ghost's 3 on / 3
+  off, so the two remain distinguishable by rhythm.
+- **No conflict with the anticipation wash** (§8.2b), which also touches cell grounds: that
+  runs during the ARRIVAL push-up and the drag happens in READY. They cannot overlap.
 
 ## 6. The tray — the preview contract, made visible
 
@@ -399,31 +498,64 @@ v1 rendered the preview as a row of flat green occupancy squares (`GamePreview.j
 and then re-rolled the positions anyway (`gameStore.js:101-135`). Two failures: it did not
 show *what* was coming, only *where*, and the where was a lie.
 
-**v2 renders the actual animals** at the same cell width as the board, in their exact spawn
-columns, in their exact species colours, with their exact panel counts.
+**v2 renders silhouettes** — shadows at the board's cell width, in their exact spawn columns,
+with each animal's own outline preserved.
 
 ```
-NEXT ARRIVAL                                     6 CELLS
-┌──────────────────────────────────────────────────────┐
-│   ▐🐀▌  ▐🦊 |🦊▌      ▐🦌 |🦌 |🦌▌               │  28 pt strip
-└──────────────────────────────────────────────────────┘
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   3 pt hazard rule
+NEXT                                             6 CELLS
+┌────────────────────────────────────────────────┐
+│  ▓▓   ▓▓▓▓▓▓      ▓▓▓▓▓▓▓▓▓                      │  18 pt strip
+└────────────────────────────────────────────────┘
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   3 pt hazard rule
 ```
 
-- Strip is 360 × 28 pt (`cell` wide, `0.78 × cell` tall), ground `panel-sunken`, 1 pt
-  `hairline` border, radius 6.
-- Animals render at 26 pt tall, radius 4, glyph 15 pt — flattened versions of their board
-  selves, so the shape reads as the same object arriving.
-- The **hazard rule** beneath the strip (3 pt, 45° `accent` stripes at 45%) reads as "these
-  push up from here", which is what actually happens (`gameplay.md` §2).
-- Right-hand counter shows the batch's total footprint (`6 CELLS`) so the player can judge
-  arrival pressure numerically as well as spatially.
+### 6.1 Why silhouettes do not break the honest-preview contract
 
-**During the arrival animation, the tray animals physically travel from the strip into row 0
-over 260 ms.** They are the same views. That is the most direct possible demonstration that
-the tray was telling the truth, and it should be the first thing beat 3 of onboarding points at.
+The contract is that the preview must be **true**. A silhouette is less *specific*, not less
+true: it states the footprint and the columns exactly, and the arrival still proves it (§6.3).
+Withholding information is a different act from misrepresenting it, and only the second is
+what v1 did.
 
----
+**What the player plans against is preserved in full.** Size is the only property that affects
+how a piece behaves — species identity does nothing mechanically. So the silhouette must keep
+**per-animal outlines**: a fox arriving at column 3 and two rats arriving at columns 3 and 4
+are *different* silhouettes, one 2-wide shadow against two 1-wide ones, and that distinction
+is exactly the plan-relevant one. A merged shadow would lose it and would cross into
+misleading.
+
+**Buffalo is the one exception and it keeps its gold rim.** A buffalo behaves differently — it
+refuses to clear — so hiding one would withhold information that is *mechanical* rather than
+cosmetic, which is withholding by omission rather than being less specific. The line this spec
+draws: **hide what is cosmetic, keep what changes the rules.**
+
+What the player genuinely loses is flavour — the small pleasure of seeing a herd of elephants
+coming. That is the owner's call to make and it is a real cost, recorded here so it is not
+mistaken for a free change.
+
+### 6.2 The strip
+
+- Strip is **18 pt** tall (`0.46 × cell`), ground `panel-sunken`, 1 pt `hairline` border,
+  radius 5. Label row 10 pt. Total tray block **31 pt**, down from 45.
+- Silhouettes: `#2C3A47` fill, 1 pt `#3C4C5B` top edge, radius 3, with a 1 pt gap between
+  adjacent animals so outlines never merge. Buffalo instead takes a 1.5 pt `#E8B44A` rim at
+  60% and a faint ox-blood tint.
+- No glyphs, no panel seams, no species colour.
+- Right-hand counter still shows the batch's total footprint, so arrival pressure stays
+  readable as a number as well as a shape.
+
+**The 14 pt returned to the board is not decoration.** It moves the chrome budget from 177 to
+163 and lifts the reference iPhone from a 36 pt cell to 39 (§3.2) — so the thinner tray is
+part of why nine columns reads better, not merely a consequence of it.
+
+### 6.3 The handover: shadow becomes animal
+
+During the 260 ms arrival push-up the **same views travel from the strip into row 0 and
+resolve from silhouette to animal as they cross** — fill blooming to the species colour, panel
+seams drawing in, glyph fading up, over the last 160 ms of the flight.
+
+This keeps §6's proof intact: it is still literally the same view arriving where the tray said
+it would. And the transition earns something the old tray did not have — the shadow becoming
+real is the moment the arrival stops being a forecast and starts being a board.
 
 ## 7. Board chrome
 
@@ -1042,3 +1174,70 @@ Short, active, never cute. The game never apologises and never explains twice.
 Difficulty names are habitats, not Easy/Normal/Hard, because "Hard" is a judgement about the
 player and a habitat is a description of the place. They also make a straight-faced promise
 the numbers keep: Tundra is where the big animals live.
+
+---
+
+## 13. Layer D — Special abilities (UI)
+
+Structure per `gameplay.md` §13. **Numbers pending AC-318b.**
+
+### 13.1 Where it lives
+
+The HUD is at its chrome budget and the action bar holds one button, so the abilities go in
+the action bar beside Pass — **no new chrome, no board cost.**
+
+```
+┌────────────────────────────────────────────────┐
+│  ⚡ ABILITIES  ●●○     │       [  Pass  ]       │  48 pt action bar
+└────────────────────────────────────────────────┘
+     ← 150 pt, charge pips →       ← 150 pt →
+```
+
+- Two buttons, 150 pt each, 44 pt tall, 12 pt gap — both above the 44 pt target.
+- **Charge pips** on the abilities button: 3 dots, filled for held charges. The count is the
+  whole status, so it needs no label.
+- At **zero charges** the button is disabled but **still visible** — layout must not reflow
+  (the AC-413 principle). The turn-state text (`YOUR MOVE`) moves into the HUD's spare
+  right-hand column, where the pause control already sits.
+
+### 13.2 The ability sheet
+
+Tapping opens a bottom sheet (22 pt top radius, the standard treatment): five rows, each a
+species chip at its §4.3 fill, the ability name at 16/600, and its effect in one line at
+13/400. Unaffordable rows sit at 40% opacity with the reason stated rather than implied.
+
+Tapping a row **arms** the ability and dismisses the sheet. **No charge is spent at arming
+time** — it is spent on confirmation (§13.3), so a player who opens the sheet to read what
+things do never loses anything.
+
+### 13.3 Targeting, and getting out of it
+
+**Burrow** and **Migrate** need a target, so the board enters a **targeting state**: everything
+dims to 45% except valid targets, a chip at the top reads `Tap an animal to burrow` with a
+**Cancel** action, and the action bar is replaced by that chip for the duration.
+
+**Cancel must always be one tap and must never spend the charge.** A player who arms the wrong
+ability and cannot back out of it has been punished for exploring the system, which is the
+opposite of what an assist mechanic is for. Tapping outside any valid target also cancels.
+
+**Stampede**, **Dart** and **Hold the Line** need no target and resolve immediately on arming.
+
+### 13.4 Feedback
+
+Each ability gets one distinct beat, all within the §8.2 budget because all are announcements
+over an ordinary structural resolution:
+
+| Ability | What the player sees |
+|---|---|
+| **Burrow** | The target dissolves downward — the rat's own vanishing act, 260 ms |
+| **Dart** | The action bar shows `2 MOVES LEFT`, counting down; the board stays live |
+| **Migrate** | Every animal of that species flashes once in unison, then leaves together |
+| **Stampede** | Rows slide left in a 120 ms stagger from the bottom up — the herd moving as one |
+| **Hold the Line** | The tray greys out and shows `FROZEN · 3`, counting down each turn |
+
+**Hold the Line's tray treatment is load-bearing, not decoration.** The tray's whole contract
+is that it shows what is coming (§6); when nothing is coming it must say so, or the contract
+reads as broken for three turns.
+
+A charge being earned is announced in the HUD: the pip fills with a 300 ms bloom and the
+abilities button pulses once. It never interrupts play.

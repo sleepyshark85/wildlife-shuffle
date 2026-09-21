@@ -76,12 +76,21 @@ the *animation* must describe what actually happens.
 
 ## 3. Board
 
-**One board size: 10 columns × 15 rows.** Fixed.
+**One board size: 9 columns × 15 rows.** Fixed.
 
-- Columns `x = 0..9` (left to right). Rows `y = 0..14`, **row 0 is the bottom**.
+*(Was 10 × 15. Narrowed on owner request, landing together with the elephant/buffalo size
+revert and the species-mix fix — see §5.6, which re-derives all three at once because each
+one alone would have forced the bands to be re-derived anyway.)*
+
+- Columns `x = 0..8` (left to right). Rows `y = 0..14`, **row 0 is the bottom**.
 - Row 14 is the **kill line**: any animal occupying row 14 at the end of a turn ends the run.
   Usable stack height is therefore 14.
 - Rows 11–13 are the **danger band**, tinted and pulsing (see `ui.md` §7).
+
+**Everything in this document derives width from one constant.** `BOARD.width` is the single
+source; no rule, band, invariant or layout figure may hard-code 9. This is the AC-126 lesson
+applied to the board itself, and it is what made this change a constant edit rather than a
+rewrite.
 
 ### Decision: the board is not configurable, and v1's settings sliders are removed
 
@@ -240,58 +249,83 @@ is later a config change rather than a redesign.
 
 ```
 generateBatch(turn, difficulty, rng):
-  target = clamp(rng.int(band.low, band.high), 1, 9)   // cells to occupy this turn
-  free   = [ [0..9] ]                                  // free column runs in row 0
-  batch  = []
-  filled = 0
+  W    = BOARD.width                       // 9
+  CAP  = W - 1                             // a batch may never fill the row
+  target = clamp(rng.int(band.low, band.high), 1, CAP)
 
-  // Buffalo goes first, when scheduled, so it is guaranteed the room it needs.
+  // 1. HOW MANY animals, from the cell target and the difficulty's mean drawn size.
+  //    Stochastic rounding, so the expected cell count equals the target exactly.
+  raw = target / meanDrawnSize(difficulty)
+  k   = floor(raw) + (rng.float() < raw - floor(raw) ? 1 : 0)
+  k   = max(1, k)
+
+  // 2. WHICH animals: k draws from the FULL weighted pool. Nothing is excluded for
+  //    fitting reasons, which is what makes the realised mix match the table.
+  batch = []; filled = 0
   if isBuffaloTurn(turn) and no buffalo is on the board:
-      target = max(target, 4)
-      place(Buffalo, size 4, x = rng.pick(validStarts(free, 4)))
-      filled = 4
+      batch.push(Buffalo, size 5); filled = 5          // scheduled, outside the k draws
+  for i in 1..k:
+      pool = species whose size <= CAP - filled        // the ONLY exclusion, and it is a
+      if pool is empty: break                          // hard board limit, not a fit heuristic
+      s = weighted draw from pool (§5.4)
+      batch.push(s); filled += s.size
 
-  while filled < target:
-      room       = length of the longest run in `free`
-      candidates = species whose size ≤ min(target − filled, room)
-      if candidates is empty: break                    // unreachable; see invariant 3
-      s = weighted draw from candidates (weights in §5.4)
-      place(s, x = rng.pick(validStarts(free, s.size)))
-      filled += s.size
-
-  return batch
+  // 3. WHERE: pack contiguously from x=0, then scatter the (W - filled) free columns
+  //    at random among the batch's k+1 gap slots. Placement can never fail.
+  return distributeGaps(shuffle(batch), W - filled)
 ```
 
-**Selection and placement interleave — they are one loop, not two passes.** Each species is
-chosen against the free runs that actually remain, then placed immediately, then the next is
-chosen against what is left.
+**Count first, then species — the inversion is the fix.** The approved algorithm chose species
+against a *shrinking* candidate pool: a species stayed eligible only while enough room
+remained for it, so every draw after the first was biased small and the realised mix diverged
+badly from §5.4's table. Measured over 3,000 turns per difficulty on the old board, Savanna
+drew 44.5% rats against a weight of 25, and 7.1% elephants against 20 — a realised mean size
+of 1.97 against a specified 2.62. Every difficulty ran about 0.7 of a cell lighter than
+written, which is why the owner said the game felt easy. They were reporting a defect.
 
-The approved draft had them as separate steps, which was wrong in two ways the developer
-found: step 3 filtered on "the largest remaining free run" at a point where nothing had been
-placed and no such quantity existed, and step 5 could then deadlock — sizes {1, 3, 5} sum to
-a legal target of 9, but placing the rat at `x=1` and the elk at `x=4` leaves no 5-wide run
-for the elephant, and no fallback was specified. Interleaving is what the step-3 wording
-implied all along, and it removes the failure rather than papering over it with a retry.
+**My first diagnosis was wrong and the measurement corrected it.** I assumed the bias came
+from *fragmentation* — large animals excluded because placement had chopped the row into short
+free runs — which is what the interleaving introduced. So I tested a variant that removes
+fragmentation entirely by choosing the whole composition before placing any of it. It moved
+Savanna's mean from 1.79 to 1.81. Essentially nothing.
 
-**Three invariants, all guaranteed by construction rather than by checking afterwards:**
+The real cause is **capacity exclusion**: with a target of 4 or 5 cells, the remaining capacity
+after one or two draws is smaller than an elephant, so the largest species is shut out of the
+*last* draw of nearly every batch — and batches are only two or three animals long, so most
+draws are last-ish. No amount of smarter placement touches that, because it is not a placement
+problem.
 
-1. **At most 9 columns.** `target ≤ 9`, and the loop never overshoots it. A batch that filled
-   all ten would clear row 0 on arrival with no player involvement, making the turn
-   meaningless.
-2. **`validStarts(free, size)` is never empty when it is called**, because a species only
-   becomes a candidate when `size ≤ room`, i.e. when some free run is already long enough to
-   hold it. No fallback path is needed and none should be written.
-3. **The loop always terminates with `filled == target` exactly.** Rat (size 1) carries a
-   non-zero weight at every difficulty, and `target ≤ 9` guarantees at least one free column
-   remains, so `candidates` is non-empty until the target is met. The `break` is a defensive
-   rail, not a reachable path — **a batch that ends short of its target is a defect.**
+Fixing it requires breaking the dependency in the other direction: **stop deriving the animal
+count from the cell target one draw at a time, and derive it up front.** Then every species
+draw sees the full pool. Measured over 60,000 batches per band:
 
-Invariant 3 is a strengthening of the approved spec that the developer's change bought for
-free: the cell bands in §5.5 are now exact rather than approximate, which is what makes
-AC-306 and AC-307 testable as equalities.
+| Savanna | intent | approved algorithm | this algorithm |
+|---|---:|---:|---:|
+| rat | 25.0% | 48.9% | **25.8%** |
+| fox | 28.0% | 27.7% | **28.4%** |
+| elk | 27.0% | 16.8% | **26.2%** |
+| elephant | 20.0% | 6.6% | **19.7%** |
+| mean drawn size | 2.42 | 1.81 | **2.40** |
+| cells per turn | 4.0 | 4.01 | **3.94** |
 
-**Hard invariant: a batch may occupy at most 9 of 10 columns.** A batch that filled all ten
-would clear row 0 on arrival with no player involvement, which makes the turn meaningless.
+**The band becomes a control on the mean, not a per-batch guarantee.** This is the one property
+the change costs. `k` is a whole number of animals, so a batch's cell total scatters around
+the rolled target instead of hitting it exactly; stochastic rounding keeps the *expectation*
+on target (within 0.1 of the band mean at every band except the two highest, where the cap
+bites). AC-306, AC-307 and AC-307b asserted exact equality and are amended accordingly — and
+the realised species distribution is now asserted by **AC-308b**, which nothing did before,
+and which is why this defect survived every previous round of verification.
+
+**Three invariants, all guaranteed by construction rather than checked afterwards:**
+
+1. **At most `W − 1` columns**, i.e. 8 of 9. A batch that filled the row would clear it on
+   arrival with no player involvement, making the turn meaningless. Expressed against the
+   width constant, never as a literal.
+2. **Placement can never fail.** Step 3 packs contiguously and then scatters the free columns,
+   so there is nothing to retry and no fallback path. A fallback in this function signals a
+   broken invariant, not a safety net.
+3. **The realised species mix matches §5.4's table**, because the only exclusion left is the
+   hard board limit `size ≤ CAP − filled`, which bites rarely. AC-308b measures it.
 
 ### 5.3 Decision: the 1-column spawn buffer is removed
 
@@ -304,7 +338,7 @@ caps arrival pressure regardless of the difficulty setting.
 visible and tunable. Rationale: the buffer was an accidental difficulty setting. Arrivals may
 now be adjacent — that is fine, because an animal boxed in by neighbours can still be freed
 by the stack shifting after a clear, and because the ≤9 invariant preserves the one thing the
-buffer actually guaranteed (that the herd cannot clear a row for you).
+buffer actually guaranteed (that the herd cannot clear a row for you — now the `W − 1` cap).
 
 ### 5.4 The animal set
 
@@ -313,10 +347,20 @@ buffer actually guaranteed (that the herd cannot clear a row for you).
 | Rat 🐀 | 1 | 35 | 25 | 15 |
 | Fox 🦊 | 2 | 30 | 28 | 25 |
 | Elk 🦌 | 3 | 25 | 27 | 30 |
-| Elephant 🐘 | 5 | 10 | 20 | 30 |
-| **Buffalo 🐃** | **4** | scheduled only — never drawn | | |
+| Elephant 🐘 | **4** | 10 | 20 | 30 |
+| **Buffalo 🐃** | **5** | scheduled only — never drawn | | |
 
-Mean drawn size: Meadow **2.20**, Savanna **2.62**, Tundra **3.05**.
+**Elephant is 4 and buffalo is 5** — reverted to the owner's 11 July values (`2ff0eab`). v2
+inherited 5/4 from two stale sources at once: a review written against a pre-revert commit,
+and a `spec.md` that still documents the superseded 8 July swap.
+
+Intended mean drawn size: Meadow **2.10**, Savanna **2.42**, Tundra **2.75**. §5.2's generator
+is required to realise these, not merely to aim at them — see AC-308b.
+
+**This tidies the lightness ramp rather than disturbing it.** The four drawable species now
+run 1, 2, 3, 4 contiguously, so §4.3's size→lightness mapping covers an unbroken sequence with
+buffalo alone off it at 5. Under the old sizes elephant (5) was larger than buffalo (4) yet
+lighter, which quietly worked against the "lightness is weight" reading.
 
 **Buffalo is scheduled, never random.** It arrives on turn `n × buffaloEvery` (never turn 0),
 and **only one buffalo may be on the board at a time**. If the schedule fires while a buffalo
@@ -335,18 +379,19 @@ did not do at all.
 | | **Meadow** (easy) | **Savanna** (default) | **Tundra** (hard) |
 |---|---|---|---|
 | Starting cell band | 2–4 | 3–5 | 4–6 |
-| Band ceiling | **5–7** | 6–8 | 7–9 |
+| Band ceiling | **4–6** | **5–7** | **6–8** |
 | Ramp | +1 to both ends every **12 turns**, until the ceiling | | |
 | Species weights | small-heavy | balanced | large-heavy |
-| Mean arrival | ~3.0 → **6.0** cells/turn | ~4.0 → 7.0 | ~5.0 → 8.0 |
+| Mean arrival | 3.0 → 5.0 cells/turn | 4.0 → 6.0 | 5.0 → 7.0 |
+| **as a fraction of the 9-wide row** | **33% → 56%** | **44% → 67%** | **56% → 78%** |
 | Buffalo every | 12 turns | 10 turns | 8 turns |
 
 Ramp schedule, explicitly:
 
 ```
-Meadow    t1: 2–4   t13: 3–5   t25: 4–6   t37: 5–7 (ceiling)
-Savanna   t1: 3–5   t13: 4–6   t25: 5–7   t37: 6–8 (ceiling)
-Tundra    t1: 4–6   t13: 5–7   t25: 6–8   t37: 7–9 (ceiling)
+Meadow    t1: 2–4   t13: 3–5   t25: 4–6 (ceiling)
+Savanna   t1: 3–5   t13: 4–6   t25: 5–7 (ceiling)
+Tundra    t1: 4–6   t13: 5–7   t25: 6–8 (ceiling)
 ```
 
 **Why a ramp at all.** Without it the game has no arc: the difficulty of turn 5 equals the
@@ -362,24 +407,64 @@ can sustain almost indefinitely; Tundra tops out at a pace nobody can.
 clears a row every 5 turns nets +2 cells/turn. Top-out needs roughly 90 cells of ragged
 skyline, so ≈45 turns at ~4 s/turn ≈ **3 minutes**.
 
-**Measured, after Slice 1** — 30 seeds × 3 difficulties, deterministic greedy bot with perfect
-information, so a human scores below these:
+### 5.6 Deriving the bands for a 9-wide row
 
-| | Meadow | Savanna | Tundra |
-|---|---:|---:|---:|
-| Bot turns, as approved | 240 | 75.5 | 48.2 |
-| Acceptance range | **100–150** | **60–90** | **35–55** |
+Three changes landed together — the board narrowed to 9, elephant and buffalo swapped sizes,
+and the species-mix defect was fixed — and **the bands were re-derived from scratch rather
+than adjusted three times**, because each change alone would have forced a re-derivation
+anyway and the intermediate states are not worth measuring.
 
-Savanna and Tundra land in range and are **unchanged**. Meadow was a marathon: at a 4–6
-ceiling the bot could hold the board indefinitely and runs ended only through bad luck, which
-is not "easy", it is "unfinishable". Raising Meadow's ceiling to **5–7** puts its endgame
-just above the rate a careful player can sustain, so the run still ends — and it stays a full
-band below Savanna's 6–8, which is what keeps the difficulties distinct.
+**The quantity that sets difficulty is the fraction of a row arriving per turn**, not the raw
+cell count, so that is what was held constant from the approved 10-wide design. A 0.9 rescale
+would not have done this: `round(0.4 × 9) = 4` happens to agree here, but the ceilings do not,
+and the relationship between band and row width is the whole difficulty feel.
 
-The ceiling is the right lever because a run ends in its endgame; the starting band only sets
-how long the pleasant part lasts. **Re-measure with the same harness after the change**
-(AC-318). If Meadow still overshoots, drop the ramp interval from 12 turns to 9 before
-touching the bands again — the ramp reaches the player sooner than a band change does.
+| | 10-wide design | → 9-wide bands | realised fraction |
+|---|---|---|---|
+| Meadow | 30% → 60% | 2–4 → 4–6 | 33% → 56% |
+| Savanna | 40% → 70% | 3–5 → 5–7 | 44% → 67% |
+| Tundra | 50% → 80% | 4–6 → 6–8 | 56% → 78% |
+
+**Tundra's ceiling drops from 7–9 to 6–8 for a hard reason, not a soft one.** The cap is
+`W − 1` = 8, so a band reaching 9 would demand batches the invariant forbids; and at 8 of 9 a
+single arrival already leaves one free column, which is as close to a self-completing row as
+the design permits. 6–8 is the highest band the invariant admits.
+
+**Net difficulty across the three changes, and why it must be measured rather than argued:**
+
+| change | direction | why |
+|---|---|---|
+| Species-mix fix (§5.2) | **harder**, substantially | The same cells arrive as fewer, larger pieces — Savanna's mean drawn size goes 1.81 → 2.40. Harder to pack. |
+| Elephant 5 → 4 | easier | The largest drawable animal is smaller and more flexible. |
+| Row 10 → 9 | **both** | A row needs one less column to complete, which is easier; but buffalo is now 55% of a row and elephant 44%, which is much less room to manoeuvre. |
+
+These do not cancel in any way I can compute, which is exactly why the pacing numbers are a
+measurement request rather than a prediction. The owner's report that the game felt easy is
+addressed principally by the first row of that table, which is a defect fix and not a tuning
+change.
+
+### 5.7 What the developer should measure
+
+Run the existing bot harness (AC-318) **after all three changes are in, not between them**:
+
+1. **Realised species mix per difficulty**, 3,000+ turns each, against §5.4's table. This is
+   the regression that matters most — it is the one that went unnoticed. Tolerance ±2
+   percentage points per species and ±0.10 on mean drawn size. **(AC-308b)**
+2. **Mean cells per turn per band**, against the band mean. Tolerance ±0.15 for every band
+   except the two highest per difficulty, where the `W − 1` cap legitimately pulls it low;
+   record those rather than tuning them away. **(AC-306)**
+3. **Turns per run**, 30 seeds × 3 difficulties, against the AC-318 ranges. **Expect the
+   approved ranges to move** — they were measured on a 10-wide board with the biased mix.
+   Report the numbers before changing any band.
+4. **Maximum batch occupancy**, to confirm 8 of 9 is reachable at Tundra's ceiling and 9 never
+   is. **(AC-309)**
+5. **Score distribution per difficulty** — median and 90th percentile of final score. Nothing
+   needs it yet, but the ability thresholds in §13 must be priced against measured scores
+   rather than guessed, and this is the run that produces them.
+
+**Tune in this order if the ranges are missed:** bands first, ramp interval second, species
+weights last. The weights now do exactly what they say, so changing them changes the game's
+character rather than just its pace.
 
 ---
 
@@ -428,9 +513,10 @@ The mechanic v1 had and never showed. When a row containing a buffalo completes:
 1. Every non-buffalo animal in that row is removed, as normal.
 2. The buffalo **loses one segment from its trailing edge**: `size -= 1`, `x` unchanged.
 3. The row does **not** clear. The buffalo is still standing there, one cell narrower.
-4. At `size == 0` the buffalo is **retired** — it leaves the board and scores +500.
+4. At `size == 0` the buffalo is **retired** — it leaves the board and scores +650.
 
-A buffalo therefore costs you **four row completions** to remove. It is the only thing in the
+A buffalo starts at size 5 and therefore costs you **five row completions** to remove, during
+which it occupies **55% of a 9-wide row**. It is the only thing in the
 game that punishes a completed row, and it is the only thing that rewards persistence.
 
 **Making it legible** (full spec in `ui.md` §5.3):
@@ -554,16 +640,25 @@ passes repeatedly buries themselves within a few turns. Punishing a pass that th
 **Buffalo terms:** each shrink is +50 and counts toward the chain depth, but a buffalo row
 does *not* count toward `n` in `rowValue` — it did not clear.
 
-**The completion that retires a buffalo pays both terms: 50 + 500 = 550** (before
+**The completion that retires a buffalo pays both terms: 50 + 650 = 700** (before
 multipliers). Taking the last segment is still taking a segment, so it still earns the shrink;
 retirement is a bonus *on top*, not a replacement. The alternative — excluding the final
 shrink — would need a carve-out ("shrinks that reduce the size to 0 do not count as shrinks")
 that serves no design purpose and that every reader would have to remember. One uniform rule:
 **every buffalo row completion pays 50; the fourth pays 500 more.**
 
-A buffalo is therefore worth 50+50+50+550 = **700** across its life, against the 400 those
-four rows would have paid as ordinary clears. That +300 is deliberate: §6.4 says the buffalo
-should be something the player wants to see, and this is the number that makes it true.
+A buffalo is therefore worth 50×4 + 700 = **900** across its life, against the 500 those five
+rows would have paid as ordinary clears. **That +400 premium is deliberate, and the bonus rose
+from 500 to 650 to keep it so.** At size 5 the buffalo costs a fifth completion and blocks 55%
+of the row rather than 40%; if the reward had stayed flat while the imposition grew, the
+incentive in §6.4 — that the buffalo should be something the player *wants* to see — would
+have quietly inverted.
+
+**`rowValue` is unchanged at 9 columns.** 100 points was priced against filling ten columns
+and now buys nine. With a single board configuration the absolute scale is arbitrary — what
+matters is that every threshold priced *in* score (unlocks, and the §13 ability charges) is
+calibrated against **measured** score distributions rather than against a theory of what a row
+is worth. §5.7 ¶5 is the run that produces them.
 
 **Perfect Clear:** if the board is completely empty after a resolution, +1000, and the streak
 **multiplier** jumps straight to its ×3.0 cap while the **raw counter** rises to at least the
@@ -832,6 +927,12 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D38 | The origin of a drag is marked as a **recess**, not a third outline | Past/present/future get three visual registers — recessed, solid, outlined — so only one of the three is an outline and the board does not read as a diagram (`ui.md` §5.5). |
+| D33 | Board narrowed to 9 columns; elephant 4 / buffalo 5; species mix fixed — bands re-derived from scratch | Each change alone forces a re-derivation, so three sequential adjustments cost more than one derivation and the intermediate states are not worth measuring (§5.6). |
+| D34 | The band controls the MEAN cells/turn, not each batch's total | §5.2 draws a whole number of animals so the realised mix can match §5.4; per-batch exactness was what biased the mix (§5.2). |
+| D35 | Buffalo retirement bonus 500 → 650 | The buffalo costs a fifth completion and blocks 55% of the row; a flat reward against a growing imposition inverts §6.4's incentive (§7.2). |
+| D36 | The tray shows silhouettes, not species | Less specific is not less true — footprint and columns are exact, and footprint is the plan-relevant information. Buffalo keeps its rim because it changes the rules (`ui.md` §6.1). |
+| D37 | Abilities are gates on score, never purchases — spending costs no score | If spending deducted score, the leaderboard would reward never using the mechanic (§13.2). |
 | D31 | Text scaling is three-way: flag on HUD and board, `maxFontSizeMultiplier` on fixed-height chrome, unlimited elsewhere | A cap is not an exemption — capped text still scales, it just stops before it clips. AC-910c had no vocabulary for the middle case (`ui.md` §10). |
 | D32 | The anticipation cue lights the completing row's **gap**, not the row uniformly | A row about to complete is nearly full, so a uniform wash lights the gap anyway; specifying it deliberately points at where the arrivals land and ties the cue to the tray (`ui.md` §8.2b). |
 | D29 | The input-lock clock starts at finger-up, and the implementation subtracts the commit gap before scaling | The budget is a promise about what the player feels, and that starts when they let go (`ui.md` §8.2). |
@@ -852,3 +953,94 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D19 | Meadow ceiling raised 4–6 → 5–7 | Measured 240 bot-turns against a 100–150 target; at a 4–6 ceiling the board was indefinitely holdable (§5.5). |
 | D14 | All animation is a UI-thread Reanimated worklet; the drag is a gesture-handler pan | v1 drove animation through `setState` on `setTimeout`, which cannot hold 60 fps and is why its drag chases the thumb — `ui.md` §8.3. |
 | D13 | Seeded PRNG per run, seed recorded | Reproducible bug reports now; Daily Challenge becomes a config change later. |
+
+---
+
+## 13. Layer D — Special abilities
+
+**Status: structure decided, numbers pending measurement.** The economy is priced in score,
+and score distributions on a 9-wide board with a corrected species mix do not exist yet
+(§5.7 ¶5 / AC-318b). Every threshold below is marked accordingly. **This layer does not block
+Slices 4–6.**
+
+The owner's framing: *"The game is all about increased entropy over time, where players can
+use some helps. Score thresholds where players are able to use a special ability from any
+animal of choice."*
+
+That framing is worth building on, because it makes three existing systems pay for each
+other: **score stops being only a record and becomes a currency**, the species set **gains a
+second axis of meaning beyond size**, and a losing board becomes recoverable **by skill rather
+than luck**. It is the first mechanic proposed that pushes back against the entropy the rest
+of the game is built on — and a game that only ever gets worse needs something that does.
+
+### 13.1 The five abilities
+
+| Species | Size | Ability | Effect |
+|---|---:|---|---|
+| Rat 🐀 | 1 | **Burrow** | Remove one animal of your choice from the board |
+| Fox 🦊 | 2 | **Dart** | This turn, make up to **three** moves instead of one |
+| Elk 🦌 | 3 | **Migrate** | Remove **every** animal of one species you choose |
+| Elephant 🐘 | 4 | **Stampede** | Left-pack every row, closing all gaps within each row, then gravity |
+| Buffalo 🐃 | 5 | **Hold the Line** | **No arrivals for 3 turns** |
+
+**Scope scales with size, and that is the design.** Rat acts on one animal, fox on one turn's
+actions, elk on one species, elephant on the board's whole layout, buffalo on time itself. The
+game's central claim is that size is what matters; the abilities restate it in a second
+language rather than introducing an unrelated one.
+
+Notes on the two that need them. **Stampede does not complete rows** — a row with seven cells
+occupied still has seven after packing — it consolidates fragmented gaps into one usable gap
+per row, which is a large help without being a win button. **Hold the Line** is the owner's
+first example and belongs to the buffalo because the buffalo is the thing that stands in the
+herd's way; it is thematically exact.
+
+**Abilities are always available.** They are not gated on that species being on the board.
+"From any animal of choice" reads as *choose whichever ability you want*, and gating would
+mean sometimes being unable to use the one you need. The alternative is in `open-questions.md`.
+
+### 13.2 The economy
+
+**Charges are earned by crossing score thresholds, and spending one costs no score.** This is
+the ruling that protects the existing model. §7.4 says score rewards packing skill and nothing
+else; if spending *deducted* score, the leaderboard would reward never using the system, and
+the best scores would come from ignoring the mechanic. **Thresholds are gates, not purchases.**
+Your score never goes down.
+
+- Charges accumulate; **at most 3 may be held**, so they cannot be hoarded and dumped.
+- Thresholds **escalate**, so early charges teach the system and late ones are earned:
+  roughly 1,500 / 4,000 / 8,000 / 14,000 / 22,000 / 32,000. **All six numbers are provisional
+  pending AC-318b** — they are placed against a guess at the score curve, and a guess is not
+  good enough for the mechanic's entire pacing.
+- **Using an ability is your action for the turn** — move, pass, or ability. The one-action
+  rule (§6.2) is a Layer F invariant and abilities do not get an exemption. Fox's Dart is
+  consistent with this: your action *is* the ability, and the ability happens to be moves.
+- **Clears caused by an ability score normally.** The feedback loop — ability → clears → score
+  → charge — is bounded by the escalating thresholds and the 3-charge cap. A player who uses
+  Stampede to set up a triple clear has done exactly what score is for.
+
+### 13.3 What it does to the difficulty curve
+
+§5.5's ramp guarantees every run ends, and **Hold the Line attacks that guarantee directly**.
+It survives, for a reason worth stating because it is not obvious:
+
+> **The economy is self-limiting. Charges are earned by score, score is earned by clearing,
+> and clearing requires arrivals.** A player cannot freeze their way to an unbounded run,
+> because freezing stops the supply of the thing that buys freezes.
+
+With escalating thresholds and a 3-charge cap, a strong run might spend 9–12 frozen turns in
+total. That extends a run; it does not make one unbounded. **Runs still always end.**
+
+The pacing ranges in **AC-318** are measured with abilities disabled. They describe the difficulty
+curve, and a curve measured with an optional player-controlled intervention in it is not a
+curve. Abilities get their own measurement (AC-1404).
+
+### 13.4 Layer and dependencies
+
+**Layer D, its own layer.** It depends on Layer F (engine, scoring) and touches Layer A
+(charges must survive a resume). It ships after F, A and B, and blocks nothing.
+
+Resume is nearly free: `moves[]` already records one entry per turn (§9), so an ability use is
+a third move type — `{ t: 'A', ability, target }` — and the replay reconstructs charges by
+re-running the score. Nothing new is persisted.
+
+---
