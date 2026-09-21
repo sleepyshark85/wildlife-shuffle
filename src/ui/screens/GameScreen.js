@@ -11,7 +11,7 @@
 // exactly one thing of its own — the screen shake (AC-811) — and it schedules it
 // as a worklet, not as a timer.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -22,7 +22,9 @@ import Animated, {
 
 import { STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap } from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
+import { useProgress, useAnnouncements } from '../progressStore.js';
 import { useSettings } from '../settings.js';
+import { useOnBackground } from '../useAppState.js';
 import { COLORS, MOTION, MOTION_SIZE, RADIUS, SPACE, TYPE } from '../theme.js';
 import { useDragShared } from '../useDragShared.js';
 import { useGameRun } from '../useGameRun.js';
@@ -37,7 +39,7 @@ import { GameOverSheet } from './GameOverSheet.js';
 import { PauseSheet } from './PauseSheet.js';
 import { SettingsSheet } from './SettingsSheet.js';
 
-export function GameScreen({ seed, difficulty, onQuit }) {
+export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [paused, setPaused] = useState(false);
@@ -46,8 +48,63 @@ export function GameScreen({ seed, difficulty, onQuit }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settings = useSettings();
 
-  const run = useGameRun({ seed, difficulty });
+  const run = useGameRun({ seed, difficulty, resumed });
   const drag = useDragShared();
+  const progress = useProgress();
+  const announcements = useAnnouncements(progress.save);
+
+  /**
+   * AC-1013 / AC-1002: the ONE moment the in-progress run reaches the disk.
+   * Not per turn, not on a timer, not from the render path — the callback runs
+   * from an AppState transition, which is neither (src/ui/useAppState.js).
+   */
+  useOnBackground(() => {
+    if (!run.view.gameOver) progress.saveResume(run.state);
+  });
+
+  /**
+   * AC-1001 / AC-1020: a run ends, the record is written exactly once and the
+   * resume record is cleared. The previous best is captured BEFORE the write,
+   * because AC-707's badge compares against the best this run had to beat and
+   * one line later the stored best includes this run.
+   *
+   * Keyed on `runIndex` so Play Again — which restarts in place rather than
+   * remounting — gets its own write, and StrictMode's re-run of a mount effect
+   * does not get a second one.
+   */
+  const [outcome, setOutcome] = useState(null);
+  const writtenRef = useRef(null);
+  const runIndex = run.state.runIndex;
+  const over = run.view.gameOver;
+  const record = run.view.record;
+  const finishRun = progress.finishRun;
+  const bestNow = progress.save.best[difficulty] ? progress.save.best[difficulty].score : 0;
+  const bestRef = useRef(bestNow);
+  useEffect(() => {
+    if (!over) bestRef.current = bestNow;
+  }, [over, bestNow]);
+  useEffect(() => {
+    if (!over) {
+      writtenRef.current = null;
+      setOutcome(null);
+      return;
+    }
+    // The write happens in the effect body and the updater gets a value, never
+    // a side effect. That is the whole architectural rule of this project
+    // (docs/v1-review.md A1): v1 fired its persistence and its timeouts from
+    // inside a setState updater, which React 19 StrictMode runs twice.
+    if (writtenRef.current === runIndex) return;
+    writtenRef.current = runIndex;
+    const was = bestRef.current;
+    finishRun(record, Date.now());
+    setOutcome({
+      runIndex,
+      best: was,
+      // AC-504e: a run whose chain guard tripped sets no record, so it can
+      // show no badge either.
+      newBest: record.chainGuardTrips === 0 && record.score > was,
+    });
+  }, [over, runIndex, record, finishRun]);
 
   // THE one call. Insets are read as numbers and fed into the formula, never
   // used as an opaque wrapper view (ui.md §3.3).
@@ -271,14 +328,23 @@ export function GameScreen({ seed, difficulty, onQuit }) {
         />
       ) : null}
       {settingsOpen ? <SettingsSheet onClose={() => setSettingsOpen(false)} /> : null}
-      {run.view.gameOver ? (
+      {run.view.gameOver && outcome ? (
         <GameOverSheet
           record={run.view.record}
           difficulty={difficulty}
           flagged={Boolean(run.guardRecord)}
           reduced={reduced}
-          onAgain={() => run.restart(difficulty)}
-          onQuit={onQuit}
+          best={outcome.best}
+          newBest={outcome.newBest}
+          unlocked={announcements}
+          onAgain={() => {
+            progress.announce(announcements.map((u) => u.id));
+            run.restart(difficulty);
+          }}
+          onQuit={() => {
+            progress.announce(announcements.map((u) => u.id));
+            onQuit();
+          }}
         />
       ) : null}
     </Animated.View>

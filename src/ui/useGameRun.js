@@ -23,7 +23,6 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 
 import {
   ACTIONS,
-  createRun,
   currentBuffalo,
   queueCells,
   reduce,
@@ -34,6 +33,7 @@ import { STATUS } from '../engine/constants.js';
 import { inspectChainGuard } from './chainGuard.js';
 import { recordTurn } from './diagnostics.js';
 import { buildReplay } from './replay.js';
+import { appendMove, openRun } from './session.js';
 import { lockDelay } from './timeline.js';
 import { MOTION } from './theme.js';
 
@@ -54,24 +54,41 @@ const MAX_LEARNED_GAP_MS = 300;
 
 /**
  * The engine's `reduce()` IS the reducer — unchanged, and still the only thing
- * that decides what the board becomes. This wrapper adds one derived field and
+ * that decides what the board becomes. This wrapper adds two derived fields and
  * decides nothing: the replay plan for the turn that just resolved (ui.md §8.3
- * ¶3, AC-833/AC-834).
+ * ¶3, AC-833/AC-834), and the move log the session resume is built from
+ * (AC-1014).
  *
- * It has to happen here, and not in a `useMemo` further down, for one reason:
- * building the plan needs the board as it stood BEFORE the turn, and a cascade
- * has already deleted the animals whose departure has to be drawn. This is the
- * only place both boards exist at once. It is pure, so React 19 StrictMode's
+ * The plan has to happen here, and not in a `useMemo` further down, for one
+ * reason: building it needs the board as it stood BEFORE the turn, and a
+ * cascade has already deleted the animals whose departure has to be drawn.
+ * This is the only place both boards exist at once.
+ *
+ * The move log has to happen here for a different one: a move is appended only
+ * when a turn actually RESOLVED. A rejected move, a zero-distance drag and a
+ * buffered tap that arrived too late all leave the board alone, and a replay
+ * that recorded them would reconstruct a different run. `lastTurn`'s identity
+ * is the only thing that knows the difference, and the reducer is where it
+ * changes.
+ *
+ * Both are pure — a new array, never a push — so React 19 StrictMode's
  * double-invocation remains a no-op (AC-203).
  */
 export function runReducer(state, action) {
   const next = reduce(state, action);
+  if (next !== state && action.type === ACTIONS.RESTART) {
+    // A restart is a new run with a new id namespace. `origin` is what makes it
+    // reproducible: `runIndex` and the id counter it inherited (AC-214) are as
+    // much a part of the starting point as the seed (src/ui/session.js).
+    return { ...next, origin: { runIndex: next.runIndex, nextAnimalId: state.nextAnimalId }, moves: [] };
+  }
   if (next !== state && next.lastTurn && next.lastTurn !== state.lastTurn) {
     // `action.reservedMs` is AC-824f's correction, carried on the action so
     // the impurity stays in the event handler where the seeds already live.
     return {
       ...next,
       plan: buildReplay(state.animals, next.lastTurn, action.reservedMs || 0),
+      moves: appendMove(state.moves, action),
     };
   }
   return next;
@@ -82,8 +99,19 @@ export function newSeed() {
   return `${Date.now().toString(36)}.${Math.floor(Math.random() * 0xffffffff).toString(36)}`;
 }
 
-export function useGameRun({ seed, difficulty }) {
-  const [state, dispatch] = useReducer(runReducer, { seed, difficulty }, createRun);
+/**
+ * `resumed` is an engine state already reconstructed by replaying a stored
+ * session (AC-1012). It arrives as the lazy initialiser's argument rather than
+ * through an effect, so a resumed run never renders the board it is about to
+ * replace — and AC-1021 falls out of it: from this line down there is no
+ * difference at all between a resumed run and a fresh one.
+ */
+export function useGameRun({ seed, difficulty, resumed = null }) {
+  const [state, dispatch] = useReducer(
+    runReducer,
+    { seed, difficulty, resumed },
+    (init) => init.resumed || openRun({ seed: init.seed, difficulty: init.difficulty }),
+  );
 
   const [resolving, setResolving] = useState(false);
   const [blocked, setBlocked] = useState(false);

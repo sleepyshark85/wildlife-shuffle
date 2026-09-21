@@ -19,6 +19,7 @@ import { COLS, ROWS } from '../layout.js';
 import { COLORS, RADIUS, RECESS } from '../theme.js';
 import { slideRanges } from '../occupancy.js';
 import { inDangerBand } from '../replay.js';
+import { useCosmetics } from '../progressStore.js';
 import { AnimalView } from './AnimalView.js';
 import { BoardCells } from './BoardCells.js';
 import { ClearLayer, DangerPulse } from './ClearLayer.js';
@@ -165,6 +166,9 @@ function BoardImpl({
   // changes no React state until release.
   const ranges = useMemo(() => slideRanges(animals, BOARD.width), [animals]);
   const boardW = cell * COLS;
+  // AC-1011: a board theme repaints the ground and nothing else. `colors` is
+  // the base palette with at most three keys replaced (src/ui/cosmetics.js).
+  const { colors } = useCosmetics();
 
   return (
     <View
@@ -172,14 +176,14 @@ function BoardImpl({
       style={{
         width: boardW,
         height: cell * ROWS,
-        backgroundColor: COLORS.board,
+        backgroundColor: colors.board,
         borderRadius: RADIUS.tray,
         borderWidth: 1,
         borderColor: COLORS.hairline,
         overflow: 'hidden',
       }}
     >
-      <BoardCells cell={cell} highContrast={highContrast} />
+      <BoardCells cell={cell} highContrast={highContrast} colors={colors} />
       <DangerPulse
         cell={cell}
         boardW={boardW}
