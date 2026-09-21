@@ -28,6 +28,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { BOARD, SPECIES } from '../../engine/constants.js';
+import { registerProbe, releaseProbe } from '../diagnostics.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
 import { EASE, delay, sequence, spring, timing } from '../motion.js';
 import {
@@ -78,7 +79,8 @@ function Panels({ size, cell, buffalo, highContrast }) {
 }
 
 function AnimalViewImpl({
-  animal, cell, range, drag, motion, reduced, sizeNumerals, highContrast, onCommit, onIllegal,
+  animal, cell, range, drag, motion, reduced, sizeNumerals, highContrast,
+  diagnostics, onCommit, onIllegal,
 }) {
   const { id, type, x, y, size } = animal;
   const style = SPECIES_STYLE[type] || SPECIES_STYLE.rat;
@@ -165,11 +167,34 @@ function AnimalViewImpl({
           ),
         );
       }
-      if (motion.arrival) {
-        // The flight owns the animal until it lands; then this one takes over
-        // at the identical coordinate, so the handover has no visible seam.
-        alpha.value = delay(motion.arrival.at + motion.arrival.dur, withTiming(1, timing(1, EASE.out, reduced)));
-      }
+    }
+
+    // AC-809, and the reason this is OUT here rather than in the branch above.
+    //
+    // Visibility is a RESTING property — "is this animal on the board" — so it
+    // is re-asserted on every board change, exactly like the position two
+    // statements up. It used to be restored inside the `else`, which meant an
+    // arriving animal that landed and then did not move had no keys, took the
+    // `if`, and never got its alpha back. Invisible for the rest of the run,
+    // and on every later turn `motion.arrival` is null so nothing could ever
+    // restore it. Every test we had compared positions, and the positions were
+    // right: the board filled with correctly-placed invisible animals.
+    //
+    // The rule the bug is an instance of: a value that expresses engine state
+    // is asserted unconditionally; only a self-terminating announcement (the
+    // land squash, the shake) may live in one arm.
+    if (motion && motion.arrival) {
+      // The flight owns the animal until it lands; then this one takes over at
+      // the identical coordinate, so the handover has no visible seam. The
+      // explicit 0 matters when the effect re-runs mid-flight — a resize, say —
+      // because `delay` holds whatever the value currently is.
+      alpha.value = 0;
+      alpha.value = delay(
+        motion.arrival.at + motion.arrival.dur,
+        withTiming(1, timing(1, EASE.out, reduced)),
+      );
+    } else {
+      alpha.value = 1;
     }
 
     // AC-508/AC-812: the body springs to its new width. The panel count is
@@ -187,6 +212,28 @@ function AnimalViewImpl({
     x, y, cell, width, range, motion, reduced,
     homeX, homeCol, tx, ty, squash, bodyW, alpha,
   ]);
+
+  // The diagnostic log asks each animal what it actually RENDERED, so a
+  // divergence from the engine shows up as two columns that disagree rather
+  // than as a symptom the player has to describe. Registered from an effect,
+  // never from render, and only while the log is on.
+  useEffect(() => {
+    if (!diagnostics) return undefined;
+    registerProbe(id, () => ({
+      col: Math.round(tx.value / cell),
+      row: ROWS - 1 - Math.round(ty.value / cell),
+      cells: Math.round(bodyW.value / cell),
+      alpha: alpha.value,
+      // The flight hands over at the very END of the turn's timeline, while
+      // AC-824f deliberately ends the LOCK early by the commit gap — so the
+      // log samples an arriving animal a few tens of ms before its handover
+      // fires, and would otherwise cry wolf on every arrival. Saying it is
+      // arriving costs nothing: the fault this log exists for is an alpha that
+      // never comes back, and by the next turn `arriving` is false.
+      arriving: Boolean(motion && motion.arrival),
+    }));
+    return () => releaseProbe(id);
+  }, [diagnostics, id, cell, motion, tx, ty, bodyW, alpha]);
 
   useEffect(() => {
     rangeMin.value = range ? range.minX : 0;

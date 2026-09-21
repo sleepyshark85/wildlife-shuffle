@@ -59,7 +59,8 @@ function Ghost({ cell, drag }) {
 }
 
 function BoardImpl({
-  animals, cell, drag, plan, reduced, sizeNumerals, highContrast, onCommit, onIllegal,
+  animals, cell, drag, plan, reduced, sizeNumerals, highContrast, diagnostics,
+  onCommit, onIllegal,
 }) {
   // Recomputed when the board changes — never during a drag, because a drag
   // changes no React state until release.
@@ -108,6 +109,7 @@ function BoardImpl({
           reduced={reduced}
           sizeNumerals={sizeNumerals}
           highContrast={highContrast}
+          diagnostics={diagnostics}
           onCommit={onCommit}
           onIllegal={onIllegal}
         />

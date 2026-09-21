@@ -34,11 +34,15 @@ import { IconButton } from '../components/Controls.js';
 import { Tray } from '../components/Tray.js';
 import { GameOverSheet } from './GameOverSheet.js';
 import { PauseSheet } from './PauseSheet.js';
+import { SettingsSheet } from './SettingsSheet.js';
 
 export function GameScreen({ seed, difficulty, onQuit }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [paused, setPaused] = useState(false);
+  // Settings sits ON TOP of Pause rather than replacing it, so closing it
+  // returns to the sheet the player opened it from.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const settings = useSettings();
 
   const run = useGameRun({ seed, difficulty });
@@ -52,7 +56,7 @@ export function GameScreen({ seed, difficulty, onQuit }) {
   const wide = stage === STAGE.WIDE;
   const compact = chrome.hud === 44;
   const unsupported = stage === STAGE.UNSUPPORTED;
-  const { reduced, sizeNumerals, highContrast } = settings;
+  const { reduced, sizeNumerals, highContrast, diagnostics } = settings;
 
   const inputOpen = !run.resolving && !run.view.gameOver && !paused && !unsupported;
   const plan = run.view.plan;
@@ -127,6 +131,7 @@ export function GameScreen({ seed, difficulty, onQuit }) {
       reduced={reduced}
       sizeNumerals={sizeNumerals}
       highContrast={highContrast}
+      diagnostics={diagnostics}
       onCommit={run.commitMove}
       onIllegal={run.markBlocked}
     />
@@ -248,10 +253,11 @@ export function GameScreen({ seed, difficulty, onQuit }) {
       ]}
     >
       {body}
-      {paused && !run.view.gameOver ? (
+      {paused && !settingsOpen && !run.view.gameOver ? (
         <PauseSheet
           reduced={reduced}
           onResume={() => setPaused(false)}
+          onSettings={() => setSettingsOpen(true)}
           onRestart={() => {
             setPaused(false);
             run.restart(difficulty);
@@ -259,6 +265,7 @@ export function GameScreen({ seed, difficulty, onQuit }) {
           onQuit={onQuit}
         />
       ) : null}
+      {settingsOpen ? <SettingsSheet onClose={() => setSettingsOpen(false)} /> : null}
       {run.view.gameOver ? (
         <GameOverSheet
           record={run.view.record}

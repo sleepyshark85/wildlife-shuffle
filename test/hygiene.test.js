@@ -316,6 +316,81 @@ test('AC-910c allowFontScaling={false} appears only on HUD and board text', () =
   }
 });
 
+/** The `{...}` block that starts at the first `{` at or after `from`. */
+function blockAt(body, from) {
+  const open = body.indexOf('{', from);
+  if (open === -1) return null;
+  let depth = 0;
+  for (let i = open; i < body.length; i += 1) {
+    if (body[i] === '{') depth += 1;
+    else if (body[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return { from: open, to: i + 1, text: body.slice(open, i + 1) };
+    }
+  }
+  return null;
+}
+
+/**
+ * The bug the owner found, as a standing check.
+ *
+ * An arriving animal that landed and then did not move produced an empty key
+ * list, took the `if` arm of AnimalView's position effect, and never got its
+ * opacity back — invisible for the rest of the run. Every test we had compared
+ * POSITIONS, and the positions were right, so 194 unit tests, a 78-turn parity
+ * run and a 296-drag measurement all passed over a board of correctly-placed
+ * invisible animals.
+ *
+ * The invariant it broke: a shared value that expresses engine state — where
+ * the animal is, how wide it is, whether it is on the board — is asserted on
+ * every board change. Only a self-terminating ANNOUNCEMENT may live in one arm
+ * of a branch, because if it never runs the value is already at rest.
+ *
+ * So: every value assigned inside that effect must be assigned at its top
+ * level, or in both arms. The exemptions are listed by name with their reason,
+ * which is the point — the next person adding one has to argue for it here.
+ */
+test('AC-808/AC-809 a resting property is asserted, not restored in one arm', () => {
+  const file = path.join(ROOT, 'src/ui/components/AnimalView.js');
+  const body = code(file);
+
+  const effectStart = body.indexOf('useEffect(() => {', body.indexOf('homeX.value = x * cell') - 400);
+  const effect = blockAt(body, effectStart);
+  assert.ok(effect, 'could not find the position effect');
+  assert.ok(effect.text.includes('const keys ='), 'found the wrong effect');
+
+  const branchStart = effect.text.indexOf('if (!keys');
+  assert.ok(branchStart > -1, 'the movement branch has been renamed; re-read this test');
+  const thenArm = blockAt(effect.text, branchStart);
+  const elseArm = blockAt(effect.text, effect.text.indexOf('else', thenArm.to));
+  assert.ok(elseArm, 'the movement branch no longer has an else arm');
+
+  const topLevel =
+    effect.text.slice(0, thenArm.from) + effect.text.slice(elseArm.to);
+
+  /** Self-terminating announcements: if they never run, the value is at rest. */
+  const ANNOUNCEMENTS = new Set(['squash']);
+
+  const assigned = new Set(
+    [...effect.text.matchAll(/\b(\w+)\.value\s*=/g)].map((m) => m[1]),
+  );
+  assert.ok(assigned.has('alpha'), 'the visibility value has been renamed');
+
+  const offenders = [];
+  for (const name of assigned) {
+    if (ANNOUNCEMENTS.has(name)) continue;
+    const assigns = (text) => new RegExp(`\\b${name}\\.value\\s*=`).test(text);
+    if (assigns(topLevel)) continue;
+    if (assigns(thenArm.text) && assigns(elseArm.text)) continue;
+    offenders.push(name);
+  }
+  assert.deepEqual(
+    offenders.sort(), [],
+    `set in only one arm of the movement branch, so an animal that does not ` +
+      `move never gets it: ${offenders.join(', ')}`,
+  );
+});
+
 test('AC-126 no device dimension is hard-coded in the source', () => {
   // The ladder is dimension-driven; the Duo's real point size is unpublished
   // and the circulating estimates disagree. A constant here would be a defect.
