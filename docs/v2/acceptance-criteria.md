@@ -1293,10 +1293,19 @@ class of defect, because carried state is invisible until something carries.)*
 produces is **reachable by the rules**, because the engine produced it. A save file must not
 be able to create a state the engine could not reach on its own.
 
-**AC-1016** *(strengthened in implementation, now normative)* Given a resume record whose
+**AC-1016** *(strengthened twice in implementation, now normative)* Given a resume record whose
 `engineVersion` does not match the running build, Then it is **discarded, not replayed**.
-`engineVersion` is a **fingerprint computed over the tuning surface itself** — FNV-1a across
-`BOARD`, `DIFFICULTIES`, `SCORE`, `SPECIES` and the rest — **not a hand-maintained string**.
+`engineVersion` is a **fingerprint** — FNV-1a, **not a hand-maintained string** — and it covers
+**everything that can change the meaning of a replayed move**, not merely everything that
+looks like tuning: `BOARD`, `DIFFICULTIES`, `SCORE`, `SPECIES`, **and the ability tables**.
+
+*(The ability tables matter more than their "tuning" label suggests, and the developer's
+reasoning is the general statement of AC-1016's hazard: repricing §13.2c replays the same moves
+into a different **charge count**, and changing what an ability **does** — Hold the Line at
+four turns — replays every stored move **successfully, into a completely different board**.
+That is worse than a failed replay, because nothing reports it. The test for inclusion in the
+fingerprint is not "is this a tuning constant" but "**could changing this make a stored move
+mean something else**".)*
 
 *(This is better than what I specified and is adopted as the rule. A hand-maintained version
 requires someone to remember to bump it after every band or weight change; a fingerprint **is**
@@ -1547,12 +1556,19 @@ that difficulty's measured final-score distribution:
 **AC-1405e** Given the ladder, Then a **median run earns two charges** and a **p90 run earns
 four** — so saturation at the cap is reachable by good play and not by average play.
 
-**AC-1405f** Given any content priced in score — ability thresholds **and unlocks** — Then it
-is specified as a **percentile of the measured distribution for its difficulty**, with the
-absolute figure recorded "as of" a named measurement. *(AC-1405b's rule, which was written for
-the thresholds and not applied to the unlocks already priced in the same currency — which is
-how "score 25,000 in a single run" survived into a build where the best of 900 runs was
-18,995.)*
+**AC-1405f** *(amended — the approved wording said "priced in score", which let three of four
+unlocks escape it)* Given any **gated content** — ability thresholds and **every unlock** —
+Then it carries **evidence of reachability in whatever unit its condition uses**, the unit
+named, and the measurement recorded "as of". Score-priced conditions additionally carry their
+**percentile**.
+
+*(A cumulative condition can be unreachable too: "clear 500 rows lifetime" is a number that
+means nothing until someone knows how many rows a run clears. Restricting the rule to score
+was how "score 25,000 in a single run" survived into a build where the best of 900 runs was
+18,995 — and it would equally have let a 5,000-row condition through.)*
+
+**AC-1405g** Given the reachability table in `gameplay.md` §9, Then it is re-derived whenever
+AC-318's measurement is re-run, alongside the ability ladder.
 
 *(A score distribution now exists — Meadow median 3,290 / p90 8,130; Savanna 1,385 / 5,275;
 Tundra 692.5 / 2,100 — but it was measured on the pre-retune bands and **must not be priced
@@ -1598,9 +1614,26 @@ still terminates. *(The economy is self-limiting: charges come from score, score
 clearing, clearing from arrivals. A player cannot freeze their way to an unbounded run because
 freezing stops the supply of the thing that buys freezes.)*
 
-**AC-1410** Given Hold the Line, Then no arrival occurs for the next 3 turns, and the tray
-greys out and displays `FROZEN · n` counting down. *(The tray's contract is that it shows what
-is coming; when nothing is coming it must say so, or the contract reads as broken.)*
+**AC-1410** *(amended — the approved text and any honest counter could not both be right)*
+Given Hold the Line, Then the freeze **starts immediately**: the arrival that would have
+occurred on the turn it is used is suppressed, **and the next two** — three suppressed in
+total. *(Sparing the turn it is used on would let the batch already in the tray land — and
+that is the batch the player pressed the button to stop. "For 3 turns" has to include this
+one.)*
+
+**AC-1410b** Given the freeze is active, Then the tray greys out and shows **arrivals
+remaining**: `FROZEN · 2`, then `FROZEN · 1`, then the normal tray. *(The tray's contract is
+that it shows what is coming; when nothing is coming it must say so, or the contract reads as
+broken for three turns.)*
+
+**AC-1410c** Given the announce and the counter, Then they are in **different units and cannot
+be mistaken for each other**: the announce reads `HOLD THE LINE · 3 TURNS` — what was bought —
+and the counter reads `FROZEN · 2` — what is left. An announce of "3" beside a counter of "2"
+in the same unit would look like an off-by-one.
+
+**AC-1410d** Given Hold the Line is used while a freeze is already active, Then the freeze
+**resets to 3** rather than stacking. *(Stacking to six would be a far stronger play and would
+weaken AC-1409's self-limiting argument.)*
 
 **AC-1411** Given Stampede, Then every row's animals slide left to close gaps **within** that
 row, then gravity applies. It never completes a row by itself — a seven-cell row still holds
@@ -1608,6 +1641,28 @@ seven cells afterwards.
 
 **AC-1412** Given Migrate, Then every animal of the chosen species leaves the board, and
 buffalo is **not** a selectable target.
+
+**AC-1412b — NO ABILITY TARGETS THE BUFFALO.** Given **Burrow**, Then buffalo is **not** a
+selectable target either. *(The approved ACs excluded it from Migrate and said nothing about
+Burrow, which is an inconsistency rather than a design. The rule is per-object, not
+per-ability: the buffalo is not a bigger animal, it is a **different kind of object**
+(`ui.md` §4.3), and "remove one animal" does not reach it.)*
+
+Two things break if it does:
+
+- **§13.1's scope ladder inverts.** Rat acts on one animal, fox on one turn, elk on one
+  species, elephant on the board, buffalo on time — scope scales with size, which is the
+  game's central claim restated. If rat's one animal may be the **largest obstacle in the
+  game**, the weakest ability quietly becomes the strongest single play.
+- **§6.4's premium stops being a decision.** The buffalo is worth 900 against 500 for five
+  clean rows *because* you commit to it. One charge that deletes it makes taking the premium
+  optional and never costly, which is strictly dominant play and therefore not a choice.
+
+**AC-1412c** Given the tester's measurement shows Burrow is genuinely dead weight without the
+buffalo, Then the fix is to **strengthen Burrow**, not to let it eat the buffalo. *(Burrow is
+the smallest ability but the only precise one — removing the single animal blocking a row is
+surgical where Stampede and Migrate are blunt. If precision proves insufficient, widen what
+Burrow does to ordinary animals.)*
 
 **AC-1413** Given an ability is armed, Then **no charge is spent until the player confirms**;
 opening the sheet and reading it costs nothing.
@@ -1622,6 +1677,24 @@ the action bar does not reflow.
 
 **AC-1416** Given a resume, Then charges are reconstructed by replaying the run: an ability use
 is a third move type `{ t: 'A', ability, target }` in `moves[]` and nothing new is persisted.
+
+**AC-1407b** Given Fox's Dart, Then **gravity settles after each of the three moves**, so "a
+move" means the same thing all three times. *(Otherwise move two is made on a board with an
+animal hanging where its support used to be — a position the rules cannot otherwise produce.)*
+
+**AC-1411b — THE STAMPEDE STAGGER IS CAPPED.** Given Stampede, Then the row stagger runs
+**bottom-up over the rows that actually move, capped at 4 beats (480 ms)** with the tail
+folded into the final beat. *(`ui.md` §13.4 specified "a 120 ms stagger from the bottom up"
+without multiplying by fifteen rows: read literally that is 1,680 ms, which inside a 1,500 ms
+budget would scale the entire turn to the 0.55 floor and become the reason nothing else read.
+Same error as the clear flash — a per-unit duration specified without checking the unit
+count.)*
+
+**AC-1412d** Given Migrate is armed on a species with **no animals on the board**, Then the
+action is **rejected and the charge is not spent**, consistent with AC-1414.
+
+**AC-1408g** Given the turn that ends the run, Then **no charge is granted on it** — neither a
+threshold crossing nor Last Stand. *(A bloom behind the Game Over sheet helps nobody.)*
 
 **AC-1417** Given any ability resolves, Then the input-lock budget (AC-822) still holds — every
 ability animation in `ui.md` §13.4 is an announcement over an ordinary structural resolution.

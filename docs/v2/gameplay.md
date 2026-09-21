@@ -892,12 +892,23 @@ shows both.
 **Unlocks.** Four, cosmetic only, no gameplay effect. Kept deliberately small — four things
 that certainly ship beats twelve that half-ship.
 
-| Unlock | Requirement | Priced from |
-|---|---|---|
-| **Night Savanna** board theme | Retire 10 buffalo | cumulative — prices fine |
-| **Tundra** palette | **Score 2,500 in a single Tundra run** | ≈p92 of Tundra's measured scores |
-| **Rat King** animal set | Clear 500 rows lifetime | cumulative — prices fine |
-| **Golden Herd** animal set | Clear 4 rows in a single step | **unpriceable by the harness** |
+**Every unlock carries the evidence that it is reachable, the unit it was priced in, and the
+measurement it was priced against** — not only the ones priced in score:
+
+| Unlock | Requirement | Unit | Evidence, as of the 300-seed / 900-run measurement on the shipped bands |
+|---|---|---|---|
+| **Night Savanna** board theme | Retire 10 buffalo | cumulative, buffalo | ≈6–10 runs. A Savanna run meets ≈4 buffalo and retires 1–2. **Reachable.** |
+| **Tundra** palette | **Score 2,500 in one Tundra run** | **p92, Tundra scores** | Tundra p90 = 2,260, max 5,930. **Reachable, a strong run.** |
+| **Rat King** animal set | Clear 500 rows lifetime | cumulative, rows | ≈40 runs at ≈12 rows per Savanna run. **Reachable, a long goal.** |
+| **Golden Herd** animal set | Clear 4 rows in a single step | single event | **Unmeasurable by this harness** — see below. |
+
+The rule in **AC-1405f** applies to all four, and I had applied it to one. The rule says score-priced
+content carries its percentile and its "as of" measurement; I repriced the Tundra palette and
+left the other three, because they are priced in *buffalo* and *rows* rather than points. That
+was the wrong reading of my own rule — **a cumulative condition can be unreachable too**, and
+"500 rows" is a number that means nothing until someone knows how many rows a run clears. The
+rule is now about **evidence of reachability in whatever unit the condition uses**, which is
+what it should have said.
 
 **Tundra palette was repriced from 25,000, which was unreachable.** Over 900 bot runs on the
 shipped bands — perfect information, so a human does worse — the best single run anywhere was
@@ -1068,6 +1079,9 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D49 | No ability targets the buffalo — Burrow excluded as well as Migrate | The rule is per-object, not per-ability: the buffalo is a different kind of object, and letting rat's "one animal" reach it inverts §13.1's scope ladder and makes §6.4's premium optional (AC-1412b). |
+| D50 | Hold the Line's freeze starts immediately — three arrivals including the one being stopped | Sparing the current turn lets the batch already in the tray land, which is the batch the player pressed the button to stop (AC-1410). |
+| D51 | The `engineVersion` fingerprint covers anything that can change the meaning of a stored move, not just tuning constants | Changing what an ability does replays every move *successfully* into a different board — worse than a failed replay, because nothing reports it (AC-1016). |
 | D46 | §5.6b's shape diagnosis withdrawn; its ramp mechanism was backwards | 30 seeds cannot carry a ratio — ten blocks spanned 1.15–1.62 and the mandated block was the highest. The ramp is the *weakest* lever on the longest runs, not the strongest (§5.6b). |
 | D47 | Pacing is gated in minutes, not turns; no further tuning until per-turn duration is measured | The 110/60/38 turn targets imply 7.3 minutes on Meadow against §0's stated 3–5, so they contradict the goal they serve (§5.6c). |
 | D48 | Tundra palette repriced 25,000 → 2,500 and made Tundra-specific | Unreachable: best of 900 bot runs was 18,995, and 5,930 on Tundra itself (§9). |
@@ -1293,8 +1307,14 @@ curve. Abilities get their own measurement (AC-1404).
 
 ### 13.4 Layer and dependencies
 
-**Layer D, its own layer.** It depends on Layer F (engine, scoring) and touches Layer A
-(charges must survive a resume). It ships after F, A and B, and blocks nothing.
+**Layer D, its own layer — and it stays a layer rather than becoming a numbered slice.** It
+depends on Layer F (engine, scoring) and touches Layer A (charges must survive a resume). It
+blocks nothing.
+
+It shipped **out of order relative to slices 5 and 6, and that is the layer model working
+rather than a problem with it.** Layers are defined by independence; a numbered slice implies
+a sequence this work never had. The fact that the owner could pull it forward without
+disturbing anything is the evidence that the boundary was drawn in the right place.
 
 Resume is nearly free: `moves[]` already records one entry per turn (§9), so an ability use is
 a third move type — `{ t: 'A', ability, target }` — and the replay reconstructs charges by
