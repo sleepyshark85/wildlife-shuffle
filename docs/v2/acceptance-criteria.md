@@ -1369,8 +1369,19 @@ on every launch.)*
 **AC-1005** Given the stored blob is corrupt or unparseable, Then the app launches normally
 with default values and does not crash or hang.
 
-**AC-1006** Given the stored blob has an older `schemaVersion`, Then it is migrated or
-discarded cleanly, never partially applied.
+**AC-1006** *(amended — "migrated **or** discarded" was too permissive, and the migration half
+had never been exercised until Slice 5 forced it)* Given the stored blob has an older
+`schemaVersion`, Then it is **migrated**, never partially applied.
+
+**Adding a field is a migration, never a discard.** Discarding is acceptable only for a record
+that genuinely cannot be migrated — a corrupt blob (AC-1005) or one whose meaning has changed
+beyond recovery. *(Two new settings keys would otherwise have made every existing save fail
+validation and **silently discard the player's records on update**. There had only ever been
+one schema version, so this AC's migration half was untested until the week it was needed.)*
+
+**AC-1006b** Given any change that adds or renames a persisted field, Then a migration test
+with **planted faults** accompanies it. *(An AC that has never had a second version to migrate
+to has not been tested, only written.)*
 
 **AC-1007** Given a run is completed on a new calendar day following a day with a completed
 run, Then the daily streak increments by 1. Given a day is skipped, it resets to 1.
@@ -1437,16 +1448,72 @@ any rule, spawn, or score.
 
 ## AC-11xx · Polish (Layer B)
 
-**AC-1101** Given sound is enabled, Then each of these has a distinct cue: grab, drop, land,
-illegal move, row clear, chain step (rising pitch per step), buffalo shrink, buffalo retired,
-perfect clear, new best, game over.
+**AC-1101** *(amended — the cue set predates Layer D and the spec it should have derived from;
+see `ui.md` §15)* Given sound is enabled, Then each of these **sixteen** has a distinct cue:
+grab, snap, land, illegal move, row clear, cascade step, **buffalo arrival**, buffalo shrink,
+buffalo retired, perfect clear, new best, game over, **ability fired**, **charge granted**,
+**Last Stand**, **unlock**.
 
-**AC-1102** Given haptics are enabled, Then grab fires selection, land fires light impact, row
-clear fires medium impact, perfect clear fires heavy impact plus notification-success,
-illegal move fires notification-error, and game over fires heavy impact.
+**AC-1101b — THREE MATERIALS, EACH MEANING SOMETHING.** Given any cue, Then it is struck
+**wood** (the player's actions and ordinary board events), struck **metal** (**the buffalo,
+and only the buffalo**), or **air** (arrivals and the freeze). *(Metal is reserved exactly as
+the gold rim is — the one object that is a different kind of thing gets the one material that
+is not wood.)*
 
-**AC-1103** Given the device ringer switch is set to silent, Then no sound plays and haptics
-are unaffected.
+**AC-1101c — PITCH FALLS AS SIZE RISES.** Given a cue tied to a species, Then its pitch is
+`root − 2 × (size − 3)` semitones from C4, and its length runs 60 ms at size 1 to 140 ms at
+size 5. *(The visual system exists to make size legible; the audio carries the same property
+rather than an unrelated one.)*
+
+**AC-1101d** Given the game is running, Then there is **no music** — no bed, no loop, no
+ambience between actions. *(A puzzle game that hums is one people mute, and muting it would
+take the sixteen cues with it. The silence is what lets short cues carry meaning.)*
+
+**AC-1101e** Given the illegal-move cue, Then it is the **only unpitched cue in the game**.
+*(Everything else has a note; rejection has none.)*
+
+**AC-1101f** Given an ability fires, Then its cue takes **its species' own pitch** — so
+Stampede is low and Burrow is high, making §13.1's scope ladder audible without a new
+vocabulary.
+
+**AC-1102** *(amended — four haptics were specified in prose or left unstated)* Given haptics
+are enabled, Then:
+
+| event | haptic |
+|---|---|
+| grab | selection |
+| **snap** | **light impact** |
+| land | light impact |
+| illegal move | notification-error |
+| row clear | medium impact |
+| **buffalo shrink** | **medium impact** (`gameplay.md` §6.4) |
+| **buffalo retired** | **heavy impact** (`gameplay.md` §6.4) |
+| perfect clear | heavy impact + notification-success |
+| **new best** | **notification-success** |
+| game over | heavy impact |
+| ability fired | medium impact |
+| charge granted | selection |
+| Last Stand | heavy impact |
+
+**AC-1103** *(confirmed — and the reason is now recorded, because it is the kind of thing that
+gets "fixed")* Given the device ringer switch is set to silent, Then no sound plays and
+**haptics are unaffected**.
+
+This is correct **and** the only implementable behaviour. There is no ringer-switch API on
+iOS: the silencing comes from the audio session category, which cannot reach haptics. A brief
+that asked for silent-means-silent would need a mechanism that does not exist — and it would
+be wrong anyway, since **haptics are private and sound is not**, so a player on silent in
+public wants exactly this.
+
+**AC-1103b** Given Reduce Motion is enabled, Then **sound and haptics are unchanged**. *(It
+addresses vestibular discomfort; neither is motion, nor a substitute for it. The Sound and
+Haptics toggles are the controls for this and are the only ones.)*
+
+**AC-1106d — A NEW BEST SUPPRESSES THE GAME-OVER CUE.** Given a run ends on a new best score,
+Then the new-best cue plays and the game-over cue **does not**. *(They fall within one commit
+of each other and would read as a mess. The emotionally dominant fact is the best, not the
+ending — and the Game Over sheet already says the run is over, in the one channel that cannot
+be muted. One moment, one sound.)*
 
 **AC-1104** Given the Sound or Haptics toggle is turned off, Then that channel is silent
 immediately and the preference persists across launches.
@@ -1454,8 +1521,23 @@ immediately and the preference persists across launches.
 **AC-1105** Given background audio is playing from another app, Then launching and playing
 Wildlife Shuffle does not interrupt or duck it.
 
-**AC-1106** Given a chain of `n` steps, Then the chain cue pitch rises monotonically with the
-step index.
+**AC-1106** *(amended — "the step index" did not say whose, and the difference is a real bug)*
+Given a cascade, Then **step 1 fires the `clear` cue and steps 2+ fire the `cascade` cue**,
+whose pitch rises monotonically with the **turn's** step index — **not** the engine's per-phase
+`event.step`, which restarts at 1 in each phase.
+
+**AC-1106b — THE FIXTURE MUST CROSS A PHASE BOUNDARY.** Given the cascade pitch tests, Then at
+least one fixture **clears in both the SETTLE and ARRIVAL phases of one turn**. *(A plant using
+`event.step` passed all five original pitch tests, because every fixture lived inside a single
+phase where the two values agree. The turn that distinguishes them is the **ordinary** one — a
+row completing on the board and the arriving batch completing another — so the escaped bug
+would have been a cascade dropping back to the root pitch halfway through, on a common turn.)*
+
+**AC-1106c** Given a cascade of any depth, Then its pitch ascends a **pentatonic** scale —
+`0, +2, +4, +7, +9, +12` — not chromatically. *(A chromatic run is consonant for two steps and
+sour by six. A pentatonic run cannot hit a bad interval at any depth, and the rare deep cascade
+is the best thing that happens in the game — it should not be the moment the audio turns
+dissonant.)*
 
 ---
 
