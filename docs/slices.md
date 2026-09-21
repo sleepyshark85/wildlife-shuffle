@@ -322,7 +322,7 @@ truth — `docs/development-process.md` §6.4 records the time that cost a whole
 
 Test counts locate the slice: **118** = Slice 1, **161** = Slice 2, **194** = Slice 3,
 **263** = Slice 4, **344** = Layer D, **431** = the worklet audit that came out of the crash
-(§6.9), **448** = the light theme.
+(§6.9), **448** = the light theme, **475** = the first device round (PRs #38-#41).
 
 ### 2. Know the shape of the work
 

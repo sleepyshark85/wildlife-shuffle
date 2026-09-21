@@ -28,13 +28,27 @@ working build.
 
 **The light theme is merged** (PR #36, design PR #33 + #35's contrast round): both themes
 ship, **light is the default**, the choice persists, and a seeded paper-grain texture sits
-under the board and Home. `npm test` is **448 passing**. The light accent is `#975C0F` —
+under the board and Home. The light accent is `#975C0F` —
 not §16.2's original `#B06B12`, which failed four of the accent's seven duties.
 
 **Cosmetics are per-ramp now.** A cosmetic supplying a *ground* names its ramp; one supplying
 a *colour* ships one table per ramp; the ramp in force selects the variant. This exists
 because Tundra had never cleared 3:1 on the ground it was designed for and nothing was
 checking the product of palette × ground. `docs/v2/theme-contrast.mjs` sweeps it now.
+
+**The first device round landed** (PRs #38, #39, #40, #41). The owner played build 2 and
+reported two things, both of which turned out to be more than one defect:
+
+- *"the board react a little bit late and there is a short overlap"* — **three** causes. The
+  arrival flight ran on its own `withDelay`s instead of the board's clock; a departing animal
+  was drawn at its post-push row from t=0; and the buffalo shard was worse than either at 41%.
+  Over a 6,133-turn sweep, turns with a body-on-body overlap went **78 → 0**.
+- *"I shouldn't be able to drag it over another animal"* — the body was deliberately not
+  clamped to its neighbours (AC-407). The owner overruled that. It now stops dead, and the
+  red ghost is gone because once the body is clamped the release **commits**, so a red ghost
+  would promise a rejection that cannot happen.
+
+`npm test` is **475 passing**.
 
 **Owed to the owner: a device review.** The clear timings and the anticipation wash are
 marked provisional in AC-824c, which carries the full list of what only a phone can settle —
