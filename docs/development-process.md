@@ -96,6 +96,11 @@ Four tiers. Be honest about which tier a claim comes from.
 Only tier 4 proves iOS. Tier 2 is a strong signal and not proof: it is `react-native-web`
 driven by mouse events. A failure there is real; a pass there is not a guarantee.
 
+**Some defects no tier below 4 can represent at all.** Anything whose behaviour differs
+between a `.native` and a `.web` module — worklet serialization above all — does not merely
+go unnoticed on web, it *cannot happen* there. When a property is like that, audit it
+structurally in Tier 1 rather than testing the behaviour anywhere (§6.9).
+
 **Invariant fuzzing is the sharpest tool.** Drive the engine over thousands of seeded turns
 and assert after *every step*: no overlap, nothing out of bounds, nothing floating after
 gravity, unique ids, turn +1 exactly, every filled row resolved, score integral and
@@ -234,6 +239,48 @@ reached `main`.
 **Rule:** branch each slice from `main`, not from the previous slice's branch, unless the
 dependency is genuine. If stacking is necessary, merge strictly in order and verify the
 result is on `main` afterwards.
+
+### 6.9 The defect no tier we ran could see
+
+The first TestFlight build aborted on the very first row clear, every time. The cause was
+one line in `ClearLayer.js`:
+
+```js
+const rowTop = (y, cell) => (ROWS - 1 - y) * cell;
+```
+
+`Departing`, `Shard` and `Float` each call it from inside a `useAnimatedStyle`. Reanimated
+serializes a plain function captured by a worklet as a **Remote Function** — a stub whose
+entire body is a `throw`. All three components mount *only* when a row clears, so the crash
+was not merely reproducible but inevitable.
+
+The uncomfortable part is not the mistake. It is that **375 tests and every browser run were
+structurally incapable of catching it.** `remoteFunctionUnpacker` is `.native.ts` with no web
+counterpart: on web a worklet is an ordinary closure on the JS thread and `rowTop` is simply
+`rowTop`. Tiers 1–3 did not miss this defect — they cannot represent it. Only a device could
+fail, and the device is the tier we run least.
+
+Three hypotheses were offered before the cause was found, and **all three were wrong** — an
+out-of-range schedule index, a stale capture, the cue path. The category was right ("a
+worklet may only call worklets") and the file was wrong. Guessing narrowed nothing; the
+answer came from compiling the file with the project's real Babel config and reading what
+came out.
+
+**Rule:** when a property holds only on a platform a tier cannot execute, do not test the
+behaviour — **audit the property structurally in Tier 1.** `AC-828 a worklet calls only
+worklets` parses every worklet body in the tree and resolves each callee. Run against the
+broken `main` it found exactly one violation: this one.
+
+**Rule:** for any question of the form "what does the bundler/transform actually emit",
+compile it and look. `transformFileSync` with the project's own config is available to
+`node --test`, it takes a few lines, and it replaces an argument with an artefact.
+
+**Rule:** a green Tier 1–3 suite is evidence about Tiers 1–3. It is not evidence that a build
+launches. Nothing may be called shippable on its strength alone — AC-824c's device pass is
+not a formality at the end of the queue, it is the only tier that can see this class of
+defect at all.
+
+---
 
 ---
 
