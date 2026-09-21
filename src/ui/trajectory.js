@@ -77,3 +77,54 @@ export function rowAt(startY, keys, t, cap) {
   return y;
 }
 
+/**
+ * How far along a scheduled span the turn is at `t` ms — the SAME arithmetic
+ * `rowAt` applies to a 'rise', and the reason the flight and the board can no
+ * longer disagree about when the arrival happens.
+ *
+ * `ArrivalFlight` used to run `withDelay(at, withTiming(...))` per flier while
+ * the board read the shared clock. Two time sources only approximately in
+ * phase, which is §6.7's incident surviving in the one layer that was never
+ * migrated: `withDelay` anchors to its own animation's first frame, so the
+ * flier and the board's push-up started a frame or more apart and the owner
+ * saw "the board react a little bit late and a short overlap between them".
+ *
+ * Measured on the arithmetic below: with one clock the worst overlap between a
+ * flier and any board animal sharing its columns is exactly 0 px. With the
+ * board one frame behind it is 0.11 px, and two frames behind 8.05 px — 0.18
+ * of a cell at the 6.7" board (test/arrival-phase.test.js).
+ *
+ * The curve is ui.md §8's ease-out, which is what `rowAt` gives a 'rise' and
+ * what `EASE.out` gives the flight: one curve, evaluated once, by both.
+ *
+ * @param {number} at   when the span starts, ms into the turn
+ * @param {number} dur  how long it lasts, before Reduce Motion
+ * @param {number} t    ms since the turn's animation began
+ * @param {number} cap  Reduce Motion's per-transform ceiling, or 0 for none
+ */
+export function flightAt(at, dur, t, cap) {
+  'worklet';
+  const d = cap > 0 && dur > cap ? cap : dur;
+  if (t <= at) return 0;
+  if (t >= at + d) return 1;
+  return bezierAt(0.22, 1, 0.36, 1, (t - at) / d);
+}
+
+/**
+ * Whether the flier is still the thing being looked at, at `t`.
+ *
+ * 1 until the flight lands, 0 from then on: the board's own copy has been
+ * holding at opacity 0 and takes over at the identical coordinate on the same
+ * frame (AnimalView, AC-809).
+ *
+ * `cap` is deliberately ABSENT. Under Reduce Motion the movement is clamped —
+ * both here and in `rowAt` — but the handover is not a movement, it is the
+ * instant two layers swap, and the board's copy fades in at the UNCLAMPED
+ * `arrival.at + arrival.dur` (AnimalView.js:251-255). Clamping only this side
+ * of the swap would leave the arriving animal invisible in between, which is
+ * exactly the defect §6.7 opens with.
+ */
+export function handedOver(at, dur, t) {
+  'worklet';
+  return t >= at + dur ? 0 : 1;
+}
