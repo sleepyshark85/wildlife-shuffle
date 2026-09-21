@@ -4,11 +4,11 @@
 // Run: node docs/v2/layout-sweep.mjs   — expected: 'overflowing : 0'
 
 // Candidate v2 formula: graceful degradation ladder, tested across the continuous space.
-const FULL   ={hud:52,act:48,tray:45,gaps:32};           // 177
-const COMPACT={hud:44,act:44,tray:36,gaps:20};           // 144
-const RAIL   ={hud:0, act:0, tray:45,gaps:32};           // 77  (wide: chrome moves to a side rail)
+const FULL   ={hud:52,act:48,tray:31,gaps:32};           // 163  (tray thinned, item 3)
+const COMPACT={hud:44,act:44,tray:26,gaps:20};           // 134
+const RAIL   ={hud:0, act:0, tray:31,gaps:32};           // 63  (wide: chrome moves to a side rail)
 const sum=c=>c.hud+c.act+c.tray+c.gaps;
-const W_RAIL=600, COLS=10, ROWS=15, GUTTER=32;
+const W_RAIL=600, COLS=9, ROWS=15, GUTTER=32;
 
 function layout(w,h,it,ib){
   const tryStage=(chrome,lo,hi)=>{

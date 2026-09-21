@@ -117,6 +117,39 @@ will write them.
 
 ---
 
+## Q7 · Abilities: always available, or gated on the species being on the board?
+
+`gameplay.md` §13.1 makes all five abilities available at any time, gated only by charges. The
+owner's words — *"a special ability from any animal of choice"* — read most naturally that way.
+
+The alternative is that an ability requires that species to be **on the board**. It ties the
+two systems together and makes board state matter in a second way: you would keep a rat alive
+because you might need Burrow. It also means sometimes being unable to use the ability you
+need, which on a losing board is the moment the mechanic exists for.
+
+**Recommendation: always available for the first build.** It is the simpler rule, it matches
+the owner's phrasing, and gating can be added later without redesigning anything. If it turns
+out charges are spent thoughtlessly because nothing constrains the choice, gating is the
+first lever to reach for.
+
+---
+
+## Q8 · The tray loses species flavour — confirming that is wanted
+
+`ui.md` §6 implements the shadow tray as asked, and §6.1 argues it keeps the honest-preview
+contract: footprint and columns stay exact, only species identity is withheld, and species
+affects nothing mechanically. Buffalo keeps its rim because it *does* change the rules.
+
+What is genuinely lost is **flavour** — seeing a herd of elephants coming is a small pleasure
+the silhouette removes, and the animals are the game's character. The mechanical argument for
+the change is sound; the aesthetic cost is real and is the owner's to weigh.
+
+**Recommendation: ship it and look at it.** It is a two-line change to revert per-species
+colour into the strip if the board feels less alive without it, and 14 pt of board is worth
+having either way.
+
+---
+
 ## Things I decided rather than asking you
 
 Listed so you can overrule any of them. Rationale for each is in `gameplay.md` §12.
@@ -133,6 +166,11 @@ Listed so you can overrule any of them. Rationale for each is in `gameplay.md` �
   draft's 3.2 s (`ui.md` §8.2), and all animation runs on the UI thread (`ui.md` §8.3).
 - The app is **dark-only** (`ui.md` §1).
 - **iPad is not supported** (`ui.md` §3.2).
+- The board is **9 × 15**, elephant is **4** and buffalo **5**, and the difficulty bands were
+  **re-derived from scratch** rather than rescaled (`gameplay.md` §5.6).
+- Buffalo's retirement bonus rose **500 → 650** so the premium tracks its larger imposition.
+- Special abilities are **Layer D**, blocking nothing, with every threshold provisional until
+  scores are measured (`gameplay.md` §13).
 - **Session resume is ported from v1, not dropped** — stored as a seed plus a move list rather
   than a board snapshot, written on backgrounding only (`gameplay.md` §9). This is listed here
   because the v1 review's stale feature inventory nearly caused v2 to ship without it; the

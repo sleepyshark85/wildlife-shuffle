@@ -173,11 +173,39 @@ in the tree as a transitive dependency.
 
 ## F. What v1 got right — keep this
 
+**Amended 2026-09-21.** This section was originally three lines about *code*, and that was the
+wrong shape for it. The review catalogued v1 as a list of defects and only incidentally as a
+list of **affordances** — things v1 did for the player that v2 would silently drop unless
+someone named them. Two were missed that way and both reached the design late, as owner
+requests rather than as inputs:
+
+| Affordance | How it surfaced | Now specified in |
+|---|---|---|
+| **Session resume** — a mid-run game survives relaunch (`useLocalStorage.js`) | Found only when the stale-commit correction was written | `gameplay.md` §9 |
+| **Origin ghost** — the dragged animal's starting position stays marked (`spec.md`, "Original Position Ghost") | Reported by the owner as costing them turns | `ui.md` §5.5 |
+
+Both are small, both were shipped, and both would have been regressions. **When reviewing a
+predecessor, list what it does for the player as deliberately as what it does wrong** — a
+defect list is a description of the code, and the thing being replaced is the experience.
+
+### The code and mechanics worth keeping
+
 - The `{id, type, x, y, size}` animal model is the correct data structure. Keep it.
 - `applyGravity` is genuinely correct: bottom-to-top ordering, no tunnelling. Verified.
 - The core loop — rows rise, drag to pack, fill a row to clear it — is a real game, and
   the buffalo-shrinks-instead-of-clearing twist is a good idea that v1 never showcased.
 - `spec.md` exists and is detailed. It drifted from the code, but the instinct was right.
+
+### The affordances worth keeping
+
+- **Session resume.** `useLocalStorage.js` persists the in-progress run; a relaunch resumes it.
+  The 1 Hz `setInterval` that saves it is wrong, the feature is right.
+- **The origin ghost.** A bright orange dashed outline marks where a dragged animal started,
+  making a drag cancellable. With one move per turn and no undo, this is what lets a player
+  explore a move before paying for it.
+- **Score, high score and session history** (`StatsPanel.js`), including the **last-ten-runs
+  list** — aggregates do not replace it.
+- **Haptics** (`useSoundManager.js`), already wired to clear, high-score, spawn and game-over.
 
 ---
 
