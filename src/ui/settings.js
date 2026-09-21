@@ -1,10 +1,10 @@
-// The three accessibility toggles of ui.md §10, plus the OS Reduce Motion
-// setting they sit beside.
+// The player's preferences: the three accessibility toggles of ui.md §10, the
+// OS Reduce Motion setting they sit beside, and Sound and Haptics (AC-1104).
 //
-// AC-906b: they are persisted, and they are persisted in the save blob rather
-// than in a second store, so there is one file and one schema version to get
-// right. That also means this provider holds no copy of them — it reads the
-// three values straight off `useProgress()` and writes through `setSetting`.
+// AC-906b / AC-1104: they are persisted, and they are persisted in the save
+// blob rather than in a second store, so there is one file and one schema
+// version to get right. That also means this provider holds no copy of them —
+// it reads them straight off `useProgress()` and writes through `setSetting`.
 // Two sources that agree is the bug shape rather than its absence
 // (docs/development-process.md §6.3).
 //
@@ -20,13 +20,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
+import { setCuePrefs, startCues } from './cuePlayer.js';
 import { diagnosticsAvailable, setDiagnosticsEnabled } from './diagnostics.js';
+import { SETTING_DEFAULTS } from './progress.js';
 import { useProgress } from './progressStore.js';
 
 const DEFAULTS = Object.freeze({
-  sizeNumerals: false,
-  highContrast: false,
-  reduceMotion: false,
+  ...SETTING_DEFAULTS,
   diagnostics: false,
   reduced: false,
   set: () => {},
@@ -42,6 +42,7 @@ export function SettingsProvider({ children }) {
   const { save, setSetting } = useProgress();
   const [diagnostics, setDiagnostics] = useState(false);
   const [systemReduce, setSystemReduce] = useState(false);
+  const prefs = save.settings;
 
   useEffect(() => {
     let alive = true;
@@ -67,7 +68,28 @@ export function SettingsProvider({ children }) {
     setDiagnosticsEnabled(diagnostics);
   }, [diagnostics]);
 
-  const prefs = save.settings;
+  /**
+   * AC-1105. The audio session category is configured ONCE, at the top of the
+   * app, and before anything can open a player — `makeCueEngine` refuses to
+   * create one until this promise has resolved, because a player opened on the
+   * default category takes audio focus and stops whatever the player was
+   * listening to. `start()` is idempotent, which is what StrictMode's
+   * double-invoked mount effect needs.
+   */
+  useEffect(() => {
+    startCues();
+  }, []);
+
+  /**
+   * AC-1104. ONE write, into the module-level state `fireCue` reads. Nothing is
+   * cached behind it and nothing is queued in front of it, so a toggle turned
+   * off is silent on the very next cue — including one already scheduled for
+   * later in a turn that is still animating.
+   */
+  useEffect(() => {
+    setCuePrefs({ sound: prefs.sound, haptics: prefs.haptics });
+  }, [prefs.sound, prefs.haptics]);
+
   const value = useMemo(
     () => ({
       ...prefs,

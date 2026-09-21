@@ -21,6 +21,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { needsTarget, targetOf, targetingChip, turnStatus } from '../abilities.js';
+import { CUE } from '../cues.js';
+import { fireCue } from '../cuePlayer.js';
 import { STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap } from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
 import { useProgress, useAnnouncements } from '../progressStore.js';
@@ -30,6 +32,7 @@ import { COLORS, MOTION, MOTION_SIZE, RADIUS, SPACE, TYPE } from '../theme.js';
 import { useDragShared } from '../useDragShared.js';
 import { useGameRun } from '../useGameRun.js';
 import { useTurnClock } from '../useTurnClock.js';
+import { useTurnCues } from '../useTurnCues.js';
 import { ActionBar } from '../components/ActionBar.js';
 import { ArrivalFlight } from '../components/ArrivalFlight.js';
 import { Board } from '../components/Board.js';
@@ -119,13 +122,16 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
     writtenRef.current = runIndex;
     const was = bestRef.current;
     finishRun(record, Date.now());
-    setOutcome({
-      runIndex,
-      best: was,
-      // AC-504e: a run whose chain guard tripped sets no record, so it can
-      // show no badge either.
-      newBest: record.chainGuardTrips === 0 && record.score > was,
-    });
+    // AC-504e: a run whose chain guard tripped sets no record, so it can
+    // show no badge either.
+    const newBest = record.chainGuardTrips === 0 && record.score > was;
+    setOutcome({ runIndex, best: was, newBest });
+    // AC-1101's eleventh cue, and the only one that is not in the plan: a new
+    // best is not a fact about the turn, it is a comparison against the save
+    // file, and `buildReplay` has never seen the save file. It fires from the
+    // same line that decides the badge, so the sound and the badge cannot
+    // disagree about whether this was a record.
+    if (newBest) fireCue(CUE.newBest, 1);
   }, [over, runIndex, record, finishRun]);
 
   // THE one call. Insets are read as numbers and fed into the formula, never
@@ -146,6 +152,11 @@ export function GameScreen({ seed, difficulty, resumed = null, onQuit }) {
   // AC-808: one clock for every animal's vertical motion, so a stack cannot
   // drift apart and cross itself (src/ui/useTurnClock.js).
   const clock = useTurnClock(plan);
+  // AC-1101: the turn's cues, played off that same clock so a cue lands on the
+  // frame it is announcing rather than a frame either side of it
+  // (src/ui/useTurnCues.js). The schedule was built with the flashes, in the
+  // plan (src/ui/replay.js).
+  useTurnCues(plan, clock);
 
   // A layout change — or a board change — invalidates any drag in flight: the
   // columns under the finger have changed meaning, so committing would apply a

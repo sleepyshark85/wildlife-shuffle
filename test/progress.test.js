@@ -115,7 +115,11 @@ test('AC-1006 an older schemaVersion is discarded whole, never partially applied
   const current = JSON.parse(serialiseSave(
     applyRunRecord(defaultSave(), record({ score: 9999 }), { day: '2026-09-21', at: 1 }),
   ));
-  for (const version of [0, SAVE_SCHEMA_VERSION - 1, SAVE_SCHEMA_VERSION + 1, '1', null]) {
+  // Version 1 is the one version with a migration (AC-1104 added two settings),
+  // so it is tested below rather than here. Everything else is discarded, and
+  // `'1'` is in the list because a string that LOOKS like a version must not
+  // reach `migrate()` and come back wearing the current number.
+  for (const version of [0, SAVE_SCHEMA_VERSION + 1, '1', null]) {
     const stale = JSON.stringify({ ...current, schemaVersion: version });
     assert.equal(parseSave(stale), null, `version ${String(version)} was not discarded`);
   }
@@ -124,6 +128,61 @@ test('AC-1006 an older schemaVersion is discarded whole, never partially applied
   const opened = parseSave(JSON.stringify({ ...current, schemaVersion: 0 })) || defaultSave();
   assert.deepEqual(opened, defaultSave());
   assert.equal(opened.best.savanna.score, 0);
+});
+
+/**
+ * AC-1006's other half, which had never been exercised because until AC-1104
+ * added Sound and Haptics there was only one schema version to be at.
+ *
+ * The thing that must not happen is the easy thing to ship: two new settings
+ * keys appended to a version-1 blob make `parseSave` reject it, the caller
+ * opens on defaults, and every record the player owned is gone — silently, on
+ * an app update, with every test still green because every test writes a
+ * CURRENT blob before reading it. So this one writes a version-1 blob by hand.
+ */
+test('AC-1006 a version-1 save is migrated, keeping every record the player had', () => {
+  const v2 = applyRunRecord(defaultSave(), record({ score: 9999 }), { day: '2026-09-21', at: 1 });
+  // A genuine version-1 blob: schemaVersion 1, and settings with only the three
+  // accessibility keys that version had.
+  const v1 = JSON.stringify({
+    ...JSON.parse(serialiseSave(v2)),
+    schemaVersion: 1,
+    settings: { sizeNumerals: true, highContrast: false, reduceMotion: true },
+  });
+
+  const opened = parseSave(v1);
+  assert.notEqual(opened, null, 'a version-1 save was discarded instead of migrated');
+  assert.equal(opened.schemaVersion, SAVE_SCHEMA_VERSION);
+  // The records survived...
+  assert.equal(opened.best.savanna.score, 9999);
+  assert.equal(opened.lifetime.games, 1);
+  assert.deepEqual(opened.recent, v2.recent);
+  assert.deepEqual(opened.streak, v2.streak);
+  // ...the choices the player had already made survived...
+  assert.equal(opened.sizeNumerals, undefined);
+  assert.equal(opened.settings.sizeNumerals, true);
+  assert.equal(opened.settings.reduceMotion, true);
+  assert.equal(opened.settings.highContrast, false);
+  // ...and the two new ones arrived at their defaults, which are ON: a player
+  // who updates the app must not find the game has gone silent.
+  assert.equal(opened.settings.sound, true);
+  assert.equal(opened.settings.haptics, true);
+
+  // "Never partially applied": a version-1 blob that is ALSO corrupt is
+  // discarded, not half-migrated. The migration produces a candidate and the
+  // validator still judges it.
+  const rotten = JSON.stringify({
+    ...JSON.parse(v1),
+    lifetime: { games: -1 },
+  });
+  assert.equal(parseSave(rotten), null);
+  // A version-1 blob whose settings are not booleans is refused too, rather
+  // than having the bad value spread over the defaults.
+  const badSettings = JSON.stringify({
+    ...JSON.parse(v1),
+    settings: { sizeNumerals: 'yes', highContrast: false, reduceMotion: false },
+  });
+  assert.equal(parseSave(badSettings), null);
 });
 
 test('AC-1005 a run record folded into defaults is what a fresh install shows', () => {

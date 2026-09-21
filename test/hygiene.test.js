@@ -9,6 +9,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { CUE_IDS } from '../src/ui/cues.js';
 import { ORDER } from '../src/ui/stacking.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -493,6 +494,149 @@ test('AC-808 the trajectory module stays loadable in Node', () => {
     .filter((f) => /function\s+rowAt\b|function\s+bezierAt\b/.test(code(f)))
     .map((f) => path.relative(ROOT, f));
   assert.deepEqual(others, [], `a second copy of the trajectory: ${others.join(', ')}`);
+});
+
+/**
+ * AC-11xx · sound and haptics, which is the same rule as the trajectory's.
+ *
+ * `expo-audio` and `expo-haptics` cannot load in Node, so every import of them
+ * is a property that leaves `node --test`'s reach and becomes something only a
+ * human with a phone can contradict (§6.7). The whole shape of this slice is an
+ * attempt to keep that surface to one file, and these are the checks that stop
+ * it growing back.
+ */
+test('AC-1101 the cue rules stay loadable in Node', () => {
+  const body = read(path.join(ROOT, 'src/ui/cues.js'));
+  const imports = [...body.matchAll(/^\s*import\s.+$/gm)].map((m) => m[0].trim());
+  assert.deepEqual(imports, [], `cues.js must import nothing: ${imports.join(' | ')}`);
+
+  // `dueCount` and `chainRate` are worklets AND plain functions, for the reason
+  // `rowAt` is: the UI thread and the test must evaluate the same rule.
+  assert.match(body, /export function chainRate[\s\S]{0,60}'worklet'/);
+  assert.match(body, /export function dueCount[\s\S]{0,80}'worklet'/);
+});
+
+test('AC-1103/AC-1105 the two native sound modules are reachable from one file', () => {
+  const importers = SRC.filter((f) => /from 'expo-(audio|haptics)'/.test(code(f)))
+    .map((f) => path.relative(ROOT, f))
+    .sort();
+  assert.deepEqual(importers, ['src/ui/cuePlayer.js']);
+
+  // The session is configured once, from the specified value and not from a
+  // literal written out beside it. A second call site is a second category,
+  // and the one that ran last wins — which is how a player's music stops.
+  const calls = SRC.map(code).join('\n').match(/setAudioModeAsync\s*\(/g) || [];
+  assert.equal(calls.length, 1, `setAudioModeAsync is called from ${calls.length} places`);
+  const player = code(path.join(ROOT, 'src/ui/cuePlayer.js'));
+  assert.match(player, /setAudioMode:\s*\(mode\)\s*=>\s*setAudioModeAsync\(mode\)/);
+  assert.match(
+    read(path.join(ROOT, 'src/ui/cueEngine.js')),
+    /adapter\.setAudioMode\(AUDIO_MODE\)/,
+    'the engine no longer passes the specified audio mode',
+  );
+
+  // ...and the bundled cues are named in exactly one place too.
+  const assets = SRC.filter((f) => /\.wav'/.test(code(f))).map((f) => path.relative(ROOT, f));
+  assert.deepEqual(assets, ['src/ui/cuePlayer.js']);
+});
+
+/**
+ * Every cue is actually WIRED to the moment it names.
+ *
+ * This is the hole the rest of the slice's tests leave open, and it is a big
+ * one: `test/cues.test.js` can prove the plan schedules a clear cue and that
+ * the engine plays what it is handed, and every one of those tests stays green
+ * if nobody ever calls `useTurnCues` — or if the grab cue is deleted from the
+ * gesture. Six of the eleven cues are not in the plan at all.
+ *
+ * So this is the connection check, and it is a grep because the connection is
+ * a Reanimated worklet and a React hook, neither of which runs in Node.
+ */
+test('AC-1101 every cue is fired from the thing that knows the moment', () => {
+  const byPath = new Map(SRC.map((f) => [path.relative(ROOT, f), f]));
+  const elsewhere = SRC.filter((f) => path.relative(ROOT, f) !== 'src/ui/cues.js')
+    .map(code)
+    .join('\n');
+  for (const id of CUE_IDS) {
+    assert.match(
+      elsewhere, new RegExp(`CUE\\.${id}\\b`),
+      `the ${id} cue is defined and nothing ever fires it`,
+    );
+  }
+
+  // The three that belong to the gesture, in the worklet that decides them:
+  // grab on the lift (ui.md §5.4), drop and illegal on release. None of them
+  // can be scheduled, because React never learns a drag began.
+  const view = code(byPath.get('src/ui/components/AnimalView.js'));
+  const begin = view.slice(view.indexOf('.onBegin('), view.indexOf('.onUpdate('));
+  const finalize = view.slice(view.indexOf('.onFinalize('));
+  assert.ok(begin.length > 0 && finalize.length > 0, 'the gesture no longer has these phases');
+  assert.match(begin, /runOnJS\(fireCue\)\(CUE\.grab/);
+  assert.match(finalize, /runOnJS\(fireCue\)\(CUE\.drop/);
+  assert.match(finalize, /runOnJS\(fireCue\)\(CUE\.illegal/);
+  // ...and a drag that lands where it started is a cancel, not a drop.
+  const home = finalize.slice(finalize.indexOf('if (col === homeCol.value)'));
+  assert.ok(home.length > 0, 'the zero-distance branch is gone');
+  // `CUE.drop` and not `fireCue(CUE.drop`: the call site is
+  // `runOnJS(fireCue)(CUE.drop, 1)`, so the tighter pattern matches nothing
+  // anywhere and the check could only ever pass. (§6.2 — found by planting
+  // exactly this fault and watching it escape.)
+  assert.ok(
+    !/CUE\.drop/.test(home.slice(0, home.indexOf('if (col >= sMin'))),
+    'a drag that never moved plays the drop cue',
+  );
+
+  // The turn's schedule is actually played, and the one cue that is a fact
+  // about the SAVE rather than about the turn is fired where that is decided.
+  const screen = code(byPath.get('src/ui/screens/GameScreen.js'));
+  assert.match(screen, /useTurnCues\(plan, clock\)/, 'the turn cue schedule is never played');
+  assert.match(screen, /fireCue\(CUE\.newBest/);
+
+  // The toggles reach the player at all. Without this line both switches move
+  // and nothing happens, which is AC-1104 failing in the quietest possible way.
+  const provider = code(byPath.get('src/ui/settings.js'));
+  assert.match(provider, /startCues\(\)/, 'the audio session is never configured');
+  assert.match(
+    provider, /setCuePrefs\(\{[^}]*\bsound\b[^}]*\bhaptics\b[^}]*\}\)/,
+    'the sound and haptics preferences never reach the player',
+  );
+
+  // Every haptic name the criteria use has a mapping onto UIKit's. A missing
+  // one is a `notificationError` that silently does nothing on the one cue the
+  // player is most entitled to feel.
+  const player = code(byPath.get('src/ui/cuePlayer.js'));
+  const map = player.slice(player.indexOf('const HAPTICS = {'));
+  assert.ok(map.length > 0, 'the haptic mapping is gone');
+  const mapped = map.slice(0, map.indexOf('};'));
+  for (const id of ['selection', 'light', 'medium', 'heavy', 'success', 'error']) {
+    assert.match(mapped, new RegExp(`\\b${id}:`), `no mapping for the ${id} haptic`);
+  }
+
+  // The scheduled half comes off the plan and nowhere else.
+  const replay = code(byPath.get('src/ui/replay.js'));
+  for (const id of ['clear', 'chain', 'land', 'shrink', 'retire', 'perfect', 'gameOver']) {
+    assert.match(replay, new RegExp(`CUE\\.${id}\\b`), `${id} is not scheduled in the plan`);
+  }
+});
+
+test('AC-1104 exactly one module decides whether a cue is silent', () => {
+  // Two gates is §6.3's shape: they agree until they do not, and the one that
+  // loses is a channel still making noise after the player switched it off.
+  const deciders = SRC.filter((f) => /\bcueChannels\s*\(|\bcuePlan\s*\(/.test(code(f)))
+    .map((f) => path.relative(ROOT, f))
+    .sort();
+  assert.deepEqual(deciders, ['src/ui/cueEngine.js', 'src/ui/cues.js']);
+
+  // Nobody else reads the preference to decide for themselves. Two files may:
+  // the provider that forwards it to the player, and the sheet that draws the
+  // switch.
+  const allowed = new Set(['src/ui/settings.js', 'src/ui/screens/SettingsSheet.js']);
+  const readers = SRC.filter((f) => !allowed.has(path.relative(ROOT, f)))
+    .filter((f) => /\.(sound|haptics)\b/.test(code(f)))
+    .map((f) => path.relative(ROOT, f))
+    .filter((rel) => rel !== 'src/ui/cues.js' && rel !== 'src/ui/cueEngine.js')
+    .sort();
+  assert.deepEqual(readers, [], `these decide for themselves: ${readers.join(', ')}`);
 });
 
 // ---- AC-10xx · persistence is a new failure surface ----------------------

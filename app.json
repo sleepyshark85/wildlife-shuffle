@@ -27,7 +27,8 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0D141B",
     "plugins": [
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-audio"
     ]
   }
 }

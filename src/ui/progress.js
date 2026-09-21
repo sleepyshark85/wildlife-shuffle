@@ -17,16 +17,38 @@
 
 import { DIFFICULTIES } from '../engine/constants.js';
 
-/** Bumping this discards every existing save (AC-1006). */
-export const SAVE_SCHEMA_VERSION = 1;
+/**
+ * AC-1006. Version 2 added the sound and haptics preferences; `migrate()`
+ * below carries a version-1 blob forward rather than discarding it, which is
+ * the half of AC-1006 that had never been exercised.
+ */
+export const SAVE_SCHEMA_VERSION = 2;
 
 /** v1's StatsPanel.js listed ten, and ten is what AC-1011b asks for. */
 export const RECENT_RUNS = 10;
 
 const DIFFICULTY_IDS = Object.freeze(Object.keys(DIFFICULTIES));
 
-/** The three accessibility toggles of ui.md §10. AC-906b: persisted from here. */
-const SETTING_KEYS = Object.freeze(['sizeNumerals', 'highContrast', 'reduceMotion']);
+/**
+ * Every persisted preference, with the value a player who has never opened
+ * Settings gets. AC-906b persists the three accessibility toggles of ui.md §10;
+ * AC-1104 adds Sound and Haptics.
+ *
+ * The defaults are not uniform any more, and that is the point: the three
+ * accessibility toggles are departures from the default presentation and start
+ * OFF, while Sound and Haptics are the game working normally and start ON. A
+ * game that shipped silent until the player found a switch would read as broken
+ * rather than as considerate.
+ */
+export const SETTING_DEFAULTS = Object.freeze({
+  sizeNumerals: false,
+  highContrast: false,
+  reduceMotion: false,
+  sound: true,
+  haptics: true,
+});
+
+const SETTING_KEYS = Object.freeze(Object.keys(SETTING_DEFAULTS));
 
 /**
  * The three cosmetic slots (`src/ui/cosmetics.js`). Listed here because this is
@@ -62,7 +84,7 @@ export function defaultSave() {
     recent: [],
     streak: { count: 0, lastDay: null },
     unlocks: { announced: [], applied: {} },
-    settings: Object.fromEntries(SETTING_KEYS.map((k) => [k, false])),
+    settings: { ...SETTING_DEFAULTS },
   };
 }
 
@@ -100,13 +122,38 @@ function readRecent(raw) {
 }
 
 /**
+ * Bring an older blob up to the current schema, or hand it back untouched.
+ *
+ * One step so far. Version 2 added `settings.sound` and `settings.haptics`
+ * (AC-1104) and changed nothing else, so the migration is "take the new
+ * defaults for the new keys and keep every choice the player had already
+ * made". The player's records, streak and unlocks survive an app update, which
+ * is what AC-1006's "migrated" was always for.
+ *
+ * It never validates. It produces a candidate and `parseSave` judges it, so a
+ * migration that produced nonsense discards the save exactly as a corrupt one
+ * does — there is no path on which half of a migration is written back.
+ */
+export function migrate(raw) {
+  if (!isObject(raw)) return raw;
+  if (raw.schemaVersion !== 1) return raw;
+  const had = isObject(raw.settings) ? raw.settings : {};
+  return {
+    ...raw,
+    schemaVersion: 2,
+    settings: { ...SETTING_DEFAULTS, ...had },
+  };
+}
+
+/**
  * Parse a stored save. Returns null for anything that is not exactly a save at
  * the current schema version — the caller then opens on defaults (AC-1005).
  *
  * A wrong `schemaVersion` is not an error here, it is the ordinary path for a
- * player who updated the app. There is no migration to run yet because there is
- * only one version; when there is a second, it lands as a `migrate()` step in
- * front of this function, all-or-nothing, never a field-by-field fixup.
+ * player who updated the app. `migrate()` runs in front of the validation,
+ * all-or-nothing, and whatever it produces still has to survive every check
+ * below — so a migration that got it wrong discards the save rather than
+ * half-applying it (AC-1006).
  */
 export function parseSave(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
@@ -117,6 +164,7 @@ export function parseSave(text) {
     return null;
   }
   if (!isObject(raw)) return null;
+  raw = migrate(raw);
   if (raw.schemaVersion !== SAVE_SCHEMA_VERSION) return null;
 
   if (!isObject(raw.best)) return null;

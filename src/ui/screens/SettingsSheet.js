@@ -1,4 +1,4 @@
-// S6 · Settings. ui.md §10: three toggles, and nothing else.
+// S6 · Settings. ui.md §10's three accessibility toggles, and AC-1104's two.
 //
 // v1's SettingsMenu — grid-width and grid-height steppers in front of the game —
 // is deleted (ui.md §2). The board is a rules parameter, not a preference.
@@ -34,11 +34,31 @@ export function SettingsSheet({ onClose }) {
     <Sheet
       testID="settings"
       title="Settings"
-      subtitle="Accessibility"
+      subtitle="Sound and accessibility"
       reduced={settings.reduced}
       visible={!leaving}
       onClosed={onClose}
     >
+      {/* AC-1104. Two toggles, two channels, and turning one off does nothing
+          to the other — the gate is two independent booleans and there is no
+          third term (src/ui/cues.js `cueChannels`). Neither of them is the
+          device's ringer switch, which silences sound on its own and leaves
+          haptics alone (AC-1103); there is no API to read it and nothing here
+          tries. */}
+      <View style={styles.rows}>
+        <Toggle
+          label="Sound"
+          caption="Cues for grabs, landings, clears and chains."
+          value={settings.sound}
+          onChange={(on) => settings.set('sound', on)}
+        />
+        <Toggle
+          label="Haptics"
+          caption="Taps you can feel when a move lands or is refused."
+          value={settings.haptics}
+          onChange={(on) => settings.set('haptics', on)}
+        />
+      </View>
       <View style={styles.rows}>
         <Toggle
           label="Size numerals"

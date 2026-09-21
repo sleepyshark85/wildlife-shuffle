@@ -18,6 +18,7 @@
 
 import { ABILITIES } from '../engine/abilities.js';
 import { BOARD } from '../engine/constants.js';
+import { CUE, chainRate, coalesceCues } from './cues.js';
 import { COPY, MOTION } from './theme.js';
 import { stampedeBeats, turnTimeline } from './timeline.js';
 
@@ -115,6 +116,27 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   const flashes = [];
   const shards = [];
   const floats = [];
+  /**
+   * AC-1101/AC-1102/AC-1106. The turn's cues are scheduled HERE, on the same
+   * timestamps as the flashes and collapses they accompany, for the reason the
+   * flashes are: a second walk of the event stream is a second source, and §6.3
+   * is the incident where two sources that agreed were still the bug.
+   *
+   * Only the scheduled ones. Grab, drop and illegal-move belong to the gesture
+   * and fire from the worklet that decides them (src/ui/components/AnimalView.js);
+   * a new best is not in the event stream at all, because it is a comparison
+   * against the save file (src/ui/screens/GameScreen.js).
+   */
+  const cues = [];
+  /**
+   * The cascade step the player is HEARING, counted across the whole turn.
+   *
+   * Not `event.step`, which the engine restarts at 1 for each phase: SETTLE and
+   * ARRIVAL each run their own resolution, and a pitch that fell back to the
+   * root halfway through a cascade would say "new chain" about one chain
+   * (ui.md §8.2 — "the rising audio cue per step keeps the count legible").
+   */
+  let turnStep = 0;
   let shakeAt = null;
   let anticipate = null;
   /** AC-615c: the turn's count-up spans its clear units, and there is one. */
@@ -287,6 +309,23 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
           };
         }
 
+        turnStep += 1;
+        if (event.clearedRows.length > 0) {
+          // AC-1101 gives a row clear and a chain step separate cues, and
+          // AC-1106 gives the chain step a rising pitch. So step 1 of a turn is
+          // a clear and steps 2+ are the chain climbing away from it, which is
+          // what makes a cascade audibly a cascade rather than the same noise
+          // three times.
+          cues.push(
+            turnStep === 1
+              ? { at: unit.collapseAt, cue: CUE.clear, rate: 1 }
+              : { at: unit.collapseAt, cue: CUE.chain, rate: chainRate(turnStep) },
+          );
+        }
+        if (event.retiredIds.length > 0) {
+          cues.push({ at: unit.collapseAt, cue: CUE.retire, rate: 1 });
+        }
+
         const gone = event.removedIds.concat(event.retiredIds);
         for (const id of gone) {
           const animal = board.get(id);
@@ -312,6 +351,10 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
           const animal = board.get(shrink.id);
           if (!animal) continue; // retired: it left as a departure above
           animal.size = shrink.toSize;
+          // gameplay.md §6: "Distinct sound, medium haptic." It is scheduled on
+          // the collapse rather than the crack because the crack is the
+          // announcement and the re-width is the event.
+          cues.push({ at: unit.collapseAt, cue: CUE.shrink, rate: 1 });
           entry(shrink.id, animal.y).size = {
             at: unit.collapseAt,
             dur: shrinkMs,
@@ -376,6 +419,7 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
         const units = event.phase === 'SETTLE' ? settleUnits : arrivalUnits;
         const unit = units[units.length - 1];
         if (!unit) break;
+        cues.push({ at: unit.fallAt, cue: CUE.perfect, rate: 1 });
         floats.push({
           key: `perfect-${unit.phase}${unit.index}`,
           at: unit.fallAt,
@@ -383,6 +427,16 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
           text: `PERFECT  +${event.score}`,
           tone: 'perfect',
         });
+        break;
+      }
+
+      case 'JUDGE': {
+        // At 0, not at the end of the lock: `status` is GAME_OVER on the commit
+        // that applied this turn, so the dim has already started and the sheet
+        // is already sliding (ui.md §8 — both at once, done by 400 ms). A
+        // heavy impact arriving after the sheet had settled would be a
+        // punchline told late.
+        if (event.gameOver) cues.push({ at: 0, cue: CUE.gameOver, rate: 1 });
         break;
       }
 
@@ -429,6 +483,11 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
     // 'rise' is the arrival push-up, which lands on nothing and squashes on
     // nothing.
     const fell = Boolean(last) && last.kind === 'fall';
+    // AC-1102's light impact, on the same value AC-807's squash is decided
+    // from — so a landing that squashes is a landing that thumps, and the two
+    // cannot come apart. Fifteen animals settle at once on a busy turn;
+    // `coalesceCues` is what stops that being fifteen noises (src/ui/cues.js).
+    if (fell && last) cues.push({ at: last.start + last.dur, cue: CUE.land, rate: 1 });
     moves[id] = {
       /** The turn these keys belong to: an animal reading the shared clock has
        *  to know whether the clock is still talking about its own schedule. */
@@ -476,6 +535,8 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
     flashes,
     shards,
     floats,
+    /** AC-1101: sorted, de-machine-gunned, and read by useTurnCues.js. */
+    cues: coalesceCues(cues),
     shakeAt,
     anticipate,
     score,
