@@ -25,6 +25,7 @@ import React, { memo, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -34,6 +35,7 @@ import { BOARD, SPECIES } from '../../engine/constants.js';
 import { ROWS } from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
 import { MOTION, MOTION_SIZE, RADIUS, themed } from '../theme.js';
+import { handedOver, rowAt } from '../trajectory.js';
 import { useCosmetics, useTheme } from '../progressStore.js';
 
 /**
@@ -71,6 +73,34 @@ const rowTop = (y, cell) => {
 };
 const BAND_LOW = BOARD.dangerBandLow;
 const BAND_HIGH = BOARD.dangerBandHigh;
+
+/**
+ * Where this layer is in the turn, off the board's own clock — or -1 when the
+ * clock is talking about a different turn.
+ *
+ * -1 is `AnimalView`'s convention and it means the same thing here: the
+ * schedule has not started, so every body is exactly where its keys begin,
+ * which is where the previous turn left it. That is the state for the one
+ * commit between a new plan arriving and the clock being restarted.
+ *
+ * This layer had NO clock at all. Every position in it was a constant read off
+ * the plan, drawn from t=0, while the board eased into place around it over
+ * 260 ms — which is the whole of the defect this hook exists to remove. A
+ * second clock was not an option: two `withTiming` ramps are two time sources
+ * only approximately in phase, and §6.7 is that incident.
+ */
+function useTurnT(clock, planKey) {
+  return useDerivedValue(
+    // The `clock &&` is not defensiveness, it is the §6.9 lesson: this layer
+    // mounts ONLY when a row clears, so a missing prop here would not be a
+    // blank view, it would be a UI-thread throw on the first clear of a run
+    // and nothing below Tier 4 would see it. A layer with no clock rests every
+    // body where the turn began. `test/departure.test.js` asserts the app never
+    // takes that branch, because `Board` hands the clock down.
+    () => (clock && clock.key.value === planKey ? clock.ms.value : -1),
+    [clock, planKey],
+  );
+}
 
 /**
  * The asymmetric flash, as one shared value driven once.
@@ -205,10 +235,24 @@ const FlashRow = memo(function FlashRow({ row, at, cell, boardW, reduced }) {
  * An animal that has been cleared.
  *
  * It is not in `state.animals` any more — the engine removed it before the
- * first frame played. It is drawn from the replay plan, which remembers where
- * it was standing at the step that took it (src/ui/replay.js).
+ * first frame played. It is drawn from the replay plan, which remembers the
+ * whole path it travelled up to the step that took it (src/ui/replay.js).
+ *
+ * THAT PATH IS THE FIX. The plan used to carry only `dep.y`, the row the
+ * animal was in when it left, and this drew it there from t=0 — so an animal
+ * about to clear stood at its post-push-up row for the entire push-up while
+ * the rest of the board eased up around it. The owner, from a device: "sometime
+ * when a new arrival row appear, the board react a little bit late and there is
+ * a short overlap between them". Measured over 6,133 bot turns: 53 of 376
+ * bodies this layer draws were at a row their animal had not reached, and 78
+ * turns carried a full-cell overlap with a live animal.
+ *
+ * A departure is not a special case of POSITION — it travels `rowAt` on the
+ * board's clock exactly as every other animal does. It is a special case of
+ * ENDING, and `flashAt`/`collapseAt` are untouched: this changes where the body
+ * is drawn before it collapses, not when it goes.
  */
-const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) {
+const Departing = memo(function Departing({ dep, clock, planKey, cell, reduced, highContrast }) {
   const cosmetics = useCosmetics();
   const theme = useTheme();
   const styles = STYLES[theme.name];
@@ -228,14 +272,30 @@ const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) 
     );
   }, [dep.collapseAt, reduced, go, fade]);
 
-  const bodyStyle = useAnimatedStyle(() => ({
-    opacity: fade.value,
-    transform: [
-      { translateX: dep.x * cell },
-      { translateY: rowTop(dep.y, cell) + MOTION_SIZE.collapseDrift * go.value },
-      { scale: 1 - (1 - MOTION_SIZE.collapseScale) * go.value },
-    ],
-  }));
+  const now = useTurnT(clock, planKey);
+  const cap = reduced ? MOTION.reduced : 0;
+  const bodyStyle = useAnimatedStyle(() => {
+    const t = now.value;
+    // AC-809. An animal the tray placed this turn and the same turn's ARRIVAL
+    // resolution then cleared is owed a flight it cannot be given — the flight
+    // layer iterates the board's animals and this one has left it. So it does
+    // what every other arriving body does and stays at opacity 0 until the
+    // handover instant, rather than standing on the board through a push-up it
+    // has not made yet. `handedOver` is 1 while the flight is still the thing
+    // being looked at.
+    const flying = dep.arrival ? handedOver(dep.arrival.at, dep.arrival.dur, t) : 0;
+    return {
+      opacity: fade.value * (1 - flying),
+      transform: [
+        { translateX: dep.x * cell },
+        {
+          translateY: rowTop(rowAt(dep.startY, dep.keys, t, cap), cell)
+            + MOTION_SIZE.collapseDrift * go.value,
+        },
+        { scale: 1 - (1 - MOTION_SIZE.collapseScale) * go.value },
+      ],
+    };
+  });
   const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value }));
 
   const seams = [];
@@ -296,8 +356,17 @@ const Departing = memo(function Departing({ dep, cell, reduced, highContrast }) 
   );
 });
 
-/** AC-812: the segment that cracks off a shrinking buffalo, and falls. */
-const Shard = memo(function Shard({ shard, cell, reduced }) {
+/**
+ * AC-812: the segment that cracks off a shrinking buffalo, and falls.
+ *
+ * It is opaque from t=0 and painted in the buffalo's own colours, because
+ * before the crack it is meant to BE part of the buffalo. So it has to be
+ * where the buffalo is for that whole time, and pinned at a static row it was
+ * not: 20 of 49 shards in a 6,133-turn sweep hung a buffalo-coloured cell a
+ * row away from its buffalo through the push-up. It rides the buffalo's own
+ * track up to the crack and falls away from there.
+ */
+const Shard = memo(function Shard({ shard, clock, planKey, cell, reduced }) {
   const theme = useTheme();
   const styles = STYLES[theme.name];
   const fill = theme.species.buffalo;
@@ -309,14 +378,26 @@ const Shard = memo(function Shard({ shard, cell, reduced }) {
     );
   }, [shard.at, reduced, go]);
 
-  const style = useAnimatedStyle(() => ({
-    opacity: 1 - go.value,
-    transform: [
-      { translateX: shard.x * cell },
-      { translateY: rowTop(shard.y, cell) + cell * 0.9 * go.value },
-      { rotate: `${18 * go.value}deg` },
-    ],
-  }));
+  const now = useTurnT(clock, planKey);
+  const cap = reduced ? MOTION.reduced : 0;
+  const style = useAnimatedStyle(() => {
+    const t = now.value;
+    // AC-809: a buffalo the tray placed this turn is still over the tray, with
+    // its board body at opacity 0. Its panel is part of that body and waits
+    // with it.
+    const flying = shard.arrival ? handedOver(shard.arrival.at, shard.arrival.dur, t) : 0;
+    return {
+      opacity: (1 - go.value) * (1 - flying),
+      transform: [
+        { translateX: shard.x * cell },
+        {
+          translateY: rowTop(rowAt(shard.startY, shard.keys, t, cap), cell)
+            + cell * 0.9 * go.value,
+        },
+        { rotate: `${18 * go.value}deg` },
+      ],
+    };
+  });
 
   return (
     <Animated.View
@@ -387,7 +468,7 @@ const TONE = themed((T) => ({
  * The caller renders this only when there IS a plan; there is deliberately no
  * guard here, because a guard would be the second place that decides.
  */
-function ClearLayerImpl({ plan, cell, boardW, reduced, highContrast }) {
+function ClearLayerImpl({ plan, clock, cell, boardW, reduced, highContrast }) {
   const styles = STYLES[useTheme().name];
   return (
     <View style={[StyleSheet.absoluteFill, styles.inert]}>
@@ -418,13 +499,22 @@ function ClearLayerImpl({ plan, cell, boardW, reduced, highContrast }) {
         <Departing
           key={dep.key}
           dep={dep}
+          clock={clock}
+          planKey={plan.key}
           cell={cell}
           reduced={reduced}
           highContrast={highContrast}
         />
       ))}
       {plan.shards.map((shard) => (
-        <Shard key={shard.key} shard={shard} cell={cell} reduced={reduced} />
+        <Shard
+          key={shard.key}
+          shard={shard}
+          clock={clock}
+          planKey={plan.key}
+          cell={cell}
+          reduced={reduced}
+        />
       ))}
       {plan.floats.map((float) => (
         <Float key={float.key} float={float} cell={cell} boardW={boardW} reduced={reduced} />

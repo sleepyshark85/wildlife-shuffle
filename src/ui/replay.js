@@ -158,6 +158,58 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   /** The ids the tray put on the board this turn: the gap is what they fill. */
   const arrived = new Set();
 
+  /**
+   * The path an animal has travelled so far, frozen at the moment it leaves.
+   *
+   * A departure used to be `{...animal}` and nothing else, and `ClearLayer`
+   * drew it at a STATIC `rowTop(dep.y, cell)` from t=0. But `animal.y` has
+   * already been moved by every phase that ran before the step that took it —
+   * the ARRIVAL rise above all — so an animal about to clear was painted at
+   * its POST-PUSH row for the whole 260 ms push-up while every other animal on
+   * the board was still easing into position. Measured over 6,133 bot turns:
+   * 33 of 327 departures and 20 of 49 shards were drawn at a row their animal
+   * had not reached, and on 78 of those turns that was a 1.00-row — full cell —
+   * overlap with a live animal.
+   *
+   * A departure is not a special case of POSITION. It is a special case of
+   * ENDING: it travels the board's own trajectory, on the board's own clock,
+   * and then collapses. So it carries the same two fields every live animal
+   * carries — `startY` and the absolute `keys` — and `ClearLayer` reads them
+   * through the same `rowAt` (src/ui/trajectory.js). One function, one clock,
+   * no second opinion about where a row is (§6.3, §6.7).
+   *
+   * Frozen at the call, deliberately: the keys after this point belong to a
+   * body that is no longer there. For a shard that is the whole point — it
+   * cracks off where the buffalo IS and then falls away on its own (AC-812).
+   */
+  const trackAt = (id, fallbackY) => {
+    const record = motion.get(id);
+    if (!record) return { startY: fallbackY, keys: [], arrival: null };
+    return {
+      startY: record.startY,
+      keys: absolute(compact(record.keys, record.startY)),
+      /**
+       * AC-809, carried for the two bodies this layer draws that the flight
+       * layer cannot reach.
+       *
+       * An animal the tray placed THIS turn and the same turn's ARRIVAL
+       * resolution then cleared has a flight record and no flier:
+       * `ArrivalFlight` iterates `run.view.animals`, and this one is not in
+       * them any more (src/ui/screens/GameScreen.js:253-261). A buffalo placed
+       * this turn HAS a flier, and its board body is at opacity 0 behind it —
+       * but the panel that cracks off it was being drawn on the board anyway.
+       *
+       * Both were sitting, opaque, in a row whose occupant had not risen out
+       * of it yet, and that — not the stale row this function exists for — is
+       * the larger half of the measured overlap: 64 of the 78 full-cell
+       * overlaps in a 6,133-turn tundra sweep. Carrying the record lets them
+       * hold at opacity 0 until the flight would have landed, which is the
+       * rule `AnimalView` applies to every other arriving body.
+       */
+      arrival: record.arrival,
+    };
+  };
+
   const settleUnits = timeline.units.filter((u) => u.phase === 'SETTLE');
   const arrivalUnits = timeline.units.filter((u) => u.phase === 'ARRIVAL');
   let settleStep = 0;
@@ -188,6 +240,10 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
           if (!animal) continue;
           departures.push({
             ...animal,
+            // The track is empty and the flight is null by construction: an
+            // ability resolves at the head of the turn, before anything has
+            // moved and before the tray's batch is even placed.
+            ...trackAt(id, animal.y),
             flashAt: 0,
             collapseAt: unison,
             key: `${animal.id}@${event.ability}`,
@@ -332,6 +388,9 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
           if (!animal) continue;
           departures.push({
             ...animal,
+            // `y` stays: it is the engine's own record of the row it was taken
+            // from, and the track has to end there. Nothing draws it any more.
+            ...trackAt(id, animal.y),
             flashAt: unit.flashAt,
             collapseAt: unit.collapseAt,
             key: `${animal.id}@${unit.phase}${unit.index}`,
@@ -362,10 +421,22 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
           };
           // The segment that came off. It is the trailing panel, because the
           // buffalo keeps its x (AC-506).
+          //
+          // It is opaque from t=0 — `opacity: 1 - go.value` and `go` does not
+          // leave 0 until `at` — and it is the buffalo's own colour, so before
+          // the crack it is meant to read as part of the buffalo. Pinned at a
+          // static `animal.y` it did the opposite: 20 of 49 shards in a
+          // 6,133-turn sweep hung a buffalo-coloured cell a row away from the
+          // buffalo for the whole push-up. It travels the buffalo's path up to
+          // the crack, and falls away from there.
           shards.push({
             key: `${shrink.id}@${unit.phase}${unit.index}`,
+            /** Whose panel it is: the buffalo's own id, which `key` mangles. */
+            id: shrink.id,
             x: animal.x + shrink.toSize,
+            /** The row it cracks off in: where the track has to have got to. */
             y: animal.y,
+            ...trackAt(shrink.id, animal.y),
             at: unit.collapseAt,
           });
           floats.push({
@@ -510,12 +581,23 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
 
   // The shared clock has to outlast the last scheduled movement, or an animal
   // would freeze a few milliseconds short of where the engine put it.
+  //
+  // Departures and shards are counted too, now that they read the clock rather
+  // than a constant. They are almost always inside the board's own span — but
+  // "almost always" is how a body ends up frozen mid-rise on the one turn where
+  // everything that moved also cleared, and the span is arithmetic, so there is
+  // no reason to leave it to luck.
   let clockMs = 0;
+  const spanOf = (keys) => {
+    for (const key of keys) clockMs = Math.max(clockMs, key.start + key.dur);
+  };
   for (const id of Object.keys(moves)) {
-    for (const key of moves[id].keys) clockMs = Math.max(clockMs, key.start + key.dur);
+    spanOf(moves[id].keys);
     const slid = moves[id].slide;
     if (slid) clockMs = Math.max(clockMs, slid.at + slid.dur);
   }
+  for (const dep of departures) spanOf(dep.keys);
+  for (const shard of shards) spanOf(shard.keys);
 
   return {
     /** Identity for the announcement layer: a new turn is a new layer. */
