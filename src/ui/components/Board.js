@@ -223,6 +223,7 @@ function BoardImpl({
         <ClearLayer
           key={plan.key}
           plan={plan}
+          clock={clock}
           cell={cell}
           boardW={boardW}
           reduced={reduced}
