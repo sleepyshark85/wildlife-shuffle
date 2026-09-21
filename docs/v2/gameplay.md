@@ -1023,7 +1023,8 @@ falls back to defaults silently; it must never block launch.
 
 ## 10. Layer B — Polish
 
-Full motion, sound and haptic specs live in `ui.md` §8–§9. The gameplay-relevant decisions:
+Full motion spec in `ui.md` §8, **sound in §15**, haptics in §15.5 and AC-1102. *(This pointer
+read "§8–§9" for months; §9 is Typography and no sound section existed at all.)* The gameplay-relevant decisions:
 
 - **Cascade steps pipeline rather than queue.** v1 used 1000/500/1200 ms inconsistently and
   double-flashed the same rows (`docs/v1-review.md` C7); a 5-step chain at those timings locks
@@ -1079,6 +1080,9 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D10 | Buffalo is scheduled, capped at one on board, retirement worth +500 | Makes it an event and gives the player a reason to want it. |
 | D11 | One game-over check, in Phase 4 | v1 checked in the wrong place and let animals walk off the top (C4). |
 | D12 | Cascade steps pipeline; input lock capped at 1500 ms | v1's 1200 ms-per-step would lock input for six seconds on a long chain (C7). Revised down from the approved draft's 3.2 s — `ui.md` §8.2. |
+| D55 | The audio identity is struck wood, with metal reserved for the buffalo and no music at all | Pitch falls as size rises, so the audio carries the same property the whole visual system exists to make legible (`ui.md` §15). |
+| D56 | Cascades ascend a pentatonic scale, not chromatically | A chromatic run is sour by six steps; the rare deep cascade is the best thing that happens in the game and should not be when the audio turns dissonant (`ui.md` §15.4). |
+| D57 | A new best suppresses the game-over cue | They land within one commit and read as a mess; the dominant fact is the best, and the sheet already says the run is over (`ui.md` §15.6). |
 | D52 | Abilities cost 1–3 charges, priced from measured value | At one flat price the value spread was 24× and Stampede made the other four irrelevant. Scope follows size, price follows value — two ladders, forcing them to agree would be dishonest (§13.2d). |
 | D53 | Burrow is repriced first and its effect change is named but not applied | Two simultaneous changes make the next measurement unattributable. If it is still least-picked at 1 charge, it gains row left-packing (§13.2e). |
 | D54 | The gold pip marks the Last Stand *event*, not a slot | At 0 charges the grant landed on pip 1 and was indistinguishable from an ordinary charge — absent exactly for the player it was invented for (`ui.md` §13.1). |

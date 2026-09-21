@@ -1403,3 +1403,116 @@ appearance only and never a rule, spawn or score (AC-1011).
 | Single-event, none yet | `Not yet — best run 3,210` |
 
 Hints name a difficulty where one is materially better, because "play more" is not a hint.
+
+---
+
+## 15. Sound
+
+**This section did not exist.** `gameplay.md` §10 pointed at "`ui.md` §8–§9" for sound; §8 is
+Motion and §9 is Typography. Every property of the shipped cues — waveform, pitch, length,
+envelope, loudness, the chain interval — was therefore invented by the developer, correctly
+flagged, and put in one table (`SOUNDS`, `CHAIN_SEMITONE`) so it could be overruled cheaply.
+This is the spec that should have preceded it.
+
+### 15.1 What the game sounds like
+
+**Struck wood.** Log drum, marimba, temple block — pitched, warm, short, unaggressive. Not
+animal noises: eleven literal creature sounds would be emoji-adjacent and unbearable by turn
+twenty. Not arcade bleeps either, which would reference nothing the game looks like. Pitched
+wooden percussion sits with a dark earthy palette, and it is the one family that handles a
+rising cascade naturally, because it is already an instrument.
+
+**Three materials, and each means something:**
+
+| material | what it marks |
+|---|---|
+| **Wood** — struck, damped or open | The player's actions and the board's ordinary events |
+| **Struck metal** — small bell, damped | **The buffalo, and only the buffalo** |
+| **Air** — soft filtered noise | Arrivals, and the freeze |
+
+Metal is reserved exactly as the gold rim is (§4.3): the one object that is a different *kind*
+of thing gets the one material that is not wood. A player learns in two buffalo that metal
+means buffalo, without being told.
+
+**There is no music.** No bed, no loop, no ambience between actions. A puzzle game that hums
+is a puzzle game people mute, and muting it would take the eleven cues with it. **The silence
+is what lets short cues carry meaning.**
+
+### 15.2 The rule that ties audio to the game's thesis
+
+The visual system exists to make **size** legible (§5.2). The audio should carry the same
+property rather than an unrelated one:
+
+> **Pitch falls as size rises.** A rat is a high tick; an elephant is a low thud.
+
+This is the lightness ramp in another sense — light/small/high against dark/large/low — and it
+means a player who cannot see the board still knows what just landed.
+
+```
+species pitch = root − 2 × (size − 3) semitones      root = C4, 261.6 Hz
+
+  rat (1)  +4      fox (2)  +2      elk (3)   0      elephant (4)  −2      buffalo (5)  −4
+```
+
+**Duration follows size too:** 60 ms at size 1 rising to 140 ms at size 5. Bigger things
+sound bigger by being lower *and* longer, which is the same redundancy the four visual cues
+use.
+
+### 15.3 The cues
+
+Peak levels in dBFS. Everything is quiet: this is a game played on a train.
+
+| cue | material | pitch | length | peak |
+|---|---|---|---:|---:|
+| grab | wood tick | root +7 | 40 ms | −18 |
+| snap to column | wood | species | 70 ms | −15 |
+| land | wood, damped | species −2 | 90 ms | −15 |
+| illegal move | wood, dead — **unpitched** | — | 110 ms | −14 |
+| row clear | wood, open | root +12 | 220 ms | −10 |
+| **cascade step n** | wood, open | root +12, **ascending pentatonic** | 200 ms | −10 |
+| buffalo arrival | metal, heavily damped | root −4 | 180 ms | −13 |
+| buffalo shrink | metal, damped | root −4 | 260 ms | −11 |
+| buffalo retired | metal, open + octave | root −4 | 900 ms | −6 |
+| perfect clear | wood chord, root +7 +12 | — | 1100 ms | −6 |
+| new best | wood, rising 0 / +4 / +7 | — | 600 ms | −8 |
+| game over | wood, falling 0 / −5, damped | — | 700 ms | −10 |
+| **ability fired** | wood, the species' own pitch | species | 150 ms | −12 |
+| **charge granted** | wood tick | root +12 | 120 ms | −14 |
+| **Last Stand** | metal, with the danger pulse | root −4 | 500 ms | −8 |
+| **unlock** | wood, rising 0 / +2 / +4 / +7 | — | 800 ms | −8 |
+
+**The illegal move is the only unpitched cue in the game.** Everything else has a note;
+rejection has none. That is the sound of the board not answering, and it needs no volume to
+land.
+
+**Ability cues borrow their species' pitch**, so Stampede is low and Burrow is high — the
+scope ladder (§13.1) audible without a new vocabulary.
+
+### 15.4 Cascades rise through a pentatonic scale, not chromatically
+
+The shipped cue rises **one semitone** per step. Change it to a **pentatonic ascent** —
+`0, +2, +4, +7, +9, +12` — for one reason:
+
+> A chromatic run is consonant for two steps and sour by six. A pentatonic run **cannot** hit
+> a bad interval at any depth, so a long cascade sounds like a reward rather than an alarm.
+
+Cascades measured at depth 3 today, so this rarely differs in practice — but the rare deep
+cascade is the best thing that happens in the game, and it should not be the moment the audio
+turns dissonant.
+
+### 15.5 What sound does not respond to
+
+**Reduce Motion does not silence or alter anything here.** It addresses vestibular
+discomfort; sound and haptics are neither motion nor a substitute for it. The **Sound** and
+**Haptics** toggles in Settings are the controls for this, and they are the only ones.
+
+**The silent switch takes sound and leaves haptics** (AC-1103), which is correct as well as
+the only implementable behaviour: haptics are private and sound is not, so a player on silent
+in public wants exactly this.
+
+### 15.6 When two cues collide
+
+**A new best suppresses the game-over cue.** They fall within one commit of each other and
+would read as a mess. The emotionally dominant fact is the best, not the ending — and the
+Game Over sheet already says the run is over, in the one channel that cannot be muted. One
+moment, one sound.

@@ -9,7 +9,18 @@ They are ordered by how expensive they are to reverse later.
 
 ---
 
-## Q1 · The bundle identifier and app name disagree. Fix now or never.
+## Q1 · The bundle identifier — **now actively blocking Slice 6**
+
+> **Status, 2026-09-21:** Slice 6 (store readiness) is building and **this is the one thing
+> stopping it**. The identifier is still `com.sleepyshark.animalrun`. The developer has been
+> told not to touch it and is correct not to. **It becomes permanent at the first TestFlight
+> submission**, which Slice 6 produces — so the window closes with that build, not later.
+>
+> Cost of deciding now: one line in `app.json`. Cost of deciding after: a new App Store
+> Connect record, a new URL, and the loss of any reviews or installs. **My recommendation is
+> unchanged and below.** If no answer arrives before the build, ship it as
+> `com.sleepyshark.wildlifeshuffle` — an unused correct identifier costs nothing, and a used
+> wrong one cannot be undone.
 
 `app.json` currently has:
 
