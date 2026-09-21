@@ -597,9 +597,16 @@ guard, not a recovery path. That is acceptable precisely because it is only reac
 engine is already broken, and it is why AC-504e refuses to persist such a run's score. What
 the guard must not do is alter scoring, or fail to announce itself.
 
-**AC-504e** Given a run in which `stats.chainGuardTrips > 0`, Then that run's score is **not
-written to the high-score table**. The guard means the engine was in a state the rules do not
-describe, so its score is not trustworthy enough to persist as a record.
+**AC-504e** *(interpretation confirmed and folded in)* Given a run in which
+`stats.chainGuardTrips > 0`, Then it **counts as played** — it keeps the daily streak, because
+it *was* played — and **contributes nothing else**: no high score, no recent-runs entry, no
+lifetime aggregate.
+
+The line is sharper than "no high score", and the reasoning is the developer's: **the lifetime
+aggregates feed the unlock conditions** (AC-1009), so letting a guard-tripped run through would
+buy an unlock with numbers the rules do not describe. The guard means the engine was in a state
+the design does not cover; nothing derived from that run may become a permanent record. The
+player's streak is about attendance, not about the numbers, so it survives.
 
 **AC-504c — EVERY STEP THAT RESOLVES, SCORES.** Given a cascade of any depth, Then every step
 that clears a row awards its score. There is no depth past which clearing stops paying.
@@ -1220,20 +1227,56 @@ later relaunched from cold, Then the run resumes at exactly the state it was lef
 board, same score, same streak, same turn, same queued batch. *(v1 shipped this; v2 without it
 would be a regression against behaviour players already have.)*
 
-**AC-1013** Given a run is in progress, Then the resume record is written **only** on
-`AppState` transition to `inactive` or `background` — never per turn, never on a timer, never
-from the render path. AC-1002 is unamended by this feature.
+**AC-1013** *(amended — "only on background" was narrower than intended)* Given a run is in
+progress, Then the resume record is written **whenever the player leaves the run, by any
+route**: `AppState` transition to `inactive` or `background`, **and quitting to Home**. It is
+**never** written per turn, never on a timer, and never from the render path. AC-1002 is
+unamended: its prohibition is about writing *during a turn or from the render path*, and a
+deliberate quit is neither.
 
-**AC-1014** Given the resume record, Then it stores a **replay** — `{ schemaVersion,
-engineVersion, seed, difficulty, moves[], digest }` — and **not a board snapshot**. Resume
+*(Read literally, the approved wording meant a player who quits to Home without ever
+backgrounding the app gets no resume offer at all — the feature would silently not work for
+anyone who plays that way. The intent was "don't write per turn"; I expressed it by naming
+the one trigger I had in mind.)*
+
+**AC-1013b** Given the player quits a run to Home, Then the record is written before the
+screen changes, and Home offers it.
+
+**AC-1013c — ONE TRUTH.** Given a resume offer is shown, Then it reflects **exactly what is on
+disk**. The in-memory record is a cache of what was written, never a second source — so the
+save path keeps the record it just wrote rather than clearing it, and the offer and the disk
+can never disagree.
+
+**AC-1014** *(amended — the approved field list was not sufficient to replay)* Given the
+resume record, Then it stores a **replay** — `{ schemaVersion, engineVersion, seed, difficulty,
+start: { runIndex, nextAnimalId }, moves[], digest }` — and **not a board snapshot**. Resume
 re-runs the engine from turn 1 applying each move.
+
+**AC-1014b — THE RECORD CARRIES EVERY INPUT `createRun` CONSUMES**, not merely the ones that
+feel like a seed. Animal ids are namespaced by `runIndex` and numbered from `nextAnimalId`
+(AC-214), and **both carry across a restart** so that no two animals in an app session ever
+share an id. A run reached through **Play Again** therefore mints ids a fresh
+`createRun(seed, difficulty)` cannot reproduce, and every stored `{t:'M', id, x}` then names
+an animal that does not exist.
+
+**AC-1014c** Given a run reached through **Play Again**, Then it resumes correctly. *(This is
+the test that proves AC-1014b rather than asserting it: with `start` hard-coded to `{1,1}` it
+fails. A resume test that only ever exercises the first run of a session cannot catch this
+class of defect, because carried state is invisible until something carries.)*
 
 **AC-1015** Given any resume record, however corrupt or tampered with, Then the board it
 produces is **reachable by the rules**, because the engine produced it. A save file must not
 be able to create a state the engine could not reach on its own.
 
-**AC-1016** Given a resume record whose `engineVersion` does not match the running build, Then
-it is **discarded, not replayed**. *(A replay only reconstructs a run under the rules that
+**AC-1016** *(strengthened in implementation, now normative)* Given a resume record whose
+`engineVersion` does not match the running build, Then it is **discarded, not replayed**.
+`engineVersion` is a **fingerprint computed over the tuning surface itself** — FNV-1a across
+`BOARD`, `DIFFICULTIES`, `SCORE`, `SPECIES` and the rest — **not a hand-maintained string**.
+
+*(This is better than what I specified and is adopted as the rule. A hand-maintained version
+requires someone to remember to bump it after every band or weight change; a fingerprint **is**
+the tuning surface, so forgetting is structurally impossible. The band retune will invalidate
+every replay written before it, automatically and without anyone deciding to.)* *(A replay only reconstructs a run under the rules that
 produced it; a tuning change to bands, weights or scoring would silently rebuild a different
 run. Losing a run to an app update is acceptable; silently resuming the wrong one is not.)*
 
@@ -1270,14 +1313,48 @@ discarded cleanly, never partially applied.
 **AC-1007** Given a run is completed on a new calendar day following a day with a completed
 run, Then the daily streak increments by 1. Given a day is skipped, it resets to 1.
 
-**AC-1008** Given the Records screen, Then it shows best score, best chain, longest run and
-most rows for each difficulty, plus the lifetime totals.
+**AC-1008** *(amended — layout and hierarchy now specified in `ui.md` §14.1)* Given the Records
+screen, Then it shows, in this order: the daily streak, a difficulty selector, the **bests**
+for the selected difficulty (score, chain, turns, rows), the **recent runs** list, and the
+lifetime totals last.
+
+**AC-1008b** Given the difficulty selector, Then it governs the **bests block only** — the
+recent-runs list shows all difficulties with a chip on each row. *(Bests are per-difficulty
+because that is what makes them comparable; the run diary is chronological, and filtering a
+mixed session into invisibility makes it a worse answer to "am I getting better?")*
+
+**AC-1008c** Given any statistic not yet achieved, Then it renders **`—`, never `0`**, on
+Records and on Collection. *(Zero is a score you got.)*
+
+**AC-1008d** Given recent runs, Then dates render **relatively** — `Today`, `Yesterday`, then
+`12 Sep`.
+
+**AC-1008e** Given a player with no completed runs, Then Records renders with `—` in every
+tile and `No runs yet.` in the list, without an error state or an apology.
 
 **AC-1009** Given each of the four unlock conditions is met, Then that unlock becomes
 available and a notification is shown once.
 
 **AC-1010** Given the Collection screen, Then every locked item shows an explicit numeric
 progress counter toward its condition.
+
+**AC-1010b** Given a locked item, Then its **preview is visible, dimmed to 45%** — never
+hidden. *(A locked card with no preview is a tease; a dimmed one is a goal.)*
+
+**AC-1010c — CUMULATIVE AND SINGLE-EVENT CONDITIONS DO NOT LOOK ALIKE.** Given a **cumulative**
+condition (retire 10 buffalo, clear 500 rows), Then it shows a **progress bar and counter**.
+Given a **single-event** condition (25,000 in one run, 4 rows in one step), Then it shows
+**"Best so far 12,480 of 25,000" and no bar**. *(A half-full bar for a target that resets every
+run misstates how close the player is.)*
+
+**AC-1010d** Given any Collection card, Then it carries a one-line hint on **how** to make
+progress, naming a difficulty where one is materially better — not a restatement of the
+condition. *("Retire 10 buffalo" is a requirement; "Buffalo arrive every 10 turns on Savanna"
+is something a player can act on tonight.)*
+
+**AC-1010e** Given an unlocked item, Then it can be **equipped** — one board theme and one
+animal set at a time, with the defaults always available. *(An unlock you cannot apply is not
+an unlock.)* Equipping changes appearance only (AC-1011).
 
 **AC-1011** Given an unlock is applied, Then it changes only appearance and has no effect on
 any rule, spawn, or score.
