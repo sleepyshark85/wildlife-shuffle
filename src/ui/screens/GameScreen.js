@@ -26,6 +26,7 @@ import { useSettings } from '../settings.js';
 import { COLORS, MOTION, MOTION_SIZE, RADIUS, SPACE, TYPE } from '../theme.js';
 import { useDragShared } from '../useDragShared.js';
 import { useGameRun } from '../useGameRun.js';
+import { useTurnClock } from '../useTurnClock.js';
 import { ActionBar } from '../components/ActionBar.js';
 import { ArrivalFlight } from '../components/ArrivalFlight.js';
 import { Board } from '../components/Board.js';
@@ -60,6 +61,9 @@ export function GameScreen({ seed, difficulty, onQuit }) {
 
   const inputOpen = !run.resolving && !run.view.gameOver && !paused && !unsupported;
   const plan = run.view.plan;
+  // AC-808: one clock for every animal's vertical motion, so a stack cannot
+  // drift apart and cross itself (src/ui/useTurnClock.js).
+  const clock = useTurnClock(plan);
 
   // A layout change — or a board change — invalidates any drag in flight: the
   // columns under the finger have changed meaning, so committing would apply a
@@ -127,6 +131,7 @@ export function GameScreen({ seed, difficulty, onQuit }) {
       animals={run.view.animals}
       cell={cell}
       drag={drag}
+      clock={clock}
       plan={plan}
       reduced={reduced}
       sizeNumerals={sizeNumerals}

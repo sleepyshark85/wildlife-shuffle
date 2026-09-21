@@ -22,6 +22,7 @@ import Animated, {
   interpolateColor,
   runOnJS,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withSpring,
   withTiming,
@@ -31,6 +32,7 @@ import { BOARD, SPECIES } from '../../engine/constants.js';
 import { registerProbe, releaseProbe } from '../diagnostics.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
 import { EASE, delay, sequence, spring, timing } from '../motion.js';
+import { rowAt } from '../trajectory.js';
 import {
   COLORS, MOTION, MOTION_SIZE, NUMERAL, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE, brighten,
 } from '../theme.js';
@@ -79,7 +81,7 @@ function Panels({ size, cell, buffalo, highContrast }) {
 }
 
 function AnimalViewImpl({
-  animal, cell, range, drag, motion, reduced, sizeNumerals, highContrast,
+  animal, cell, range, drag, clock, motion, reduced, sizeNumerals, highContrast,
   diagnostics, onCommit, onIllegal,
 }) {
   const { id, type, x, y, size } = animal;
@@ -87,10 +89,11 @@ function AnimalViewImpl({
   const buffalo = type === SPECIES.buffalo.type;
   const width = size * cell;
   const edgeLit = useMemo(() => brighten(style.edge, MOTION_SIZE.edgeBrighten), [style.edge]);
+  /** Which turn this animal's schedule belongs to; see `ty` below. */
+  const trackKey = motion ? motion.key : '';
 
   // ---- shared values: the only things that move -------------------------
   const tx = useSharedValue(x * cell);
-  const ty = useSharedValue((ROWS - 1 - y) * cell);
   const homeX = useSharedValue(x * cell);
   const homeCol = useSharedValue(x);
   const grab = useSharedValue(0);
@@ -101,6 +104,38 @@ function AnimalViewImpl({
   // AC-809: an arriving animal is in flight over the tray until it lands; the
   // board's copy of it is invisible until the flight hands over (ArrivalFlight).
   const alpha = useSharedValue(motion && motion.arrival ? 0 : 1);
+
+  // ---- vertical position: derived, never assigned ------------------------
+  //
+  // `ty` used to be a shared value carrying its own `withSequence` of delays.
+  // That made every animal count from ITS OWN first frame, and building twenty
+  // of them straddles a vsync: five animals with byte-identical schedules were
+  // measured starting on two different frames. One frame of drift is a quarter
+  // of a row, a stack has no slack, and the animals visibly crossed — which is
+  // what the owner saw as "they appear to be different animals".
+  //
+  // Now there is ONE clock for the board and position is arithmetic on it, so
+  // two animals with the same schedule are in the same place because they are
+  // the same function, not because they were lucky. `rowAt` is a plain tested
+  // function as well as a worklet, so `node --test` sweeps the very trajectory
+  // the UI thread renders (test/overlap.test.js).
+  const track = useMemo(
+    () => ({
+      startY: motion && motion.startY !== undefined ? motion.startY : y,
+      keys: motion ? motion.keys : [],
+    }),
+    [motion, y],
+  );
+  const cap = reduced ? MOTION.reduced : 0;
+  const ty = useDerivedValue(() => {
+    // A clock talking about a different turn says nothing about this animal's
+    // schedule, so the schedule is read as not yet started — `-1`, which puts
+    // the animal exactly where its keys begin, which is where the previous
+    // turn left it. That is the state for the one commit between a new plan
+    // arriving and the clock being restarted.
+    const t = clock.key.value === trackKey ? clock.ms.value : -1;
+    return (ROWS - 1 - rowAt(track.startY, track.keys, t, cap)) * cell;
+  }, [track, cap, cell, trackKey, clock]);
 
   // The snapshot, mirrored onto the UI thread. The worklet takes its own copy
   // at gesture start, so nothing can move the goalposts mid-drag.
@@ -138,35 +173,19 @@ function AnimalViewImpl({
     homeCol.value = x;
     tx.value = withTiming(x * cell, timing(MOTION.snap, EASE.out, reduced));
 
-    const keys = motion ? motion.keys : null;
-    if (!keys || keys.length === 0) {
-      ty.value = withTiming((ROWS - 1 - y) * cell, timing(MOTION.fall, EASE.fall, reduced));
-    } else {
-      // One sequence, built once, handed to the UI thread. The gaps are
-      // `withDelay`, never a chained timer (AC-828): a step that is scheduled
-      // 260 ms after the one before it waits on the UI thread's own clock.
-      const steps = [];
-      let cursor = 0;
-      for (const key of keys) {
-        const dur = reduced ? Math.min(key.dur, MOTION.reduced) : key.dur;
-        const gap = Math.max(0, key.at - cursor);
-        const ease = key.kind === 'fall' ? EASE.fall : EASE.out;
-        steps.push(delay(gap, withTiming((ROWS - 1 - key.y) * cell, timing(dur, ease, reduced))));
-        cursor = key.at + dur;
-      }
-      ty.value = steps.length === 1 ? steps[0] : sequence(...steps);
-
-      // AC-807: it has weight, and it has stopped. Announcement only — this is
-      // allowed to still be playing when the next turn's input opens.
-      if (motion.landAt !== null && !reduced) {
-        squash.value = delay(
-          motion.landAt,
-          sequence(
-            withTiming(1, timing(MOTION.squash * 0.3, EASE.out, reduced)),
-            withSpring(0, spring(MOTION.squash * 0.7, 0.5, reduced)),
-          ),
-        );
-      }
+    // Vertical position is derived from the shared clock above, not assigned
+    // here: that is what stops two animals in a stack from drifting apart.
+    // The land squash still belongs to the animal, because it is an
+    // announcement rather than a position (AC-807), and it is allowed to be
+    // still playing when the next turn's input opens.
+    if (motion && motion.landAt !== null && !reduced) {
+      squash.value = delay(
+        motion.landAt,
+        sequence(
+          withTiming(1, timing(MOTION.squash * 0.3, EASE.out, reduced)),
+          withSpring(0, spring(MOTION.squash * 0.7, 0.5, reduced)),
+        ),
+      );
     }
 
     // AC-809, and the reason this is OUT here rather than in the branch above.
@@ -209,8 +228,8 @@ function AnimalViewImpl({
       bodyW.value = width;
     }
   }, [
-    x, y, cell, width, range, motion, reduced,
-    homeX, homeCol, tx, ty, squash, bodyW, alpha,
+    x, cell, width, range, motion, reduced,
+    homeX, homeCol, tx, squash, bodyW, alpha,
   ]);
 
   // The diagnostic log asks each animal what it actually RENDERED, so a
