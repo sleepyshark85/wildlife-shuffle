@@ -36,7 +36,39 @@ import { EASE, delay, sequence, timing } from '../motion.js';
 import { COLORS, MOTION, MOTION_SIZE, RADIUS, SEAM, SEAM_BUFFALO, SPECIES_STYLE } from '../theme.js';
 import { useCosmetics } from '../progressStore.js';
 
-const rowTop = (y, cell) => (ROWS - 1 - y) * cell;
+/**
+ * Row index to pixels from the board's top.
+ *
+ * `'worklet'` — and the directive is the whole of the fix for the crash that
+ * made the first TestFlight build unplayable.
+ *
+ * `Departing`, `Shard` and `Float` each call this from inside a
+ * `useAnimatedStyle`, and all three exist ONLY when a row clears. Without the
+ * directive this is a plain JS function, and a plain function captured by a
+ * worklet is serialized to the UI runtime as a Remote Function — a stub whose
+ * entire body is `throw new Error('[Worklets] Tried to synchronously call a
+ * Remote Function')` (react-native-worklets/src/memory/remoteFunctionUnpacker
+ * .native.ts). So the first clear threw on the UI thread, inside Reanimated's
+ * CADisplayLink callback, where there is no JS frame to catch it: Hermes
+ * raised a pending error, `__cxa_throw` found no handler, `std::terminate`
+ * called `abort()`. SIGABRT, every time, on the first clear.
+ *
+ * `remoteFunctionUnpacker` has no `.web` counterpart, and that is exactly why
+ * nothing we own saw it. On web a worklet is an ordinary closure on the JS
+ * thread and `rowTop` is simply `rowTop`, so 375 Node tests and every browser
+ * run were structurally incapable of reproducing it.
+ *
+ * The directive ADDS a capability and removes none, so the three render-path
+ * callers below are unchanged — `formatScore` in src/ui/format.js is the same
+ * pattern for the same reason.
+ *
+ * `test/hygiene.test.js` now audits the property this broke: every function
+ * called from inside a worklet must itself be a worklet.
+ */
+const rowTop = (y, cell) => {
+  'worklet';
+  return (ROWS - 1 - y) * cell;
+};
 const BAND_LOW = BOARD.dangerBandLow;
 const BAND_HIGH = BOARD.dangerBandHigh;
 

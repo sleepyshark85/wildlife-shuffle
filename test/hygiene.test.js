@@ -541,6 +541,226 @@ test('AC-808 the trajectory module stays loadable in Node', () => {
  * attempt to keep that surface to one file, and these are the checks that stop
  * it growing back.
  */
+/**
+ * AC-828 · every function called from inside a worklet is itself a worklet.
+ *
+ * THE SLICE 5 CRASH. The first TestFlight build aborted on the very first row
+ * clear, every time, and had never once misbehaved in a browser.
+ *
+ * `ClearLayer.js` defined `const rowTop = (y, cell) => (ROWS - 1 - y) * cell`
+ * and called it from three `useAnimatedStyle` worklets — `Departing`, `Shard`
+ * and `Float` — all of which mount only when a row clears. A plain function
+ * captured by a worklet is serialized to the UI runtime as a **Remote
+ * Function**, whose entire body is a throw
+ * (react-native-worklets/src/memory/remoteFunctionUnpacker.native.ts). The
+ * throw happened inside Reanimated's CADisplayLink callback on the main
+ * thread, where no JS frame catches it: Hermes raised a pending error,
+ * `__cxa_throw` found no handler, `std::terminate` called `abort()`.
+ *
+ * That file is `.native.ts` and has NO web counterpart. On web a worklet is an
+ * ordinary closure on the JS thread, so the call simply works. 375 Node tests
+ * and every browser run were structurally incapable of seeing it — §6.7's
+ * second rule, for the third consecutive defect living in the gap between a
+ * pure function and the consumer that actually runs it.
+ *
+ * It is a source-level property and it is mechanical, so here it is.
+ */
+
+/** Every `name` declared with a `'worklet'` directive, across the tree. */
+function workletNames(files) {
+  const names = new Set();
+  for (const file of files) {
+    const body = code(file);
+    for (const m of body.matchAll(/function\s+(\w+)\s*\([^)]*\)\s*\{\s*'worklet';/g)) names.add(m[1]);
+    for (const m of body.matchAll(/const\s+(\w+)\s*=\s*\([^)]*\)\s*=>\s*\{\s*'worklet';/g)) names.add(m[1]);
+  }
+  return names;
+}
+
+/** The hooks whose callback argument runs on the UI thread. */
+const UI_HOOKS = [
+  'useAnimatedStyle', 'useAnimatedReaction', 'useDerivedValue',
+  'useAnimatedProps', 'useAnimatedScrollHandler',
+];
+
+/**
+ * Every source range that executes on the UI thread: each UI hook's argument
+ * list, and each `'worklet';` directive's enclosing block (which is how the
+ * gesture callbacks in AnimalView.js are found).
+ */
+function workletRegions(body) {
+  const out = [];
+  for (const hook of UI_HOOKS) {
+    const needle = `${hook}(`;
+    for (let i = body.indexOf(needle); i !== -1; i = body.indexOf(needle, i + 1)) {
+      let depth = 0;
+      for (let j = i + needle.length - 1; j < body.length; j += 1) {
+        if (body[j] === '(') depth += 1;
+        else if (body[j] === ')') {
+          depth -= 1;
+          // The hook call itself opens the region; only its ARGUMENT is inside.
+          if (depth === 0) { out.push(body.slice(i + needle.length, j)); break; }
+        }
+      }
+    }
+  }
+  for (const m of body.matchAll(/'worklet';/g)) {
+    const open = body.lastIndexOf('{', m.index);
+    if (open === -1) continue;
+    let depth = 0;
+    for (let j = open; j < body.length; j += 1) {
+      if (body[j] === '{') depth += 1;
+      else if (body[j] === '}') {
+        depth -= 1;
+        if (depth === 0) { out.push(body.slice(open, j + 1)); break; }
+      }
+    }
+  }
+  return out;
+}
+
+/** Callable on the UI thread without being one of ours. */
+const UI_SAFE = new Set([
+  // language and keywords that a naive `name(` scan would pick up
+  'if', 'for', 'while', 'switch', 'return', 'function', 'typeof', 'new', 'catch', 'do', 'else',
+  // Hermes globals that exist in the UI runtime
+  'Math', 'Number', 'String', 'Array', 'Object', 'JSON', 'Boolean',
+  'isNaN', 'parseInt', 'parseFloat',
+  // Reanimated's own API, workletized by the library
+  'interpolate', 'interpolateColor', 'clamp',
+  'withTiming', 'withSpring', 'withDelay', 'withSequence', 'withRepeat',
+  'runOnJS', 'runOnUI', 'cancelAnimation', 'measure', 'scrollTo', 'makeMutable',
+]);
+
+/**
+ * Array and String prototype methods, which are the UI runtime's own and are
+ * therefore fine on a captured plain array. Anything else called as a method
+ * is a method on a captured OBJECT, which is a Remote Function and throws.
+ */
+const UI_SAFE_METHODS = new Set([
+  'map', 'filter', 'forEach', 'reduce', 'find', 'findIndex', 'some', 'every',
+  'slice', 'splice', 'concat', 'join', 'push', 'pop', 'shift', 'unshift',
+  'indexOf', 'lastIndexOf', 'includes', 'sort', 'reverse', 'keys', 'values',
+  'split', 'charAt', 'charCodeAt', 'replace', 'toFixed', 'toString', 'trim',
+  'padStart', 'padEnd', 'startsWith', 'endsWith', 'repeat', 'toUpperCase',
+  'toLowerCase', 'has', 'get', 'set', 'add', 'delete',
+]);
+
+function workletViolations(body, worklets) {
+  const bad = [];
+  for (const region of workletRegions(body)) {
+    for (const m of region.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      const name = m[1];
+      if (UI_SAFE.has(name) || worklets.has(name)) continue;
+      bad.push(`${name}()`);
+    }
+    for (const m of region.matchAll(/([A-Za-z_$][\w$.]*)\.([A-Za-z_$][\w$]*)\s*\(/g)) {
+      const receiver = m[1].split('.')[0];
+      const method = m[2];
+      if (UI_SAFE.has(receiver) || UI_SAFE_METHODS.has(method)) continue;
+      bad.push(`${receiver}.${method}()`);
+    }
+  }
+  return [...new Set(bad)];
+}
+
+test('AC-828 a worklet calls only worklets', () => {
+  const worklets = workletNames(SRC);
+  // The audit is meaningless if nothing declares one.
+  assert.ok(worklets.has('rowAt'), 'the trajectory is no longer a worklet');
+  assert.ok(worklets.has('rowTop'), 'ClearLayer\'s row geometry is no longer a worklet');
+
+  const offenders = [];
+  for (const file of SRC) {
+    const bad = workletViolations(code(file), worklets);
+    if (bad.length) offenders.push(`${path.relative(ROOT, file)}: ${bad.join(', ')}`);
+  }
+  assert.deepEqual(
+    offenders, [],
+    'these are Remote Functions on the UI thread and will abort the process:\n  '
+      + offenders.join('\n  '),
+  );
+
+  // The audit is only worth anything if it fires, so: prove it does, on the
+  // EXACT shape that shipped. (§6.2, and the reason this block exists at all.)
+  const shipped = `
+    const rowTop = (y, cell) => (ROWS - 1 - y) * cell;
+    const bodyStyle = useAnimatedStyle(() => ({
+      transform: [{ translateY: rowTop(dep.y, cell) + 6 * go.value }],
+    }));`;
+  assert.deepEqual(workletViolations(shipped, new Set()), ['rowTop()']);
+
+  // ...and on the same fault in a gesture callback, and in a captured object's
+  // method, which is the same Remote Function by a different route.
+  const gesture = `
+    .onBegin(() => {
+      'worklet';
+      grab.value = withSpring(1, grabConfig);
+      recordGrab(id);
+    })`;
+  assert.deepEqual(workletViolations(gesture, new Set()), ['recordGrab()']);
+  const method = `
+    const s = useAnimatedStyle(() => ({ color: cosmetics.glyph(dep.type) }));`;
+  assert.deepEqual(workletViolations(method, new Set()), ['cosmetics.glyph()']);
+
+  // ...and does NOT fire on the three shapes the app legitimately uses: a
+  // declared worklet, Reanimated's own API, and array work on a captured list.
+  assert.deepEqual(
+    workletViolations(
+      "const s = useAnimatedStyle(() => ({ top: rowAt(a, b, t) }));",
+      new Set(['rowAt']),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    workletViolations(
+      'const s = useAnimatedStyle(() => ({ opacity: interpolate(go.value, [0, 1], [0, 1]) }));',
+      new Set(),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    workletViolations(
+      'useAnimatedReaction(() => t.value, (x) => { rows.filter((r) => r.at <= x); });',
+      new Set(),
+    ),
+    [],
+  );
+});
+
+/**
+ * The cue cursor is walked in two places, and they must be the same walk.
+ *
+ * `useTurnCues.js` imports Reanimated, so `node --test` cannot execute its
+ * worklet — and that is exactly the gap the Slice 5 crash came through. The
+ * property test in `test/cues.test.js` therefore RESTATES the loop and sweeps
+ * it against every schedule a real turn produces.
+ *
+ * A restatement is a second source (§6.3), so this is the thing that stops the
+ * two drifting: change the worklet's loop and this fails until the sweep is
+ * changed with it. It is not as good as executing the real one. It is what is
+ * available, and it is better than the comment that was there before.
+ */
+test('AC-1101 the cue schedule is walked the same way in both places', () => {
+  const worklet = code(path.join(ROOT, 'src/ui/useTurnCues.js'));
+  const sweep = read(path.join(ROOT, 'test/cues.test.js'));
+
+  // The four load-bearing lines of the UI-thread loop.
+  assert.match(worklet, /const next = dueCount\(schedule, cursor\.value, t\);/);
+  assert.match(worklet, /for \(let i = cursor\.value; i < next; i \+= 1\)/);
+  assert.match(worklet, /runOnJS\(fireCue\)\(schedule\[i\]\.cue, schedule\[i\]\.rate\)/);
+  assert.match(worklet, /cursor\.value = next;/);
+
+  // ...and the sweep's copy of the same three decisions.
+  assert.match(sweep, /const next = dueCount\(schedule, cursor, t\);/);
+  assert.match(sweep, /for \(let i = cursor; i < next; i \+= 1\)/);
+  assert.match(sweep, /const cue = schedule\[i\];/);
+  assert.match(sweep, /cursor = next;/);
+
+  // The bound the whole thing rests on is asserted, not assumed.
+  assert.match(sweep, /next <= schedule\.length/);
+});
+
 test('AC-1101 the cue rules stay loadable in Node', () => {
   const body = read(path.join(ROOT, 'src/ui/cues.js'));
   const imports = [...body.matchAll(/^\s*import\s.+$/gm)].map((m) => m[0].trim());
