@@ -12,6 +12,11 @@
  * those same events, and `longestStreak` the settled streak the ADVANCE event
  * carries (AC-706e). There is no statistic that comes from anywhere else.
  *
+ * `abilitiesUsed`, `chargesEarned` and `lastStands` are Layer D read the same
+ * way: an ability use is an ACTION event and a granted charge is a CHARGE
+ * event, so the HUD's pip, the run record's count and the engine's own
+ * `state.charges` are three readings of one stream and cannot disagree.
+ *
  * `mostRowsInStep` is the Golden Herd unlock's condition — "clear 4 rows in a
  * single step" (gameplay.md §9). It is the widest CLEAR_STEP the stream
  * carries, and it is folded HERE rather than counted at the unlock's own site
@@ -29,6 +34,9 @@ export function summariseEvents(events) {
   let perfectClears = 0;
   let longestStreak = 0;
   let guardTrips = 0;
+  let abilitiesUsed = 0;
+  let chargesEarned = 0;
+  let lastStands = 0;
 
   for (const event of events) {
     switch (event.type) {
@@ -44,6 +52,16 @@ export function summariseEvents(events) {
       case 'PERFECT_CLEAR':
         score += event.score;
         perfectClears += 1;
+        break;
+      case 'ACTION':
+        // Layer D. An ability use is an ACTION like a move is, so the count of
+        // them comes off the stream with everything else rather than from a
+        // counter somebody remembers to increment (§6.3).
+        if (event.action === 'ABILITY') abilitiesUsed += 1;
+        break;
+      case 'CHARGE':
+        chargesEarned += 1;
+        if (event.reason === 'lastStand') lastStands += 1;
         break;
       case 'ADVANCE':
         // The streak is a turn-level fact, so the turn's own event carries it.
@@ -68,5 +86,8 @@ export function summariseEvents(events) {
     perfectClears,
     longestStreak,
     guardTrips,
+    abilitiesUsed,
+    chargesEarned,
+    lastStands,
   };
 }

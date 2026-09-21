@@ -607,3 +607,89 @@ test('AC-1005 the persistence rules stay loadable in Node', () => {
     assert.ok(!/\bDate\.now\(|Math\.random\(/.test(body), `${rel} reads a clock or a die`);
   }
 });
+
+
+// ---- AC-14xx · Layer D ---------------------------------------------------
+
+/**
+ * §6.3, applied to the one predicate Layer D turned into a rule.
+ *
+ * "Is anything in the danger band" used to be a rendering question and lived in
+ * `replay.js`. Last Stand made it a RULE as well, and the two readings must be
+ * the same instant or the warning and the help stop being one event. Two
+ * functions that agree are the bug shape rather than its absence, so there is
+ * one, it is in the engine, and the UI imports it.
+ */
+test('AC-1408b the danger band has exactly one definition', () => {
+  const owners = SRC.filter((f) => /function\s+inDangerBand\b/.test(code(f)))
+    .map((f) => path.relative(ROOT, f));
+  assert.deepEqual(owners, ['src/engine/abilities.js'],
+    `a second copy of the danger-band predicate: ${owners.join(', ')}`);
+  // ...and the UI really does read that one, rather than open-coding the rows.
+  const board = code(path.join(ROOT, 'src/ui/components/Board.js'));
+  assert.match(board, /inDangerBand\(animals\)/);
+  assert.match(board, /from '\.\.\/\.\.\/engine\/abilities\.js'/);
+});
+
+/**
+ * §6.7's second rule, applied to the abilities UI.
+ *
+ * The sheet's affordability, the four charge pips, the targeting copy and the
+ * frozen tray are all claims about what is on screen, and all four have to be
+ * checkable without a phone — `test/abilities-ui.test.js` evaluates every one
+ * of them in Node. A single `react-native` or Reanimated import in
+ * `src/ui/abilities.js` would move the whole set out of `node --test`'s reach
+ * and into the hands of somebody with a device, which is exactly how the
+ * invisible animals and the crossing animals both shipped.
+ *
+ * `src/ui/trajectory.js` is the precedent; this is the same rule for Layer D.
+ */
+test('AC-1415 the abilities UI rules stay loadable in Node', () => {
+  const body = code(path.join(ROOT, 'src/ui/abilities.js'));
+  const imports = [...body.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(imports.length > 0, 'the module stopped importing the engine');
+  for (const source of imports) {
+    assert.ok(
+      source.startsWith('.'),
+      `src/ui/abilities.js imports the package '${source}', which takes Layer D off Node`,
+    );
+  }
+  assert.ok(!/\bDate\.now\(|Math\.random\(/.test(body), 'it reads a clock or a die');
+});
+
+/**
+ * AC-1404, as a structural check rather than a promise.
+ *
+ * The switch has to be a parameter the measurement PASSES, not a default the
+ * engine happens to hold: "the bot never presses the button" stopped being the
+ * same claim as "abilities are not in the measurement" the moment Last Stand
+ * existed, because Last Stand grants without being asked.
+ */
+test('AC-1404 the pacing harness disables abilities explicitly', () => {
+  const bot = read(path.join(ROOT, 'tools/bot.mjs'));
+  const at = bot.indexOf('export function measurePacing');
+  assert.ok(at !== -1, 'measurePacing has moved');
+  const body = bot.slice(at, bot.indexOf('\n}', at));
+  assert.match(body, /createRun\(\{[^}]*abilities:\s*false/,
+    'measurePacing creates runs without disabling abilities');
+});
+
+/**
+ * AC-1403, as a grep over the engine rather than as a test of one path.
+ *
+ * "Spending costs no score" is a claim about every line that could write to
+ * `score`, and there is exactly one: the fold of the event stream. A charge is
+ * spent by writing `charges`, and nothing in the ability path may write to the
+ * other field — a deduction anywhere would make the leaderboard reward never
+ * using the mechanic.
+ */
+test('AC-1403 nothing in the engine ever lowers the score', () => {
+  const engine = walk(path.join(ROOT, 'src/engine')).map(code).join('\n');
+  const writes = [...engine.matchAll(/\bscore:\s*([^,\n]+)/g)].map((m) => m[1].trim());
+  const suspicious = writes.filter((w) => /-\s*\w/.test(w) && !/-\s*1\b/.test(w));
+  assert.deepEqual(suspicious, [], `a score is written as a subtraction: ${suspicious.join(' | ')}`);
+  // And the audit fires: this is the shape it exists to catch.
+  const planted = 'return { ...state, score: state.score - COST, charges: state.charges - 1 };';
+  const plantedWrites = [...planted.matchAll(/\bscore:\s*([^,\n]+)/g)].map((m) => m[1].trim());
+  assert.equal(plantedWrites.filter((w) => /-\s*\w/.test(w)).length, 1);
+});

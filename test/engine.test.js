@@ -1040,9 +1040,11 @@ test('AC-706b/e no statistic is computed anywhere but summariseEvents', () => {
     assert.ok(summaryKeys.includes(source), `stats.${key} has no source in the event summary`);
   }
   assert.deepEqual(statKeys, [
+    'abilitiesUsed',
     'buffaloRetired',
     'buffaloShrinks',
     'chainGuardTrips',
+    'chargesEarned',
     'longestChain',
     'longestStreak',
     'mostRowsInStep',

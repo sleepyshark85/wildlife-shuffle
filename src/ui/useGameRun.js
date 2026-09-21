@@ -23,12 +23,15 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 
 import {
   ACTIONS,
+  chargeState,
   currentBuffalo,
   queueCells,
   reduce,
   runRecord,
   streakPill,
 } from '../engine/engine.js';
+import { ABILITIES } from '../engine/abilities.js';
+import { abilityButton, abilityRows } from './abilities.js';
 import { STATUS } from '../engine/constants.js';
 import { inspectChainGuard } from './chainGuard.js';
 import { recordTurn } from './diagnostics.js';
@@ -64,12 +67,11 @@ const MAX_LEARNED_GAP_MS = 300;
  * cascade has already deleted the animals whose departure has to be drawn.
  * This is the only place both boards exist at once.
  *
- * The move log has to happen here for a different one: a move is appended only
- * when a turn actually RESOLVED. A rejected move, a zero-distance drag and a
- * buffered tap that arrived too late all leave the board alone, and a replay
- * that recorded them would reconstruct a different run. `lastTurn`'s identity
- * is the only thing that knows the difference, and the reducer is where it
- * changes.
+ * The move log has to happen here for a different one: an input is appended
+ * only when the engine ACCEPTED it. A rejected move, a zero-distance drag and
+ * a buffered tap that arrived too late all leave the board alone, and a replay
+ * that recorded them would reconstruct a different run. `actionSeq` is the only
+ * thing that knows the difference, and the reducer is where it changes.
  *
  * Both are pure — a new array, never a push — so React 19 StrictMode's
  * double-invocation remains a no-op (AC-203).
@@ -80,16 +82,34 @@ export function runReducer(state, action) {
     // A restart is a new run with a new id namespace. `origin` is what makes it
     // reproducible: `runIndex` and the id counter it inherited (AC-214) are as
     // much a part of the starting point as the seed (src/ui/session.js).
-    return { ...next, origin: { runIndex: next.runIndex, nextAnimalId: state.nextAnimalId }, moves: [] };
-  }
-  if (next !== state && next.lastTurn && next.lastTurn !== state.lastTurn) {
-    // `action.reservedMs` is AC-824f's correction, carried on the action so
-    // the impurity stays in the event handler where the seeds already live.
+    // AC-1014b: EVERY input `createRun` consumed, not only the ones that feel
+    // like a seed. `abilities` is one of them, and it is carried across a
+    // RESTART by the reducer — so a record written after a Play Again that
+    // omitted it would replay the wrong run, and AC-1014c is why a resume test
+    // that only ever exercises the first run of a session cannot see that.
     return {
       ...next,
-      plan: buildReplay(state.animals, next.lastTurn, action.reservedMs || 0),
-      moves: appendMove(state.moves, action),
+      origin: {
+        runIndex: next.runIndex,
+        nextAnimalId: state.nextAnimalId,
+        abilities: next.abilities,
+      },
+      moves: [],
     };
+  }
+  // ONE rule, and `actionSeq` is what makes it one: the log appends on every
+  // ACCEPTED input, and the plan is built for every input that RESOLVED a turn.
+  //
+  // Those used to be the same set, so `lastTurn`'s identity could stand for
+  // both. Layer D separates them: arming a Dart is an accepted input that
+  // resolves no turn (AC-1407), and a log that skipped it would replay into a
+  // run holding one more charge and three fewer moves in that turn.
+  if (next !== state && next.actionSeq !== state.actionSeq) {
+    const logged = { ...next, moves: appendMove(state.moves, action) };
+    if (next.lastTurn === state.lastTurn) return logged;
+    // `action.reservedMs` is AC-824f's correction, carried on the action so
+    // the impurity stays in the event handler where the seeds already live.
+    return { ...logged, plan: buildReplay(state.animals, next.lastTurn, action.reservedMs || 0) };
   }
   return next;
 }
@@ -219,6 +239,27 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
     setBlockTick((tick) => tick + 1);
   }, []);
 
+  /**
+   * AC-1406/AC-1413: the one place a charge is spent, and it spends it by
+   * asking the engine. Arming, reading the sheet and cancelling all happen in
+   * the screen's own state and never reach this function, which is why
+   * AC-1414's "cancel is always free" is structural rather than remembered.
+   *
+   * It takes the lock exactly as a move does, because an ability IS the turn's
+   * action — except for Dart, whose arming resolves no turn and therefore
+   * schedules no lock (the effect below keys on `lastTurn`).
+   */
+  const useAbility = useCallback((ability, target) => {
+    if (!isOpen()) return;
+    fingerUpRef.current = now();
+    // Dart is the one ability that resolves no turn, so it schedules no lock —
+    // and must not take one, because the lock is released by the effect that
+    // watches `lastTurn`, and arming a Dart does not change it. Closing input
+    // here would leave the board dead holding three moves it could not make.
+    if (ability !== ABILITIES.dart.id) lockedRef.current = true;
+    dispatch({ type: ACTIONS.ABILITY, ability, target, reservedMs: gapRef.current });
+  }, []);
+
   const pass = useCallback(() => {
     if (stateRef.current.status !== STATUS.READY) return;
     if (!isOpen()) {
@@ -252,6 +293,12 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
       turn: state.turn,
       gameOver: state.status === STATUS.GAME_OVER,
       record: runRecord(state),
+      // Layer D. One selector off the engine, one derivation off that: the
+      // action bar, the sheet, the board's targeting dim and the tray all read
+      // these rather than each deciding affordability for themselves (§6.3).
+      charges: chargeState(state),
+      ability: abilityButton(state),
+      abilityRows: abilityRows(state),
     }),
     [state],
   );
@@ -265,6 +312,7 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
     commitMove,
     markBlocked,
     pass,
+    useAbility,
     restart,
   };
 }

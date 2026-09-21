@@ -11,14 +11,15 @@
 // empty, so nothing can cover it up.
 
 import React, { memo, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
+import { inDangerBand } from '../../engine/abilities.js';
 import { BOARD } from '../../engine/constants.js';
+import { isTarget, targetingChip } from '../abilities.js';
 import { COLS, ROWS } from '../layout.js';
 import { COLORS, RADIUS, RECESS } from '../theme.js';
 import { slideRanges } from '../occupancy.js';
-import { inDangerBand } from '../replay.js';
 import { useCosmetics } from '../progressStore.js';
 import { AnimalView } from './AnimalView.js';
 import { BoardCells } from './BoardCells.js';
@@ -160,7 +161,7 @@ function OriginRecess({ cell, drag, highContrast }) {
 
 function BoardImpl({
   animals, cell, drag, clock, plan, reduced, sizeNumerals, highContrast, diagnostics,
-  onCommit, onIllegal,
+  onCommit, onIllegal, arming = null, onTarget, onCancelTarget,
 }) {
   // Recomputed when the board changes — never during a drag, because a drag
   // changes no React state until release.
@@ -184,6 +185,19 @@ function BoardImpl({
       }}
     >
       <BoardCells cell={cell} highContrast={highContrast} colors={colors} />
+      {/* ui.md §13.3: the ground dims behind the targeting state, and the dim
+          IS the cancel affordance — "tapping outside any valid target also
+          cancels" (AC-1414). It sits under the animals, so a valid target's
+          own press wins and everything else falls through to here. */}
+      {arming ? (
+        <Pressable
+          testID="target-scrim"
+          onPress={onCancelTarget}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+          style={[StyleSheet.absoluteFill, styles.scrim]}
+        />
+      ) : null}
       <DangerPulse
         cell={cell}
         boardW={boardW}
@@ -213,6 +227,12 @@ function BoardImpl({
           drag={drag}
           clock={clock}
           motion={plan ? plan.moves[animal.id] : null}
+          targeting={
+            arming
+              ? { valid: isTarget(arming, animal), copy: targetingChip(arming) }
+              : null
+          }
+          onTarget={onTarget}
           reduced={reduced}
           sizeNumerals={sizeNumerals}
           highContrast={highContrast}
@@ -224,5 +244,10 @@ function BoardImpl({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  /** The ground at 45%, which is `ui.md` §13.3's dim expressed as a scrim. */
+  scrim: { backgroundColor: 'rgba(13,20,27,.55)', zIndex: 2 },
+});
 
 export const Board = memo(BoardImpl);

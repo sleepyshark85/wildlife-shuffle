@@ -94,6 +94,45 @@ export const DIFFICULTIES = Object.freeze({
 export const DEFAULT_DIFFICULTY = 'savanna';
 
 /**
+ * gameplay.md §13.2a — at most three charges may be BANKED.
+ *
+ * Three is the dial between recovery and reset, not a guard against bursting:
+ * bursting is impossible because an ability is the turn's action (AC-1406b), so
+ * three charges are three turns of intervention however they are held. Move it
+ * only on the evidence §13.2a names — crises routinely unsurvivable with three
+ * in hand, or runs routinely rescued from positions that should have ended.
+ *
+ * Last Stand ignores it deliberately (AC-1408c), so a run can hold four: three
+ * is what good play banks, and the fourth exists only because you are in
+ * trouble.
+ */
+export const ABILITY_CHARGE_CAP = 3;
+
+/**
+ * gameplay.md §13.2c / AC-1405 — the threshold ladder, per difficulty.
+ *
+ * AC-1405f: each rung is a PERCENTILE of that difficulty's own measured
+ * final-score distribution, and the absolute figures below are that percentile
+ * as of the 300-bot-runs-per-difficulty measurement on the shipped bands. A
+ * retune re-derives them; it does not strand them. `PERCENTILES` is carried
+ * beside the numbers so the derivation is in the file rather than only in the
+ * document that produced it.
+ *
+ * Three ladders and not one, because the medians (2,655 / 1,580 / 860) differ
+ * by 1.68x and 1.84x: a single table priced for Meadow would put the first
+ * charge beyond an entire median Tundra run.
+ */
+export const ABILITY_PERCENTILES = Object.freeze([
+  'p35', 'p50', 'p75', 'p90', 'p90x1.6', 'p90x2.4',
+]);
+
+export const ABILITY_THRESHOLDS = Object.freeze({
+  meadow: Object.freeze([2100, 2600, 4500, 6100, 9800, 14700]),
+  savanna: Object.freeze([1200, 1550, 2550, 3500, 5600, 8400]),
+  tundra: Object.freeze([600, 840, 1500, 2250, 3600, 5400]),
+});
+
+/**
  * gameplay.md §5.5: +1 to both ends of the band every 12 turns, until the
  * ceiling.
  *

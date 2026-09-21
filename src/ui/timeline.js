@@ -124,6 +124,58 @@ export function handoverWindow(at, dur, handoverMs) {
 }
 
 /**
+ * How many stagger beats the Stampede slide is allowed to span.
+ *
+ * ui.md §13.4 asks for rows sliding left "in a 120 ms stagger from the bottom
+ * up". Taken literally that is one beat per ROW, and fifteen rows is 1,680 ms
+ * of stagger inside a 1,500 ms budget — the whole turn would then be scaled to
+ * the 0.55 floor and the stagger would be the reason nothing else read. So the
+ * stagger is over the rows that actually MOVE, ranked from the bottom, and the
+ * span is capped here. Bottom-up is preserved; the tail is folded.
+ */
+export const STAMPEDE_BEATS = 4;
+
+/**
+ * The rows a Stampede moves, bottom-up, each with the beat it starts on.
+ *
+ * Pure and exported so the schedule is swept off-device rather than watched on
+ * one (§6.7): "the herd moves as one, from the bottom" is a claim about start
+ * times, and start times are arithmetic.
+ */
+export function stampedeBeats(moved, beats = STAMPEDE_BEATS) {
+  const rows = [...new Set(moved.map((m) => m.y))].sort((a, b) => a - b);
+  const at = new Map();
+  rows.forEach((row, rank) => at.set(row, Math.min(rank, beats - 1) * MOTION.stampedeStagger));
+  return at;
+}
+
+/**
+ * What the ACTION phase costs before gravity may run.
+ *
+ * A move costs the 110 ms snap. An ability costs whatever its own beat is: the
+ * burrow/migrate dissolve has to finish before the board falls into the hole it
+ * left, and the Stampede slide has to finish before anything drops through the
+ * columns it vacated. Dart and Hold the Line move nothing, so they cost
+ * nothing.
+ *
+ * It is inside `turnTimeline`'s `rawMs`, which is what AC-1417 needs: the whole
+ * turn is still scaled to min(1500, rawMs), so an ability cannot push the
+ * input lock past AC-822's budget — it is compressed with everything else.
+ */
+export function actionLead(events, action) {
+  if (action === 'MOVE') return MOTION.snap;
+  if (action !== 'ABILITY') return 0;
+  const act = events.find((e) => e.type === 'ACTION');
+  if (!act) return 0;
+  if (act.removedIds && act.removedIds.length > 0) return MOTION.burrow;
+  if (act.moved && act.moved.length > 0) {
+    const beats = stampedeBeats(act.moved);
+    return Math.max(...beats.values(), 0) + MOTION.snap;
+  }
+  return 0;
+}
+
+/**
  * The whole turn, at natural timings and then uniformly scaled to fit.
  *
  * @param {object[]} events  the turn's event stream, straight off state.lastTurn
@@ -153,7 +205,7 @@ export function turnTimeline(events, action, reservedMs = 0) {
   // presentation cap only and must not change a point (AC-825, gameplay.md §4).
   const cap = allocateUnits(settleSteps, arrivalSteps);
 
-  const settleFallAt = action === 'MOVE' ? MOTION.snap : 0;
+  const settleFallAt = actionLead(events, action);
   const settleStart = settleFallAt + MOTION.fall;
   const settle = cascade(settleStart, cap.settle);
 

@@ -22,6 +22,8 @@
 // fix is a write on a turn boundary after a long gap, NOT a timer.
 
 import {
+  ABILITY_CHARGE_CAP,
+  ABILITY_THRESHOLDS,
   BOARD,
   CHAIN_GUARD_STEPS,
   DIFFICULTIES,
@@ -33,6 +35,7 @@ import {
   SPECIES,
   STATUS,
 } from '../engine/constants.js';
+import { ABILITIES, DART_MOVES, HOLD_TURNS } from '../engine/abilities.js';
 import { ACTIONS, createRun, reduce } from '../engine/engine.js';
 
 export const RESUME_SCHEMA_VERSION = 1;
@@ -82,6 +85,15 @@ const ENGINE_REVISION = 1;
 export const TUNING_SURFACE = Object.freeze([
   BOARD, DIFFICULTIES, SCORE, SPECIES, DRAWABLE,
   RAMP_EVERY_TURNS, SEED_BATCHES, MAX_BATCH_CELLS, CHAIN_GUARD_STEPS,
+  // Layer D belongs in the fingerprint, and the reason is sharper than "it is
+  // tuning". A replay reconstructs charges by re-running the score against the
+  // ladder, so a REPRICED ladder replays the same moves into a different charge
+  // count — and an ability whose EFFECT changed (Hold the Line at four turns,
+  // say) replays every stored move successfully into a completely different
+  // board. That is the AC-1016 failure exactly: same seed, same moves, a
+  // different run, and nothing to tell the player. A retune of §13.2c now
+  // discards every resume written before it, automatically.
+  ABILITIES, ABILITY_THRESHOLDS, ABILITY_CHARGE_CAP, DART_MOVES, HOLD_TURNS,
 ]);
 
 /**
@@ -111,15 +123,31 @@ export function boardDigest(state) {
     [
       state.turn, state.score, state.streak, state.difficulty,
       sort(state.animals), sort(state.queue),
+      // Layer D is board state the player can see — the pips, the frozen tray,
+      // the moves left in a Dart — so AC-1017 checks it. Charges reconstructed
+      // wrongly would otherwise resume a run that looks right and is not.
+      state.charges, state.ladder, state.lastStand ? 1 : 0, state.frozen, state.dart,
     ].join('#'),
   );
 }
 
-/** AC-1014's move encoding: one entry per RESOLVED turn, and nothing else. */
+/**
+ * AC-1014's move encoding: one entry per ACCEPTED input, and nothing else.
+ *
+ * "Per resolved turn" was the same thing until Layer D, and now is not: arming
+ * a Dart is an accepted input that resolves no turn, and each of the Dart's
+ * three moves is an input inside one turn. So the log counts INPUTS, which is
+ * what a replay has to feed back into the reducer anyway.
+ *
+ * AC-1416: `{t:'A', ability, target}` is the third move type, and nothing new
+ * is persisted — charges are reconstructed by re-running the run.
+ */
 export function moveOf(action) {
-  return action.type === ACTIONS.MOVE
-    ? { t: 'M', id: action.id, x: action.x }
-    : { t: 'P' };
+  if (action.type === ACTIONS.MOVE) return { t: 'M', id: action.id, x: action.x };
+  if (action.type === ACTIONS.ABILITY) {
+    return { t: 'A', a: action.ability, target: action.target === undefined ? null : action.target };
+  }
+  return { t: 'P' };
 }
 
 /** Append, tolerating a state that predates the field (the tests build those). */
@@ -139,10 +167,17 @@ export function appendMove(moves, action) {
  * "Play again" mints ids a fresh `createRun` cannot reproduce — and a stored
  * move would then name an animal that does not exist. `origin` is the rest of
  * the starting point, stored so the seed means what it says.
+ *
+ * AC-1014b, and Layer D is the second instance of the same rule: `abilities` is
+ * an input `createRun` consumes, so it lives here too. It does not feel like a
+ * seed — it is a harness switch — which is exactly why the rule is worded as
+ * "every input" rather than "the interesting ones". A record without it would
+ * replay a measurement run as a played run, grant it charges it never had, and
+ * fail the digest for a reason nobody could read.
  */
-export function openRun({ seed, difficulty, runIndex = 1, nextAnimalId = 1 }) {
-  const state = createRun({ seed, difficulty, runIndex, nextAnimalId });
-  return { ...state, origin: { runIndex, nextAnimalId }, moves: [] };
+export function openRun({ seed, difficulty, runIndex = 1, nextAnimalId = 1, abilities = true }) {
+  const state = createRun({ seed, difficulty, runIndex, nextAnimalId, abilities });
+  return { ...state, origin: { runIndex, nextAnimalId, abilities }, moves: [] };
 }
 
 /**
@@ -169,7 +204,7 @@ export function buildResume(state) {
     engineVersion: ENGINE_VERSION,
     seed: state.seed,
     difficulty: state.difficulty,
-    start: state.origin || { runIndex: state.runIndex, nextAnimalId: 1 },
+    start: state.origin || { runIndex: state.runIndex, nextAnimalId: 1, abilities: true },
     moves: state.moves || [],
     digest: boardDigest(state),
   };
@@ -208,6 +243,8 @@ export function parseResume(text) {
   if (!Object.prototype.hasOwnProperty.call(DIFFICULTIES, raw.difficulty)) return null; // AC-1022
   if (!isObject(raw.start)) return null;
   if (!isIndex(raw.start.runIndex) || !isIndex(raw.start.nextAnimalId)) return null;
+  // AC-1014b: every createRun input, checked as strictly as the seed is.
+  if (typeof raw.start.abilities !== 'boolean') return null;
   if (typeof raw.digest !== 'string') return null;
   if (!Array.isArray(raw.moves) || raw.moves.length > MAX_REPLAY_MOVES) return null;
 
@@ -216,6 +253,18 @@ export function parseResume(text) {
     if (!isObject(move)) return null;
     if (move.t === 'P') {
       moves.push({ t: 'P' });
+      continue;
+    }
+    if (move.t === 'A') {
+      // AC-1416's third move type. The ability name is checked against the
+      // table by own-property, for the reason AC-1022's `__proto__` case
+      // records: `ABILITIES['__proto__']` is truthy and is not an ability.
+      if (!Object.prototype.hasOwnProperty.call(ABILITIES, move.a)) return null;
+      const target = move.target === undefined ? null : move.target;
+      if (target !== null && typeof target !== 'string' && typeof target !== 'number') {
+        return null;
+      }
+      moves.push({ t: 'A', a: move.a, target });
       continue;
     }
     if (move.t !== 'M') return null;
@@ -229,7 +278,11 @@ export function parseResume(text) {
     engineVersion: raw.engineVersion,
     seed: raw.seed,
     difficulty: raw.difficulty,
-    start: { runIndex: raw.start.runIndex, nextAnimalId: raw.start.nextAnimalId },
+    start: {
+      runIndex: raw.start.runIndex,
+      nextAnimalId: raw.start.nextAnimalId,
+      abilities: raw.start.abilities,
+    },
     moves,
     digest: raw.digest,
   };
@@ -262,17 +315,24 @@ export function replayResume(record) {
       difficulty: record.difficulty,
       runIndex: record.start.runIndex,
       nextAnimalId: record.start.nextAnimalId,
+      abilities: record.start.abilities,
     });
     for (const move of record.moves) {
       if (state.status !== STATUS.READY) return null;
       const before = state;
-      const action = move.t === 'M'
-        ? { type: ACTIONS.MOVE, id: move.id, x: move.x }
-        : { type: ACTIONS.PASS };
+      let action;
+      if (move.t === 'M') action = { type: ACTIONS.MOVE, id: move.id, x: move.x };
+      else if (move.t === 'A') {
+        action = { type: ACTIONS.ABILITY, ability: move.a, target: move.target };
+      } else action = { type: ACTIONS.PASS };
       state = reduce(state, action);
-      // A rejected or zero-distance move leaves `lastTurn` alone: the turn did
-      // not happen, so the replay is not the run that was saved.
-      if (state.lastTurn === before.lastTurn) return null;
+      // A rejected or zero-distance input leaves `actionSeq` alone: the input
+      // was not consumed, so the replay is not the run that was saved.
+      //
+      // It used to compare `lastTurn`, which meant "did a turn resolve" — true
+      // of every accepted input until Dart, whose arming resolves none. An
+      // armed Dart would have read as a rejection and discarded the record.
+      if (state.actionSeq === before.actionSeq) return null;
     }
     if (state.status !== STATUS.READY) return null;
     if (boardDigest(state) !== record.digest) return null;          // AC-1017

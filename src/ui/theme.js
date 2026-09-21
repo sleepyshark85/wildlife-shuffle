@@ -30,6 +30,15 @@ export const COLORS = Object.freeze({
   dangerWash: '#E05260',
   illegalFill: 'rgba(255,92,92,.10)',
   scrim: 'rgba(5,9,13,.72)',
+  /**
+   * ui.md §13.1/§13.4 — the gold of the fourth charge pip and of the LAST
+   * STAND pulse. The same ink as the buffalo's rim, and deliberately: both say
+   * "this one is not like the others".
+   */
+  lastStand: '#E8B44A',
+  /** The three banked pips, lit and unlit. */
+  pip: '#FFC24B',
+  pipEmpty: '#2C3A47',
 });
 
 /** ui.md §4.3. Lightness descends with size; buffalo is deliberately off the ramp. */
@@ -232,6 +241,20 @@ export const MOTION = Object.freeze({
   float: 900,
   shake: 180,
 
+  // --- Layer D, special abilities (ui.md §13.4) -------------------------
+  // All four are ANNOUNCEMENTS over an ordinary structural resolution, which
+  // is why none of them appears in the §8.2 input-lock budget (AC-1417): the
+  // turn they decorate is a turn the engine already resolved, and the lock is
+  // scaled from the clears, the arrival and the falls exactly as before.
+  /** The burrowed animal dissolves downward — the rat's own vanishing act. */
+  burrow: 260,
+  /** Rows slide left in a stagger from the bottom up, one row per beat. */
+  stampedeStagger: 120,
+  /** A pip fills with a bloom when a threshold is crossed. */
+  pipBloom: 300,
+  /** Last Stand's is slower and its own, because it is not a reward. */
+  lastStandBloom: 400,
+
   // --- ambient ----------------------------------------------------------
   dangerPulse: 1200,
 
@@ -338,4 +361,13 @@ export const COPY = Object.freeze({
   /** Derived: the retirement bonus rose 500 -> 650 and this said 500. */
   buffaloDown: `BUFFALO DOWN  +${SCORE.buffaloRetire}`,
   perfect: 'PERFECT  +1000',
+
+  // ui.md §13. The count of pips is the whole status, so the button needs no
+  // label beyond its name.
+  abilities: '\u26A1 ABILITIES',
+  abilitiesTitle: 'Abilities',
+  cancel: 'Cancel',
+  lastStand: 'LAST STAND',
+  /** The ability's own announcement, which is the only place 3 is truthful. */
+  holdAnnounce: 'HOLD THE LINE \u00B7 3',
 });

@@ -16,7 +16,7 @@
 // is `state.animals` and was correct before the first frame played (AC-834).
 
 import React, { memo, useEffect, useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolateColor,
@@ -32,6 +32,7 @@ import { BOARD, SPECIES } from '../../engine/constants.js';
 import { registerProbe, releaseProbe } from '../diagnostics.js';
 import { COLS, ROWS, hitSlopFor } from '../layout.js';
 import { EASE, delay, sequence, spring, timing } from '../motion.js';
+import { TARGET_DIM } from '../abilities.js';
 import { rowAt } from '../trajectory.js';
 import { useCosmetics } from '../progressStore.js';
 import {
@@ -83,7 +84,7 @@ function Panels({ size, cell, buffalo, highContrast }) {
 
 function AnimalViewImpl({
   animal, cell, range, drag, clock, motion, reduced, sizeNumerals, highContrast,
-  diagnostics, onCommit, onIllegal,
+  diagnostics, onCommit, onIllegal, targeting = null, onTarget,
 }) {
   const { id, type, x, y, size } = animal;
   // AC-1011: an applied unlock substitutes the species' appearance here and
@@ -181,7 +182,23 @@ function AnimalViewImpl({
   useEffect(() => {
     homeX.value = x * cell;
     homeCol.value = x;
-    tx.value = withTiming(x * cell, timing(MOTION.snap, EASE.out, reduced));
+    // AC-1411's slide, and the reason it needs a schedule at all.
+    //
+    // Every other x change in this game arrives ALREADY APPLIED: the gesture
+    // worklet moved the body on the frame the finger lifted, and this line only
+    // re-asserts it. A Stampede moves animals nobody touched, so without a
+    // start time the whole board would jump to its packed columns on the commit
+    // — the state right, the board right, and the herd teleporting. That is
+    // §6.7's question asked before the fact rather than after it.
+    //
+    // `tx` is still ASSERTED on every path: the slide only changes WHEN it
+    // arrives, never whether it does.
+    const slide = motion ? motion.slide : null;
+    if (slide) {
+      tx.value = delay(slide.at, withTiming(x * cell, timing(slide.dur, EASE.out, reduced)));
+    } else {
+      tx.value = withTiming(x * cell, timing(MOTION.snap, EASE.out, reduced));
+    }
 
     // Vertical position is derived from the shared clock above, not assigned
     // here: that is what stops two animals in a stack from drifting apart.
@@ -404,13 +421,17 @@ function AnimalViewImpl({
   );
 
   // ---- animated styles: all read on the UI thread ------------------------
+  const dim = targeting && !targeting.valid ? TARGET_DIM : 1;
   const bodyStyle = useAnimatedStyle(() => {
     // AC-407 mid-drag, ui.md §5.4 on release — both without a render.
     const blocked = drag.blockedId.value === id || reject.value > 0.5;
     const rim = highContrast ? 2.5 : buffalo ? 2 : 1.5;
     return {
       width: bodyW.value,
-      opacity: alpha.value,
+      // ui.md §13.3: in a targeting state everything that is not a valid target
+      // dims. `dim` is 1 the rest of the time, so the resting property is still
+      // asserted on every path and nothing can leave an animal faded.
+      opacity: alpha.value * dim,
       transform: [
         { translateX: tx.value + shake.value },
         { translateY: ty.value - MOTION_SIZE.grabLift * grab.value },
@@ -477,6 +498,20 @@ function AnimalViewImpl({
         >
           {cosmetics.glyph(type)}
         </Text>
+        {targeting ? (
+          // AC-1414's other half: a tap that is not on a valid target has to
+          // reach the board's cancel layer, so an invalid target takes no
+          // press at all rather than swallowing it into a no-op.
+          <Pressable
+            testID={`target-${id}`}
+            onPress={targeting.valid ? () => onTarget(animal) : undefined}
+            disabled={!targeting.valid}
+            accessibilityRole="button"
+            accessibilityLabel={targeting.copy}
+            style={StyleSheet.absoluteFill}
+            pointerEvents={targeting.valid ? 'auto' : 'none'}
+          />
+        ) : null}
         {sizeNumerals ? (
           // ui.md §10, AC-905 / AC-905b: the optional fifth size cue, on its
           // own chip so its contrast does not depend on the fill beneath it.

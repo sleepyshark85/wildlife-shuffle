@@ -193,6 +193,32 @@ function finish(stage, cell, chrome, screenW, wide) {
 /** ui.md §9: the floor for every touch target, at every stage (AC-114). */
 export const MIN_TOUCH = 44;
 
+/** ui.md §13.1: the gap between the two action-bar buttons. */
+export const ACTION_GAP = 12;
+
+/**
+ * The two action-bar slots (ui.md §13.1), and the one deviation in this slice.
+ *
+ * The design says "two buttons, 150 pt each, 12 pt gap". 150 is a figure read
+ * off the reference 393 pt device, and taken as a constant it OVERFLOWS: the
+ * layout sweep supports widths down to 248 pt, where 150 + 12 + 150 + 32 pt of
+ * gutter is 344 pt against 248 available. A hard 150 would clip the Pass button
+ * off the right of the screen on every stage below comfortable.
+ *
+ * So the slots are derived from the width the same way every other dimension in
+ * this file is (AC-126): the bar's content box, less the gap, halved. At the
+ * reference device that gives 174 pt rather than 150 — wider than specified,
+ * never narrower — and it stays above MIN_TOUCH everywhere the ladder supports
+ * a board at all. `test/layout.test.js` sweeps it.
+ */
+export function actionBarSlots(screenW) {
+  const inner = screenW - GUTTER;
+  return {
+    buttonW: Math.max(MIN_TOUCH, Math.floor((inner - ACTION_GAP) / 2)),
+    gap: ACTION_GAP,
+  };
+}
+
 /**
  * The action bar's laid-out height.
  *

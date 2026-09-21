@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { ACTIONS, createRun, reduce } from '../src/engine/engine.js';
 import { turnTimeline } from '../src/ui/timeline.js';
 import { BOARD, SPECIES } from '../src/engine/constants.js';
-import { buildReplay, inDangerBand } from '../src/ui/replay.js';
+import { inDangerBand } from '../src/engine/abilities.js';
+import { buildReplay } from '../src/ui/replay.js';
 import { runReducer } from '../src/ui/useGameRun.js';
 import {
   MOTION, MOTION_SIZE, NUMERAL, SPECIES_STYLE, brighten, contrast,
