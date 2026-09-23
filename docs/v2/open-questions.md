@@ -1,9 +1,10 @@
 # Wildlife Shuffle v2 — Open Questions
 
-Six questions. Each turns on the owner's intent or product strategy, not on design craft —
+Thirteen questions, ten of them already answered. Each turns on the owner's intent or product strategy, not on design craft —
 the design calls are made in `gameplay.md` and `ui.md`, and the full decision log is
-`gameplay.md` §12. Every question below has a recommendation; if you agree with all six, reply
-"all as recommended" and nothing changes.
+`gameplay.md` §12. Every question below has a recommendation; if you agree with all of them, reply
+"all as recommended" and nothing changes. **Q11–Q13 are the new ones**; they follow from
+removing the habitats and lifting the one-buffalo rule.
 
 They are ordered by how expensive they are to reverse later.
 
@@ -60,7 +61,8 @@ for deleting it: a variable board makes high scores incomparable, makes the diff
 in `gameplay.md` §5.5 untunable, and puts a settings screen in front of the game on first
 launch. The case for keeping it: some players like knobs.
 
-**Recommendation: delete it.** Difficulty moves to Home as three habitat choices, and the
+**Recommendation: delete it.** *(Answered yes, and since superseded in one detail: there are
+no habitat choices either — `gameplay.md` §5.5b. Home is one Play button.)* The
 board stays one shape so the leaderboard means something. The layout engine stays generic
 (`W × H`), so if you later want a "Tall" or "Wide" mode it is a config constant, not a
 rewrite — but it would need its own high-score table.
@@ -196,6 +198,67 @@ where it is free.
 **Recommendation: extend it to Home only**, at the same 1.25:1 ceiling, and leave Records,
 Collection and all sheets flat because they are reading surfaces (§10). Home is the screen a
 returning player sees first and the one that currently carries the least character.
+
+---
+
+## Q11 · Buffalo have no population cap. Confirm that is what you meant.
+
+**The decision as built:** buffalo arrive on a fixed schedule (turns 12, 24, 36, 46, 56, 66,
+74, 82, 90 …) and **nothing ever suppresses one**. If the player does not clear them, they
+pile up.
+
+**What that measures out to**, 300 bot runs on the shipped curve: 5.4 buffalo arrive per run,
+the player retires 0.6 of them, and the run ends with a mean of **17.9 buffalo cells still
+standing** — 13% of the board — with a worst case of **ten buffalo at once**. The run is
+12 turns shorter than before (70 → 58 median, still 3.9 minutes, inside the §0 window).
+
+**My recommendation: no cap, as built.** *"The player need to try to clear it as soon as
+possible"* only means something if not trying has a cost that keeps growing, and a cap turns
+the buffalo back into weather. The escalation is then responsive to how well someone is
+playing rather than imposed on a timer, which is what you asked for.
+
+**But I have measured the alternative, so it is one number away if you want it.** A cap of 3
+with the schedule deferring to the first turn under cap: median 62 turns, worst case bounded
+at 3 buffalo, 11 locked cells. A cap of 2: median 62, 7 locked cells, still 2.2 arrivals a run
+against the shipped build's 1.1.
+
+**Reach for it only if the device round says the late game is *hopeless* rather than *hard*.**
+Those are different complaints and only you can tell them apart by playing it. If the answer
+is "hard, and I keep starting another run", the cap stays off.
+
+---
+
+## Q12 · The merged records — one line of explanation, or none?
+
+Your three sets of per-habitat bests merge into one by taking the maximum (`gameplay.md` §9a).
+That is a decision I made and I am not asking you to remake it. What I am asking is whether
+the app **says so**.
+
+**My recommendation: one line on Records, once, dismissible.** *"Habitats are gone — your
+best from any habitat is now just your best."* A player who had a Tundra best and now sees a
+different number on a screen that never explains itself will assume the app lost their data,
+and a support email about a lost high score costs more than one line of copy.
+
+The alternative is silence, which is defensible — the numbers only go up, so nobody is worse
+off. I recommend against it because the number that changed is the one people remember.
+
+---
+
+## Q13 · Does "the game gets harder over time" want a visible sense of progress?
+
+The curve now escalates without saying so: the band stops growing at turn 13 and everything
+after that is buffalo arriving faster (every 12, then 10, then 8) and buffalo the player did
+not clear. **The player can see the buffalo. They cannot see the cadence tighten.**
+
+**My recommendation: do not add a level indicator, and do add the countdown.** `ui.md` §7.1
+puts `NEXT 🐃 4` in the HUD, which tells the player when the next one lands; when that number
+starts coming back as 8 instead of 12, the tightening is legible in the thing it actually
+changes. A "Phase 2 of 3" banner would reintroduce the levels concept you just removed, under
+a different name and with less information.
+
+This is in here rather than decided because it is the one place where "no levels" and "the
+game gets harder over time" pull against each other, and which way they resolve is a
+statement about what the game is.
 
 ---
 

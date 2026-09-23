@@ -50,8 +50,34 @@ by an emoji and its width. v2 encodes size **four** ways, redundantly (§5.2).
 | S9 | **Collection** (unlocks) | Full screen from S1 | A |
 
 v1's `SettingsMenu` (grid-width and grid-height steppers) is **deleted**. The board is fixed
-at 10×15 (`gameplay.md` §3); difficulty selection moves onto Home where it belongs, as one
-row of three choices rather than a settings gate in front of the game.
+at 9×15 (`gameplay.md` §3).
+
+> **The habitat picker is deleted too** (`gameplay.md` §5.5b). Home's three-choice row, its
+> three blurbs and Records' difficulty selector all go. Home becomes a title, a **Play**
+> button, the daily streak, and the three secondary entries (Records, Collection, Settings).
+> **Play is now the only primary action on the screen**, which is the point: the picker was
+> asking the player to choose between three experiences at the moment they knew least about
+> any of them, and our own measurement could not reliably tell the three apart.
+>
+> ```
+>  ┌──────────────────────────┐
+>  │                          │
+>  │      WILDLIFE SHUFFLE    │   title, 34/700
+>  │                          │
+>  │      🔥 4 day streak     │   13/500, muted; hidden at 0
+>  │                          │
+>  │   ┌──────────────────┐   │
+>  │   │       PLAY       │   │   56 pt tall, full content width,
+>  │   └──────────────────┘   │   accent fill — the only primary action
+>  │                          │
+>  │   Records   Collection   │   44 pt targets, text buttons
+>  │        Settings          │
+>  │      How to Play         │
+>  └──────────────────────────┘
+> ```
+>
+> Nothing else on Home moves. The vertical space the picker and its blurb gave up is spent on
+> the gap above **Play**, not on a new element — Home earns its pixels by having fewer.
 
 ---
 
@@ -392,9 +418,10 @@ shrink visibly removes one. Additional treatment:
   within, and is the only piece on the board that does.
 - Its seams are gold (`rgba(232,180,74,.5)`), not black, so the panel count reads as segments
   of a thing rather than shading.
-- **HUD chip.** Whenever a buffalo is on the board, a chip sits in the HUD: the glyph plus
-  **five** 5 × 12 pt bars, filled for remaining segments and at 22% opacity for spent ones. The
-  player should never have to hunt the board to find out how much buffalo is left.
+- **HUD chips, one per buffalo.** Whenever buffalo are on the board, one chip each sits in the
+  HUD: the glyph plus **five** 5 × 12 pt bars, filled for remaining segments and at 22%
+  opacity for spent ones. The player should never have to hunt the board to find out how much
+  buffalo is left. **Ordered bottom row first** — see §7.1, which sizes them for a herd.
 - **The chip and the body extinguish together.** The chip's segment fades over the same 260 ms
   as the body's shrink, on the same timeline — not on the React commit. Updating on commit
   leaves the chip reading "1 of 4" beside a two-cell-wide body for a quarter of a second,
@@ -666,6 +693,71 @@ here and it exists solely to raise the player's pulse; it stops the moment the b
 border at 0.5 pt produces seams that shift by a fraction of a pixel across the board. All 150
 cells are one memoized component that never re-renders during a run (§8.3 ·6); animals are the
 board's only dynamic children.
+
+### 7.1 The buffalo row — a herd, and a countdown
+
+Multiple buffalo may now stand on the board at once (`gameplay.md` §6.4a, AC-311), and the
+measured worst case over 300 bot runs is **ten**. The HUD has to carry that without becoming
+the screen.
+
+```
+ ┌───────────────────────────────────────────────────────┐
+ │  SCORE                                    ×2.0    ❙❙  │  52 pt
+ │  12,450                                               │
+ ├───────────────────────────────────────────────────────┤
+ │  🐃▌▌▌▌▌ 🐃▌▌▌░░ 🐃▌░░░░            NEXT 🐃  4       │  20 pt
+ └───────────────────────────────────────────────────────┘
+      ▲ bottom row first          ▲ turns until the next scheduled buffalo
+```
+
+**A second strip, 20 pt, directly under the 52 pt HUD, present only when a buffalo is on the
+board or the countdown is ≤ 5.** It is not inside the 52 pt HUD, because the HUD's height is
+what the board's fit is calculated from (§3.2) and a variable-height HUD would make the cell
+ladder variable too. It comes out of the same budget chrome always yields first: when the
+strip is showing, the **gap** between HUD and board absorbs it at ≥ 375 pt tall and the cell
+ladder steps down one rung below that. It never pushes the board.
+
+| element | spec |
+|---|---|
+| strip height | **20 pt**, 6 pt top padding, hidden entirely when empty |
+| chip, 1–4 buffalo | glyph 13 pt + five **5 × 12 pt** bars, 2 pt bar gap, 10 pt between chips |
+| chip, 5–7 buffalo | bars **3 × 12 pt**, 1.5 pt gap, 7 pt between chips |
+| chip, 8–10 buffalo | bars **2 × 12 pt**, 1 pt gap, 5 pt between chips; the glyph drops |
+| chip fill | remaining `buffalo-body` `#8E2F3A`, spent same hue at 22% |
+| chip rim | 1 pt `#E8B44A` gold — the same rim the body wears, so chip and animal are the same object |
+| countdown | `NEXT 🐃 n`, 11/600 mono, `ink-muted`; right-aligned, never wraps |
+| order | **bottom row first**, left to right |
+
+**Ten chips at the 8–10 rule occupy 10 × (5 × 2 + 4 × 1) + 9 × 5 = 185 pt** of a 361 pt
+content width, leaving 176 pt for the countdown and its gap. It fits with room, which is why
+the chips shrink rather than scroll or collapse behind a `+3` (AC-509d). **A count you have to
+tap to read is not a status, it is a menu** — and the whole reason the chips exist is that the
+player must be able to price "ignore it one more turn" at a glance.
+
+**Ordered bottom row first, and never reordered for any other reason.** Chip *k* is buffalo
+*k* counted up from the floor, so the eye can match a chip to a body without counting. When a
+buffalo is retired its chip is removed and the rest close up on the board's own settle
+timeline — the chips move when the board moves, never on a React commit (AC-509b's rule,
+applied to the row instead of to one chip).
+
+**The countdown is the new thing, and it is only honest because the schedule is.** Under the
+superseded one-at-a-time rule the next buffalo depended on when the current one happened to
+die, which the player cannot predict, so a countdown would have been a number that lies —
+exactly the defect v1 shipped in its tray (§6). `isBuffaloTurn` is now a pure function of the
+turn number (AC-310b), so `NEXT 🐃 4` is a promise the engine always keeps.
+
+**Motion.** A new buffalo's chip **fades in over 180 ms** `ease-out` at the moment the animal
+lands, and the row reflows on the same 180 ms. A shrink runs the existing 260 ms segment fade
+(§5.3). A retirement removes the chip over 200 ms and closes the gap on the board's settle.
+Nothing in this strip pulses or loops: the danger-band wash is the only ambient animation in
+the game (§7) and a second one competing with it would make neither mean anything.
+
+**Accessibility.** The strip is one `accessibilityElement` reading *"Three buffalo on the
+board: five segments, three segments, one segment. Next buffalo in four turns."* It is
+`accessibilityLiveRegion="polite"`, so an arrival is announced without interrupting the score.
+Bar colour is never the only cue — the filled count is in the label, and at Dynamic Type
+`xxLarge` and above the chips keep their fixed size while the countdown's label shortens from
+`NEXT 🐃 4` to `🐃 4` (§10's HUD rule: trade labels for values, never height).
 
 ---
 
@@ -1423,7 +1515,10 @@ at the bottom under the aggregates.
 ```
 
 **The difficulty selector governs the bests block only; recent runs shows all difficulties
-with a chip.** Bests are inherently per-difficulty — that is what makes them comparable — but
+with a chip.** *(SUPERSEDED by `gameplay.md` §5.5b and §9a: there is no difficulty, so there
+is no selector and no chip. Records shows one set of bests, and a recent-runs row is date,
+score and turns. The paragraph below is kept as the reasoning that produced the layout the
+rest of §14.1 still specifies.)* Bests are inherently per-difficulty — that is what makes them comparable — but
 the run diary is chronological, and a session in which someone dropped from Tundra to Savanna
 is a truer picture when it is not filtered into invisibility.
 
