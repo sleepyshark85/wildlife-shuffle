@@ -18,23 +18,21 @@
 // partially applied" is the AC's own wording, and half a save is worse than no
 // save: it is a save that looks trustworthy.
 
-import { DIFFICULTIES } from '../engine/constants.js';
 import { DEFAULT_THEME, isThemeName } from './theme.js';
 
 /**
  * AC-1006. Version 2 added the sound and haptics preferences; version 3 added
- * `onboarded`; version 4 added `settings.theme` (AC-1501). `migrate()` below
- * carries an older blob forward rather than discarding it, which is the half
- * of AC-1006 that had never been exercised — and AC-1006b is why every step
- * ships with a test that plants a fault in it and watches the save be
- * discarded rather than half-applied.
+ * `onboarded`; version 4 added `settings.theme` (AC-1501); version 5 collapsed
+ * the three per-habitat record sets into one and dropped `difficulty` from the
+ * recent-runs list (AC-320d). `migrate()` below carries an older blob forward
+ * rather than discarding it, which is the half of AC-1006 that had never been
+ * exercised — and AC-1006b is why every step ships with a test that plants a
+ * fault in it and watches the save be discarded rather than half-applied.
  */
-export const SAVE_SCHEMA_VERSION = 4;
+export const SAVE_SCHEMA_VERSION = 5;
 
 /** v1's StatsPanel.js listed ten, and ten is what AC-1011b asks for. */
 export const RECENT_RUNS = 10;
-
-const DIFFICULTY_IDS = Object.freeze(Object.keys(DIFFICULTIES));
 
 /**
  * Every persisted preference, with the value a player who has never opened
@@ -73,10 +71,11 @@ const SETTING_KEYS = Object.freeze(Object.keys(SETTING_DEFAULTS));
  */
 const isBoolean = (v) => typeof v === 'boolean';
 /**
- * `SETTING_IS_VALID[key]` is not a membership test, for `knownDifficulty`'s
- * reason: `SETTING_IS_VALID['__proto__']` is `Object.prototype`, which is
- * truthy and is not a function. Found by the AC-1501 test putting `__proto__`
- * in `withSettings`, where it threw rather than being refused.
+ * `SETTING_IS_VALID[key]` is not a membership test, for the reason AC-1022's
+ * `__proto__` case recorded: `SETTING_IS_VALID['__proto__']` is
+ * `Object.prototype`, which is truthy and is not a function. Found by the
+ * AC-1501 test putting `__proto__` in `withSettings`, where it threw rather
+ * than being refused.
  */
 const settingRule = (key) =>
   (Object.prototype.hasOwnProperty.call(SETTING_IS_VALID, key) ? SETTING_IS_VALID[key] : null);
@@ -98,14 +97,10 @@ const SETTING_IS_VALID = Object.freeze({
 export const COSMETIC_SLOTS = Object.freeze(['theme', 'palette', 'animals']);
 
 /**
- * `DIFFICULTIES[id]` is not a membership test: `DIFFICULTIES['__proto__']` is
- * `Object.prototype`, which is truthy. Every id that came off the disk goes
- * through this. (Found by the AC-1022 test, which put `__proto__` in the
- * difficulty field and watched it be accepted.)
+ * ONE record set. AC-1008 names exactly these four, and AC-320d is why there is
+ * one of them: there is one curve, so there is one thing a best can be a best
+ * at.
  */
-const knownDifficulty = (id) => Object.prototype.hasOwnProperty.call(DIFFICULTIES, id);
-
-/** Per-difficulty records. AC-1008 names exactly these four. */
 const BEST_KEYS = Object.freeze(['score', 'chain', 'turns', 'rows']);
 
 /** gameplay.md §9 "Lifetime". `mostRowsInStep` is the Golden Herd condition. */
@@ -130,7 +125,7 @@ export function defaultSave() {
      * one that never ran.
      */
     onboarded: false,
-    best: Object.fromEntries(DIFFICULTY_IDS.map((id) => [id, zeros(BEST_KEYS)])),
+    best: zeros(BEST_KEYS),
     lifetime: zeros(LIFETIME_KEYS),
     recent: [],
     streak: { count: 0, lastDay: null },
@@ -164,10 +159,13 @@ function readRecent(raw) {
   const out = [];
   for (const entry of raw) {
     if (!isObject(entry)) return null;
-    if (!knownDifficulty(entry.difficulty)) return null;
     if (!isCount(entry.score) || !isCount(entry.turns) || !isCount(entry.at)) return null;
     if (!isDayKey(entry.day)) return null;
-    out.push({ difficulty: entry.difficulty, day: entry.day, at: entry.at, score: entry.score, turns: entry.turns });
+    // No `difficulty` (AC-320c/AC-1008b). A label naming a mode that no longer
+    // exists makes the older entries unreadable rather than informative, so it
+    // is dropped on the way in as well as on the way out — a field nobody may
+    // branch on is a field that will be branched on.
+    out.push({ day: entry.day, at: entry.at, score: entry.score, turns: entry.turns });
   }
   return out;
 }
@@ -175,11 +173,12 @@ function readRecent(raw) {
 /**
  * Bring an older blob up to the current schema, or hand it back untouched.
  *
- * Three steps now, applied IN SEQUENCE rather than as a switch on the stored
+ * Four steps now, applied IN SEQUENCE rather than as a switch on the stored
  * version: a version-1 blob has to become a version-2 blob, then a version-3
- * one, then a version-4 one, and a `if (v === 1) return {...v4}` would have to
- * know about every future step at once. Each step below knows only about its
- * own, which is what made adding the fourth a four-line change.
+ * one, then a version-4 one, then a version-5 one, and a `if (v === 1) return
+ * {...v5}` would have to know about every future step at once. Each step below
+ * knows only about its own, which is what made adding the fifth a short
+ * change.
  *
  * Step 1 -> 2 added `settings.sound` and `settings.haptics` (AC-1104). Step
  * 3 -> 4 added `settings.theme`, and it takes the DEFAULT rather than `dark`:
@@ -215,7 +214,61 @@ const STEPS = [
       theme: SETTING_DEFAULTS.theme,
     },
   }),
+  // 4 -> 5. One curve, one record set (gameplay.md §9a, AC-320d).
+  //
+  // MERGE BY MAXIMUM, per stat. Not reset — deleting somebody's high score
+  // because we changed our minds about difficulty is the app punishing the
+  // player for our decision. Not the default habitat's alone, which would
+  // silently destroy the Meadow best that is almost certainly their largest
+  // number. And it is honest to take the maximum in this direction because the
+  // curve's band table IS the Meadow row, the easiest of the three: a merged
+  // best is a best the player can beat again on the same terms. It would not
+  // be honest the other way round, and that asymmetry is why this is a decision
+  // rather than a coin toss.
+  //
+  // It reads whatever shape it finds rather than naming meadow/savanna/tundra:
+  // the habitat ids are gone from this build, and a migration that named them
+  // would be carrying the concept it exists to remove. A blob whose `best` was
+  // already flat migrates to itself.
+  (raw) => ({
+    ...raw,
+    schemaVersion: 5,
+    best: mergeBests(raw.best),
+    // The four fields `readRecent` keeps, named rather than spread-minus-one:
+    // a blob off the disk may carry anything, and copying "everything except
+    // difficulty" would carry the anything too.
+    recent: Array.isArray(raw.recent)
+      ? raw.recent.map((entry) => (isObject(entry)
+        ? { day: entry.day, at: entry.at, score: entry.score, turns: entry.turns }
+        : entry))
+      : raw.recent,
+  }),
 ];
+
+/**
+ * Fold any number of stored record sets into one by taking the maximum of each
+ * stat. Used only by step 4 -> 5.
+ *
+ * `migrate` never validates (see below), so this may be handed anything: a flat
+ * record set, a map of three, a map of one, or nonsense. It produces a
+ * candidate and `parseSave` judges it — a non-numeric field survives as a
+ * non-numeric field and the save is then discarded whole rather than
+ * half-applied.
+ */
+function mergeBests(raw) {
+  if (!isObject(raw)) return raw;
+  // Already flat: a version-4 blob written by a build that had one curve.
+  if (BEST_KEYS.some((key) => typeof raw[key] === 'number')) return raw;
+  const out = zeros(BEST_KEYS);
+  for (const row of Object.values(raw)) {
+    if (!isObject(row)) return raw;
+    for (const key of BEST_KEYS) {
+      if (typeof row[key] !== 'number') return raw;
+      out[key] = Math.max(out[key], row[key]);
+    }
+  }
+  return out;
+}
 
 export function migrate(raw) {
   if (!isObject(raw)) return raw;
@@ -252,13 +305,8 @@ export function parseSave(text) {
   raw = migrate(raw);
   if (raw.schemaVersion !== SAVE_SCHEMA_VERSION) return null;
 
-  if (!isObject(raw.best)) return null;
-  const best = {};
-  for (const id of DIFFICULTY_IDS) {
-    const row = readCounts(raw.best[id], BEST_KEYS);
-    if (!row) return null;
-    best[id] = row;
-  }
+  const best = readCounts(raw.best, BEST_KEYS);
+  if (!best) return null;
 
   const lifetime = readCounts(raw.lifetime, LIFETIME_KEYS);
   if (!lifetime) return null;
@@ -372,24 +420,20 @@ export function advanceStreak(streak, today) {
 export function applyRunRecord(save, record, when) {
   const { day, at } = when;
   const flagged = record.chainGuardTrips > 0;
-  const difficulty = knownDifficulty(record.difficulty) ? record.difficulty : null;
 
   const next = {
     ...save,
     lifetime: { ...save.lifetime, games: save.lifetime.games + 1 },
     streak: advanceStreak(save.streak, day),
   };
-  if (flagged || !difficulty) return next;
+  if (flagged) return next;
 
-  const was = save.best[difficulty];
+  const was = save.best;
   next.best = {
-    ...save.best,
-    [difficulty]: {
-      score: Math.max(was.score, record.score),
-      chain: Math.max(was.chain, record.longestChain),
-      turns: Math.max(was.turns, record.turns),
-      rows: Math.max(was.rows, record.rowsCleared),
-    },
+    score: Math.max(was.score, record.score),
+    chain: Math.max(was.chain, record.longestChain),
+    turns: Math.max(was.turns, record.turns),
+    rows: Math.max(was.rows, record.rowsCleared),
   };
   next.lifetime = {
     games: next.lifetime.games,
@@ -403,16 +447,15 @@ export function applyRunRecord(save, record, when) {
   // because a list of your last ten runs is what shows whether you are
   // improving today (ported from v1's StatsPanel.js).
   next.recent = [
-    { difficulty, day, at, score: record.score, turns: record.turns },
+    { day, at, score: record.score, turns: record.turns },
     ...save.recent,
   ].slice(0, RECENT_RUNS);
   return next;
 }
 
-/** AC-707: was this run's score better than the stored best for its habitat? */
-export function isNewBest(save, difficulty, score) {
-  const row = knownDifficulty(difficulty) ? save.best[difficulty] : null;
-  return Boolean(row) && score > row.score;
+/** AC-707: was this run's score better than the stored best? */
+export function isNewBest(save, score) {
+  return score > save.best.score;
 }
 
 /**

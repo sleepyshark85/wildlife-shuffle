@@ -137,7 +137,7 @@ export const StreakPill = memo(function StreakPill({ mult, large }) {
 /** The segment that is leaving: full while the body is still wide, then spent. */
 const SPENT = 0.22;
 
-const Segment = memo(function Segment({ filled, leaving, reduced, large }) {
+const Segment = memo(function Segment({ filled, leaving, reduced, box }) {
   const styles = STYLES[useTheme().name];
   const on = useSharedValue(filled || Boolean(leaving) ? 1 : SPENT);
   useEffect(() => {
@@ -153,40 +153,56 @@ const Segment = memo(function Segment({ filled, leaving, reduced, large }) {
     on.value = delay(leaving.at, withTiming(SPENT, timing(leaving.dur, EASE.out, reduced)));
   }, [filled, leaving, reduced, on]);
   const style = useAnimatedStyle(() => ({ opacity: on.value }));
-  return <Animated.View style={[styles.bar, large && styles.barLarge, style]} />;
+  return <Animated.View style={[styles.bar, box, style]} />;
 });
 
 /**
- * ui.md §5.3: four bars, filled for remaining segments, 22% for spent ones.
+ * ui.md §7.1: FIVE bars — one per `SPECIES.buffalo.size` segment — filled for
+ * the segments remaining and at 22% for the ones already spent.
+ *
+ * IT SHIPPED WITH FOUR, and that was not a style choice: the buffalo grew from
+ * size 4 to size 5 when the owner's 11 July values were restored, and the chip
+ * never followed. A full buffalo therefore showed four filled bars and read
+ * "4 of 4" while the body on the board was five cells wide and took five
+ * completions to remove — the HUD understating the one thing it exists to
+ * report, against AC-509's "five". The count comes off `bars` now, which comes
+ * off the constant.
  *
  * `size` is already the post-shrink size, because it comes off the engine's
  * settled board. `shrink` is the plan entry for the same buffalo, and it is
  * what tells the bar at index `size` that it is the one on its way out.
+ *
+ * `rule` is `chipRuleFor`'s answer — the bar width, the gaps and whether the
+ * glyph survives — computed once for the whole row by the strip, never here:
+ * a chip that sized itself would be v1's two disagreeing cell formulas in
+ * miniature (AC-107).
  */
-export const BuffaloChip = memo(function BuffaloChip({ size, shrink, reduced, large }) {
+export const BuffaloChip = memo(function BuffaloChip({ size, bars, rule, shrink, reduced }) {
   const styles = STYLES[useTheme().name];
-  const bars = [];
-  for (let i = 0; i < 4; i += 1) {
-    bars.push(
+  const box = { width: rule.bar, height: rule.chipH, borderWidth: rule.rim };
+  const segments = [];
+  for (let i = 0; i < bars; i += 1) {
+    segments.push(
       <Segment
         key={i}
         filled={i < size}
         leaving={shrink && shrink.to === size && i === size ? shrink : null}
         reduced={reduced}
-        large={large}
+        box={box}
       />,
     );
   }
   return (
-    <View
-      style={[styles.chip, large && styles.chipLarge]}
-      accessible
-      accessibilityLabel={`Buffalo, ${size} of 4 segments remaining`}
-    >
-      <Text allowFontScaling={false} style={[styles.chipGlyph, large && styles.chipGlyphLarge]}>
-        {'\u{1F403}'}
-      </Text>
-      {bars}
+    <View style={[styles.chip, { gap: rule.barGap, height: rule.chipH }]}>
+      {rule.glyph ? (
+        <Text
+          allowFontScaling={false}
+          style={[styles.chipGlyph, { fontSize: rule.glyph, lineHeight: rule.chipH }]}
+        >
+          {'\u{1F403}'}
+        </Text>
+      ) : null}
+      {segments}
     </View>
   );
 });
@@ -272,20 +288,23 @@ const STYLES = themed((T) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   pillTextLarge: { fontSize: 16 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    height: 24,
-    borderRadius: RADIUS.pill,
-    backgroundColor: T.colors.panelSunken,
-    borderWidth: 1,
-    borderColor: T.colors.hairline,
+  chip: { flexDirection: 'row', alignItems: 'center' },
+  chipGlyph: { color: T.colors.ink },
+  /**
+   * ui.md §7.1: the bar is the buffalo's own BODY colour with the gold rim the
+   * body wears, "so chip and animal are the same object". §7.1 writes the fill
+   * as `#8E2F3A`, which is §5.3's dark-ground value; the token is read off the
+   * theme instead, because §16.2 repriced both the body and its rim for the
+   * light ground (`#7A2E3C` over `#9C6D14`) and a chip pinned to the dark hex
+   * would stop matching the body it is a picture of on the theme that ships as
+   * the default.
+   *
+   * The rim is on each bar rather than around the chip: at the 8-10 rule the
+   * chip IS its bars — the glyph drops and there is no plate left to rim.
+   */
+  bar: {
+    borderRadius: 1,
+    backgroundColor: T.species.buffalo.fill,
+    borderColor: T.species.buffalo.edge,
   },
-  chipLarge: { height: 30, paddingHorizontal: 10 },
-  chipGlyph: { fontSize: 13, marginRight: 2 },
-  chipGlyphLarge: { fontSize: 16 },
-  bar: { width: 5, height: 12, borderRadius: 1, backgroundColor: T.colors.lastStand },
-  barLarge: { width: 6, height: 16 },
 }));

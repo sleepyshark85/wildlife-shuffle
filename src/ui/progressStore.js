@@ -144,7 +144,10 @@ export function ProgressProvider({ children }) {
 
   /** AC-1020: a run ends, the resume is cleared and the record is written. */
   const finishRun = useCallback((record, endedAt) => {
-    const key = `${record.seed}:${record.difficulty}:${record.turns}:${record.score}`;
+    // The key drops its difficulty segment with the habitats (gameplay.md §9a):
+    // seed plus turns plus score is already unique in practice, and this key
+    // only has to be stable, not meaningful.
+    const key = `${record.seed}:${record.turns}:${record.score}`;
     if (writtenRef.current.has(key)) return;
     writtenRef.current.add(key);
     removeText(KEYS.resume);

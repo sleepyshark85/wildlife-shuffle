@@ -4,10 +4,18 @@
 // Run: node docs/v2/layout-sweep.mjs   — expected: 'overflowing : 0'
 
 // Candidate v2 formula: graceful degradation ladder, tested across the continuous space.
-const FULL   ={hud:52,act:48,tray:31,gaps:32};           // 163  (tray thinned, item 3)
-const COMPACT={hud:44,act:44,tray:26,gaps:20};           // 134
-const RAIL   ={hud:0, act:0, tray:31,gaps:32};           // 63  (wide: chrome moves to a side rail)
-const sum=c=>c.hud+c.act+c.tray+c.gaps;
+//
+// `strip` is ui.md §7.1's buffalo strip, reserved whether or not it is showing.
+// §7.1 asks for the gap to absorb it; measured, the gap is 9-51 pt across the
+// §3.2 device table and five of those ten devices have less than 20, so it is
+// funded out of `gaps` instead and the board yields the remaining 8 pt (full) /
+// 10 pt (compact). The reasoning is in src/ui/layout.js CHROME; this file is the
+// same numbers, and it has to carry them or AC-119 sweeps a layout that no
+// longer ships.
+const FULL   ={hud:52,act:48,tray:31,gaps:20,strip:20};  // 171  (tray thinned, item 3)
+const COMPACT={hud:44,act:44,tray:26,gaps:14,strip:16};  // 144
+const RAIL   ={hud:0, act:0, tray:31,gaps:32,strip:0};   // 63  (wide: chrome moves to a side rail)
+const sum=c=>c.hud+c.act+c.tray+c.gaps+c.strip;
 const W_RAIL=600, COLS=9, ROWS=15, GUTTER=32;
 
 function layout(w,h,it,ib){
@@ -250,17 +258,21 @@ function screenGeometry(w, h, it, ib, L) {
   const hudH = wide ? 0 : chrome.hud + HAIRLINE;
   const barH = wide ? 0 : chrome.act + HAIRLINE;
   const group = L.cell * ROWS + gap + chrome.tray;
-  const region = h - it - ib - hudH - barH;
+  // The buffalo strip sits between the HUD and the centred group, reserved
+  // whether or not it is showing (ui.md §7.1, src/ui/layout.js CHROME).
+  const region = h - it - ib - hudH - barH - chrome.strip;
   // ui.md §3.1: the board + tray group is a flex child CENTRED in what is left.
-  const boardTop = it + hudH + (region - group) / 2;
+  const boardTop = it + hudH + chrome.strip + (region - group) / 2;
   return {
     screenW: w,
     boardTop,
+    strip: chrome.strip,
     trayTop: boardTop + L.cell * ROWS + gap,
-    // GameScreen.js: `top={insets.top + (wide ? 0 : chrome.hud)}`, and the card
-    // adds SPACE.sm of its own.
-    cardTop: it + (wide ? 0 : chrome.hud) + SPACE.sm,
-    hudBottom: it + hudH,
+    // GameScreen.js: `top={insets.top + (wide ? 0 : chrome.hud + chrome.strip)}`,
+    // and the card adds SPACE.sm of its own. The strip is in the sum because
+    // beat 4 is the buffalo beat and its scripted board puts one on screen.
+    cardTop: it + (wide ? 0 : chrome.hud + chrome.strip) + SPACE.sm,
+    hudBottom: it + hudH + (wide ? 0 : chrome.strip),
     safeBottom: h - ib,
     rowTop: (y) => boardTop + (ROWS - 1 - y) * L.cell,
     dangerBottom: boardTop + (ROWS - DANGER_LOW) * L.cell,

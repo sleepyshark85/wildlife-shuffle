@@ -89,10 +89,12 @@ function chooseAction(state) {
  * Every turn a bot plays, as {before, after, plan} — the same plans the device
  * replays, built by the same `buildReplay` the screen uses.
  */
-function* turns({ seeds = 10, limit = 40, habitats = ['meadow', 'savanna', 'tundra'] } = {}) {
-  for (const difficulty of habitats) {
+// The three habitats were three seed prefixes as far as this sweep was ever
+// concerned; with one curve (gameplay.md §5.5b) they are three BLOCKS of seeds.
+function* turns({ seeds = 10, limit = 40, blocks = ['a', 'b', 'c'] } = {}) {
+  for (const difficulty of blocks) {
     for (let s = 0; s < seeds; s += 1) {
-      let state = createRun({ seed: `arrival-${difficulty}-${s}`, difficulty });
+      let state = createRun({ seed: `arrival-${difficulty}-${s}` });
       for (let t = 0; t < limit && state.status === 'READY'; t += 1) {
         const before = state.animals;
         const next = runReducer(state, chooseAction(state));
@@ -200,7 +202,7 @@ test('AC-808 and the same check catches a single frame of drift', () => {
   // green check you have not seen fail"). One and two frames of drift are what
   // `withDelay` per flier actually produced: §6.7 measured five animals with
   // byte-identical schedules starting in two groups a frame apart.
-  const it = [...turns({ seeds: 1, limit: 12, habitats: ['meadow'] })]
+  const it = [...turns({ seeds: 1, limit: 12, blocks: ['a'] })]
     .map((x) => ({ it: x, cast: castOf(x) }))
     .find(({ cast }) => cast.fliers.length > 0 && risersUnder(cast, cast.fliers[0].plan).length > 0);
   assert.ok(it, 'no turn with both a flight and a riser to compare it against');

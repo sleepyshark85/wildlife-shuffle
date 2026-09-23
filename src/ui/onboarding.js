@@ -32,13 +32,6 @@ const BUFFALO_SIZE = SPECIES.buffalo.size;
 export const BEATS = Object.freeze(['slide', 'clear', 'tray', 'buffalo']);
 
 /**
- * Onboarding always runs on Meadow. It is the gentlest band, but that is not
- * why: the beat boards are scripted, and the only thing the difficulty still
- * chooses is the batch the tray will show — which beat 3 is about.
- */
-export const ONBOARDING_DIFFICULTY = 'meadow';
-
-/**
  * Ids for the scripted animals. A distinct prefix from the engine's own
  * `runIdPrefix` (`"<runIndex>.<hash>."`), so a scripted animal can never
  * collide with one the spawner drew (AC-214).
@@ -295,11 +288,15 @@ function resolvedATurn(before, after) {
 /**
  * An engine state for `beatId`, ready to hand to `GameScreen` as `resumed`.
  *
- * It is a real `createRun` with its board replaced: the difficulty, the PRNG,
- * the id counter, the charge ladder and — the part beat 3 turns on — the QUEUE
- * are all the engine's own. Only `animals` is scripted. So the arrival the
- * player watches in beat 3 came out of `generateBatch` exactly as it does in a
- * run, and the beat is a demonstration rather than a staged photograph.
+ * It is a real `createRun` with its board replaced: the PRNG, the id counter,
+ * the charge ladder and — the part beat 3 turns on — the QUEUE are all the
+ * engine's own. Only `animals` is scripted. So the arrival the player watches
+ * in beat 3 came out of `generateBatch` exactly as it does in a run, and the
+ * beat is a demonstration rather than a staged photograph.
+ *
+ * There is nothing left to choose a habitat with (gameplay.md §5.5b): the beat
+ * boards were always scripted, so the collapse moved nothing here except the
+ * name of the constant that used to say "meadow".
  *
  * `abilities: false`, because the abilities sheet is a fifth thing to explain
  * and gameplay.md §11 lists four beats.
@@ -310,7 +307,7 @@ function resolvedATurn(before, after) {
 export function beatRun(beatId, seed) {
   const beat = BEAT[beatId];
   if (!beat) throw new Error(`Unknown onboarding beat: ${beatId}`);
-  const state = createRun({ seed, difficulty: ONBOARDING_DIFFICULTY, abilities: false });
+  const state = createRun({ seed, abilities: false });
   return {
     ...state,
     animals: beat.board(),

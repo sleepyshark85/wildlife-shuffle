@@ -205,6 +205,7 @@ returning player sees first and the one that currently carries the least charact
 
 > **ANSWERED (owner, 23 Sep 2026): no cap.** They chose it over a cap of 3 with the
 > measured worst case in front of them — 10 buffalo on the board, 25 of 135 cells locked.
+> (The implementation then measured **11** over the same 300 seeds; see below.)
 > The ratchet is the point. Revisit only if a device round says the late game is *hopeless*
 > rather than *hard*; those are different complaints and only the owner can tell them apart
 > by playing it.
@@ -216,7 +217,9 @@ pile up.
 
 **What that measures out to**, 300 bot runs on the shipped curve: 5.4 buffalo arrive per run,
 the player retires 0.6 of them, and the run ends with a mean of **17.9 buffalo cells still
-standing** — 13% of the board — with a worst case of **ten buffalo at once**. The run is
+standing** — 13% of the board — with a worst case of **eleven buffalo at once** (the design
+modelled ten; the implementation measured eleven three independent ways over the same 300
+seeds, and the chip row is sized for it). The run is
 12 turns shorter than before (70 → 58 median, still 3.9 minutes, inside the §0 window).
 
 **My recommendation: no cap, as built.** *"The player need to try to clear it as soon as

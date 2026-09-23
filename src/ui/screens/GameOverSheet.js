@@ -2,7 +2,8 @@
 // engine's own selector — nothing is counted a second time here (AC-706b).
 //
 // Two things arrive from the persistence layer rather than the engine: the best
-// score for this habitat (AC-706), and whether this run beat it (AC-707). Both
+// score (AC-706), and whether this run beat it (AC-707). There is one of each
+// now rather than one per habitat (AC-320d). Both
 // are read from the save as it stood BEFORE this run was folded in, which is
 // why they are props: by the time this renders, `applyRunRecord` has already
 // made the stored best include the number the badge is comparing against.
@@ -15,7 +16,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { DIFFICULTIES } from '../../engine/constants.js';
 import { RADIUS, SPACE, themed } from '../theme.js';
 import { useTheme } from '../progressStore.js';
 import { formatScore } from '../format.js';
@@ -34,13 +34,12 @@ function Stat({ caption, value }) {
 }
 
 export function GameOverSheet({
-  record, difficulty, flagged, reduced, best, newBest, unlocked = [], onAgain, onQuit,
+  record, flagged, reduced, best, newBest, unlocked = [], onAgain, onQuit,
 }) {
   const theme = useTheme();
   const styles = STYLES[theme.name];
-  const habitat = (DIFFICULTIES[difficulty] || DIFFICULTIES.savanna).label;
   return (
-    <Sheet testID="game-over" reduced={reduced} title={`Run over · ${habitat}`}>
+    <Sheet testID="game-over" reduced={reduced} title="Run over">
       <Text style={theme.type.display}>{formatScore(record.score)}</Text>
       {newBest ? (
         <View style={styles.badgeRow}>
@@ -48,7 +47,7 @@ export function GameOverSheet({
           <Text style={theme.type.body}>{`previous ${formatScore(best)}`}</Text>
         </View>
       ) : (
-        <Text style={theme.type.body}>{`Best in ${habitat}: ${formatScore(best)}`}</Text>
+        <Text style={theme.type.body}>{`Best: ${formatScore(best)}`}</Text>
       )}
       {flagged ? (
         // AC-504e / AC-1309: the engine was in a state the rules do not

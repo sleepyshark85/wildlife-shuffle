@@ -3,30 +3,30 @@
 // prints each board as text, so the engine can be sanity-checked without a phone.
 //
 //   node tools/play.mjs --seed 42 --turns 30
-//   node tools/play.mjs --seed 7 --difficulty tundra --turns 60 --every 10
+//   node tools/play.mjs --seed 7 --turns 60 --every 10
 //   node tools/play.mjs --seed 42 --turns 200 --quiet
-//   node tools/play.mjs --pacing            # the AC-318 measurement
+//   node tools/play.mjs --pacing            # the AC-318 / AC-320h measurement
+//   node tools/play.mjs --pacing --seeds 300
 //
 // This is a developer tool. It is not bundled into the app.
 
-import { BOARD, DIFFICULTIES, STATUS } from '../src/engine/constants.js';
+import { BOARD, STATUS } from '../src/engine/constants.js';
 import { ACTIONS, createRun, queueCells, reduce, runRecord } from '../src/engine/engine.js';
 import { chooseAction, measurePacing } from './bot.mjs';
 
 const GLYPH = { rat: 'R', fox: 'F', elk: 'K', buffalo: 'B', elephant: 'E' };
 
 function parseArgs(argv) {
-  const args = { seed: 42, turns: 30, difficulty: 'savanna', every: 1, quiet: false, pacing: false };
-  const numeric = { '--seed': 'seed', '--turns': 'turns', '--every': 'every' };
+  const args = { seed: 42, turns: 30, every: 1, seeds: 30, quiet: false, pacing: false };
+  const numeric = {
+    '--seed': 'seed', '--turns': 'turns', '--every': 'every', '--seeds': 'seeds',
+  };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     if (numeric[flag]) {
       const value = Number(argv[i + 1]);
       if (!Number.isFinite(value)) throw new Error(`${flag} needs a number`);
       args[numeric[flag]] = value;
-      i += 1;
-    } else if (flag === '--difficulty') {
-      args.difficulty = argv[i + 1];
       i += 1;
     } else if (flag === '--quiet') {
       args.quiet = true;
@@ -37,9 +37,6 @@ function parseArgs(argv) {
     } else {
       throw new Error(`Unknown option: ${flag}`);
     }
-  }
-  if (!DIFFICULTIES[args.difficulty]) {
-    throw new Error(`--difficulty must be one of ${Object.keys(DIFFICULTIES).join(', ')}`);
   }
   return args;
 }
@@ -80,41 +77,44 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stdout.write(
-      'Usage: node tools/play.mjs [--seed N] [--turns N] [--difficulty meadow|savanna|tundra]\n' +
-        '                          [--every N] [--quiet] [--pacing]\n',
+      'Usage: node tools/play.mjs [--seed N] [--turns N] [--every N]\n' +
+        '                          [--quiet] [--pacing [--seeds N]]\n',
     );
     return;
   }
 
   if (args.pacing) {
-    const rows = measurePacing();
-    const lines = ['AC-318 pacing — 30 seeds per difficulty, deterministic greedy bot',
-      'A measurement, not a gate: AC-318 is a starting hypothesis (gameplay.md §5.7).', ''];
-    lines.push('difficulty  median    mean   min   max   median score');
-    for (const [difficulty, row] of Object.entries(rows)) {
-      lines.push(
-        `${difficulty.padEnd(11)}${String(row.median).padStart(6)}` +
-          `${row.mean.toFixed(1).padStart(8)}${String(row.min).padStart(6)}` +
-          `${String(row.max).padStart(6)}${String(row.medianScore).padStart(15)}`,
-      );
-    }
-    // AC-318d: the SHAPE, not only the magnitude. Printed here as well as in
-    // test/pacing.test.js so the two remain independent counts of it.
-    const m = rows.meadow.median, sv = rows.savanna.median, t = rows.tundra.median;
-    lines.push('');
-    lines.push(`ratios  meadow/savanna ${(m / sv).toFixed(2)}   savanna/tundra ${(sv / t).toFixed(2)}` +
-      '   (target ~1.8 / ~1.6)');
-    lines.push('A 30-seed median is noisy: across ten independent blocks the meadow/savanna');
-    lines.push('ratio ranged 1.15-1.62. Tune against a wider sample, not against this one.');
+    const row = measurePacing(args.seeds);
+    // ONE ROW, because there is one curve (gameplay.md §5.5b). The old table
+    // printed three and a ratio between them; the ratio was the whole reason
+    // the habitats went, since across ten independent 30-seed blocks the
+    // meadow/savanna one ranged 1.15-1.62 and two of those blocks would have
+    // told a player the two were the same game.
+    const lines = [
+      `AC-318 / AC-320h pacing — ${args.seeds} seeds, deterministic greedy bot, abilities off`,
+      'A measurement, not a gate: AC-318 is a starting hypothesis (gameplay.md §5.7).',
+      '',
+      'median    mean   min   max     p10   p90   median score',
+      `${String(row.median).padStart(6)}${row.mean.toFixed(1).padStart(8)}` +
+        `${String(row.min).padStart(6)}${String(row.max).padStart(6)}` +
+        `${String(row.p10).padStart(8)}${String(row.p90).padStart(6)}` +
+        `${String(row.medianScore).padStart(15)}`,
+      '',
+      // AC-318g's minutes gate is what AC-320h defers to; at the ~4 s/turn
+      // §0 assumes, this is what the median run costs the player.
+      `median run ~${(row.median * 4 / 60).toFixed(1)} minutes at 4 s/turn (§0 wants 3-5)`,
+      'A 30-seed median is noisy: across ten independent blocks the old',
+      'meadow/savanna ratio ranged 1.15-1.62. Measure wide before tuning.',
+    ];
     process.stdout.write(`${lines.join('\n')}\n`);
     return;
   }
 
-  let state = createRun({ seed: args.seed, difficulty: args.difficulty });
+  let state = createRun({ seed: args.seed });
   const out = [];
   const log = (line) => out.push(line);
 
-  log(`Wildlife Shuffle — seed ${args.seed}, ${args.difficulty}, ${args.turns} turns`);
+  log(`Wildlife Shuffle — seed ${args.seed}, ${args.turns} turns`);
   if (!args.quiet) {
     log('');
     log(`TURN ${state.turn} (start)   score 0`);

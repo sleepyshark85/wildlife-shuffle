@@ -22,10 +22,11 @@ import Animated, {
 
 import { needsTarget, targetOf, targetingChip, turnStatus } from '../abilities.js';
 import { BEAT } from '../onboarding.js';
+import { stripRows } from '../buffaloStrip.js';
 import { CUE } from '../cues.js';
 import { fireCue } from '../cuePlayer.js';
 import {
-  RAIL_PAD, STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap,
+  GUTTER, RAIL_PAD, STAGE, WIDE_GAP, WIDE_GUTTER, boardLayout, boardTrayGap, railSlots,
 } from '../layout.js';
 import { EASE, delay, sequence, timing } from '../motion.js';
 import { useAnnouncements, useProgress, useTheme } from '../progressStore.js';
@@ -39,7 +40,7 @@ import { useTurnCues } from '../useTurnCues.js';
 import { ActionBar } from '../components/ActionBar.js';
 import { ArrivalFlight } from '../components/ArrivalFlight.js';
 import { Board } from '../components/Board.js';
-import { Hud, HudStats } from '../components/Hud.js';
+import { BuffaloStrip, Hud, HudStats } from '../components/Hud.js';
 import { IconButton } from '../components/Controls.js';
 import { Tray } from '../components/Tray.js';
 import { GameOverSheet } from './GameOverSheet.js';
@@ -56,7 +57,7 @@ import { AbilitySheet } from './AbilitySheet.js';
  * because a tutorial that runs on a special screen has taught the special
  * screen (gameplay.md §11).
  */
-export function GameScreen({ seed, difficulty, resumed = null, onboarding = null, onHowToPlay = null, onQuit }) {
+export function GameScreen({ seed, resumed = null, onboarding = null, onHowToPlay = null, onQuit }) {
   const theme = useTheme();
   const styles = STYLES[theme.name];
   const { width, height } = useWindowDimensions();
@@ -79,7 +80,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
   const [armed, setArmed] = useState(null);
   const settings = useSettings();
 
-  const run = useGameRun({ seed, difficulty, resumed });
+  const run = useGameRun({ seed, resumed });
   const drag = useDragShared();
   const progress = useProgress();
   const announcements = useAnnouncements(progress.save);
@@ -113,7 +114,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
   const over = run.view.gameOver;
   const record = run.view.record;
   const finishRun = progress.finishRun;
-  const bestNow = progress.save.best[difficulty] ? progress.save.best[difficulty].score : 0;
+  const bestNow = progress.save.best.score;
   const bestRef = useRef(bestNow);
   useEffect(() => {
     if (!over) bestRef.current = bestNow;
@@ -265,10 +266,10 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
   // AC-615 / AC-509b: the HUD's two schedules come off the same plan the board
   // is playing, so the chip and the score cannot disagree with the animals.
   const count = plan ? plan.score : null;
-  const buffaloShrink =
-    plan && run.view.buffalo && plan.moves[run.view.buffalo.id]
-      ? plan.moves[run.view.buffalo.id].size
-      : null;
+  // AC-509/509b: one chip per buffalo, bottom row first, and a retired one
+  // keeps its chip until the plan has finished taking it off the board
+  // (src/ui/buffaloStrip.js). The strip and the board read the same plan.
+  const stripChips = stripRows(run.view.buffaloes, plan);
 
   // One status line for the whole screen (src/ui/abilities.js), so the HUD and
   // the rail cannot disagree about what the player is being asked to do.
@@ -380,8 +381,18 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
               score={run.view.score}
               count={count}
               streak={run.view.streak}
-              buffalo={run.view.buffalo}
-              buffaloShrink={buffaloShrink}
+              reduced={reduced}
+              column
+            />
+            {/* AC-121: the rail carries the SAME components, rearranged — so
+                the strip comes with the HUD rather than staying behind in a
+                vertical stack that stage W does not have. It is sized against
+                the rail's content width, because a rail is a width (AC-126). */}
+            <BuffaloStrip
+              chrome={chrome}
+              rows={stripChips}
+              countdown={run.view.buffaloIn}
+              contentW={railSlots(railW).content}
               reduced={reduced}
               column
             />
@@ -414,11 +425,19 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
           score={run.view.score}
           count={count}
           streak={run.view.streak}
-          buffalo={run.view.buffalo}
-          buffaloShrink={buffaloShrink}
           reduced={reduced}
           onPause={() => setPaused(true)}
           pauseMuted={!inputOpen}
+        />
+        {/* ui.md §7.1. Its height is reserved in the chrome budget whether or
+            not it is showing (src/ui/layout.js CHROME), so a buffalo landing
+            never moves the board under the player's finger. */}
+        <BuffaloStrip
+          chrome={chrome}
+          rows={stripChips}
+          countdown={run.view.buffaloIn}
+          contentW={Math.max(0, width - GUTTER)}
+          reduced={reduced}
         />
         {/* The board + tray group is a flex child centred in whatever remains. */}
         <View style={styles.centre}>
@@ -459,7 +478,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
           satisfied={beatDone}
           // Below the HUD in every stage that has one at the top; in stage W
           // the HUD is in the side rail and there is nothing above the board.
-          top={insets.top + (wide ? 0 : chrome.hud)}
+          top={insets.top + (wide ? 0 : chrome.hud + chrome.strip)}
           onNext={onboarding.onNext}
           onSkip={onboarding.onSkip}
         />
@@ -472,7 +491,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
           onHowToPlay={onHowToPlay}
           onRestart={() => {
             setPaused(false);
-            run.restart(difficulty);
+            run.restart();
           }}
           onQuit={onQuit}
         />
@@ -489,7 +508,6 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
       {run.view.gameOver && outcome && !onboarding ? (
         <GameOverSheet
           record={run.view.record}
-          difficulty={difficulty}
           flagged={Boolean(run.guardRecord)}
           reduced={reduced}
           best={outcome.best}
@@ -497,7 +515,7 @@ export function GameScreen({ seed, difficulty, resumed = null, onboarding = null
           unlocked={announcements}
           onAgain={() => {
             progress.announce(announcements.map((u) => u.id));
-            run.restart(difficulty);
+            run.restart();
           }}
           onQuit={() => {
             progress.announce(announcements.map((u) => u.id));

@@ -86,8 +86,8 @@ test('AC-834 the plan is additive: the board and the score are what reduce() sai
   // The wrapper the state layer uses must not be able to change the game. If a
   // frame never plays, `state.animals` is still this.
   for (let s = 0; s < 12; s += 1) {
-    let plain = createRun({ seed: `same-${s}`, difficulty: 'savanna' });
-    let wrapped = createRun({ seed: `same-${s}`, difficulty: 'savanna' });
+    let plain = createRun({ seed: `same-${s}` });
+    let wrapped = createRun({ seed: `same-${s}` });
     for (let turn = 0; turn < 20 && plain.status === 'READY'; turn += 1) {
       plain = reduce(plain, { type: ACTIONS.PASS });
       wrapped = runReducer(wrapped, { type: ACTIONS.PASS });

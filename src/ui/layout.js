@@ -51,20 +51,56 @@ export const RAIL_PAD = 12;
 
 /**
  * Chrome budgets, in points of vertical space consumed outside the board.
- * ui.md §3.2: full 163, compact 134, rail 63.
+ * ui.md §3.2: full 163, compact 134, rail 63 — plus ui.md §7.1's buffalo strip.
  *
  * The tray lost 14 pt when it became silhouettes (§6.2), and that is not
  * decoration: it is a third of why the reference iPhone goes from a 36 pt cell
  * to 39. The thinner tray is part of why nine columns reads better, rather
  * than merely a consequence of it.
+ *
+ * ---- `strip`, and the one place this deviates from ui.md §7.1 -------------
+ *
+ * §7.1 asks for a 20 pt buffalo strip under the HUD, "present only when a
+ * buffalo is on the board or the countdown is <= 5", whose height "the gap
+ * between HUD and board absorbs ... and the cell ladder steps down one rung
+ * below that. It never pushes the board."
+ *
+ * THE GAP CANNOT ABSORB IT, MEASURED. `verticalSlack` on the shipped budget is
+ * 9-51 pt across the ui.md §3.2 device table, and five of those ten devices
+ * have less than 20: 375x667 has 18, 402x874 has 14, the folded Duo 18, and
+ * Display Zoom on a 393x852 has 9. A strip rendered into a gap that short does
+ * not fit in it; it pushes the board off the bottom of the screen, which is the
+ * AC-103 overflow the whole ladder exists to prevent.
+ *
+ * AND A CONDITIONAL RESERVATION WOULD BE WORSE THAN A CONSTANT ONE. §7.1's own
+ * argument for keeping the strip outside the 52 pt HUD is that "the HUD's
+ * height is what the board's fit is calculated from and a variable-height HUD
+ * would make the cell ladder variable too". That argument applies verbatim to
+ * the strip: reserving it only while it is showing would resize every cell on
+ * the board on the turn a buffalo lands, under the player's finger, mid-drag.
+ *
+ * SO IT IS RESERVED ALWAYS AND HIDDEN WHEN EMPTY, and the reservation is funded
+ * the way §7.1 says — out of the gap — by moving 12 pt (full) / 6 pt (compact)
+ * from `gaps` into `strip`. `gaps` keeps `boardTrayGap` plus the two hairline
+ * rules plus 2 pt, which is what makes `verticalSlack` provably non-negative
+ * (see its own comment). The net cost to the board is 8 pt at full chrome and
+ * 10 pt at compact — one rung on some viewports, none on the reference device,
+ * where the cell stays at 39.
+ *
+ * REPORTED, NOT DECIDED HERE: whether the board may pay 8 pt for the strip at
+ * all is the owner's call, and the alternative — adding all 20 pt on top —
+ * costs the reference device a rung as well.
  */
 export const CHROME = Object.freeze({
-  full:    Object.freeze({ hud: 52, action: 48, tray: 31, gaps: 32 }), // 163
-  compact: Object.freeze({ hud: 44, action: 44, tray: 26, gaps: 20 }), // 134
-  rail:    Object.freeze({ hud: 0,  action: 0,  tray: 31, gaps: 32 }), //  63
+  full:    Object.freeze({ hud: 52, action: 48, tray: 31, gaps: 20, strip: 20 }), // 171
+  compact: Object.freeze({ hud: 44, action: 44, tray: 26, gaps: 14, strip: 16 }), // 144
+  // Stage W puts the HUD in the side rail, and the strip goes with it: it is
+  // part of the HUD's information, not part of the vertical stack (AC-121 —
+  // the rail carries the same components, none added or removed).
+  rail:    Object.freeze({ hud: 0,  action: 0,  tray: 31, gaps: 32, strip: 0 }),  //  63
 });
 
-const sum = (c) => c.hud + c.action + c.tray + c.gaps;
+const sum = (c) => c.hud + c.action + c.tray + c.gaps + c.strip;
 
 /**
  * The gap between the board and the tray. The `gaps` line of the chrome budget
@@ -74,6 +110,141 @@ const sum = (c) => c.hud + c.action + c.tray + c.gaps;
  */
 export function boardTrayGap(chrome) {
   return chrome === CHROME.compact ? 10 : 16;
+}
+
+/**
+ * ui.md §7.1 — the buffalo strip's own geometry.
+ *
+ * The strip is `chrome.strip` tall in total and carries a 12 pt chip row under
+ * its top padding: 6 + 12 + 2 = 20 at full chrome, 2 + 12 + 2 = 16 at compact.
+ * The bars do not shrink with the chrome, because a 12 pt bar is already the
+ * smallest thing in the HUD that has to be countable at arm's length.
+ */
+export const CHIP_H = 12;
+
+export function buffaloStripMetrics(chrome) {
+  // Stage W reserves nothing in the vertical stack because the strip goes into
+  // the rail with the rest of the HUD, so it takes the full budget's geometry
+  // rather than a height of zero.
+  const height = chrome.strip || CHROME.full.strip;
+  return { height, padTop: Math.max(0, height - CHIP_H - 2), chipH: CHIP_H };
+}
+
+/**
+ * ui.md §7.1's three chip rules, largest first. A chip is five bars — one per
+ * `SPECIES.buffalo.size` segment — and the glyph drops at the tightest rule.
+ *
+ * `glyphGap` is not in §7.1; it takes the bar gap, so there is one number
+ * rather than a fourth that has to agree with it.
+ */
+export const BUFFALO_BARS = 5;
+
+export const CHIP_RULES = Object.freeze([
+  Object.freeze({ upTo: 4,  bar: 5, barGap: 2,   chipGap: 10, glyph: 13 }),
+  Object.freeze({ upTo: 7,  bar: 3, barGap: 1.5, chipGap: 7,  glyph: 13 }),
+  Object.freeze({ upTo: 10, bar: 2, barGap: 1,   chipGap: 5,  glyph: 0 }),
+]);
+
+function chipWidth(rule) {
+  const bars = BUFFALO_BARS * rule.bar + (BUFFALO_BARS - 1) * rule.barGap;
+  return rule.glyph ? bars + rule.glyph + rule.barGap : bars;
+}
+
+function rowWidth(count, rule) {
+  return count * chipWidth(rule) + Math.max(0, count - 1) * rule.chipGap;
+}
+
+/**
+ * The chip rule for `count` buffalo in `available` points — AC-509d: they
+ * SHRINK to fit, and never wrap, scroll, or hide behind a "+3". A count you
+ * have to tap to read is not a status, it is a menu.
+ *
+ * Two things make this a function of the width rather than a lookup on the
+ * count alone, and both are measurements rather than caution:
+ *
+ *   - §7.1 sizes ten chips at 185 pt "of a 361 pt content width", which is the
+ *     REFERENCE device. The viewport sweep supports 272 pt of width, where the
+ *     content is 240 and the chips have about 150 — so even §7.1's own ten-chip
+ *     figure does not fit the narrowest screen this app claims to support.
+ *   - §7.1's worst case is ten buffalo. Over 300 bot seeds on this curve I
+ *     measured ELEVEN, and with no population cap (AC-311) nothing bounds it.
+ *     A table that stops at ten would be a table with an unhandled case.
+ *
+ * So the three rules are honoured exactly where they fit, and past them the
+ * tightest rule is scaled down proportionally. Nothing is ever dropped.
+ */
+export function chipRuleFor(count, available) {
+  if (count <= 0) return null;
+  for (const rule of CHIP_RULES) {
+    if (count <= rule.upTo && rowWidth(count, rule) <= available) {
+      return finishRule(rule, count);
+    }
+  }
+  // The tightest rule has no COUNT ceiling, only a width one: `upTo: 10` above
+  // is what stops a LARGER rule being used for eleven buffalo, not a claim that
+  // eleven cannot happen. It can — I measured 11 over 300 bot seeds — and with
+  // no population cap (AC-311) nothing bounds it.
+  const tight = CHIP_RULES[CHIP_RULES.length - 1];
+  if (rowWidth(count, tight) <= available) return finishRule(tight, count);
+
+  // Past even that, the tightest rule is SCALED — one factor over all three
+  // dimensions, never a per-dimension solve.
+  //
+  // The factor is what makes it monotone, and monotone is the property that
+  // matters: `rowWidth(count, tight)` strictly increases with the count, so
+  // the factor never increases, so no chip is ever WIDER than the one before
+  // it. Solving the bar against a gap that had itself been rounded down
+  // produced a 4 pt bar for eleven buffalo where ten got 2 — the row growing
+  // as the board got worse.
+  //
+  // Half-point precision, because a quarter-point bar is a rounding artefact
+  // on every scale factor iOS ships. The bar keeps a half-point floor and the
+  // gaps do not: a chip with no gap is crowded, a chip with no bar is nothing.
+  const half = (v, floor) => Math.max(floor, Math.floor(v * 2) / 2);
+  const k = available / rowWidth(count, tight);
+  return finishRule({
+    upTo: null,
+    bar: half(tight.bar * k, 0.5),
+    barGap: half(tight.barGap * k, 0),
+    chipGap: half(tight.chipGap * k, 0),
+    glyph: 0,
+  }, count);
+}
+
+/**
+ * ui.md §7.1's gold rim, sized so it cannot eat the bar it is drawn on.
+ *
+ * The rim is per-BAR rather than around the chip, because at the 8-10 rule the
+ * chip IS its bars: the glyph drops and there is no plate left to rim. §7.1's
+ * own width arithmetic — "10 x (5 x 2 + 4 x 1) + 9 x 5 = 185" — counts a chip
+ * as exactly its bars and allows nothing for a surround, so a rim that added
+ * width would contradict the figure it is specified beside. React Native's
+ * border is inside the box, so this one adds none.
+ *
+ * At a 2 pt bar a 1 pt rim on each side would leave zero fill and the chip
+ * would be all rim: the remaining/spent distinction, which is the whole
+ * information, would vanish at exactly the crowd size that needs it most. So
+ * it scales with the bar and keeps at least half the width as fill.
+ */
+function finishRule(rule, count) {
+  const out = { ...rule, rim: Math.min(1, rule.bar / 4) };
+  return { ...out, width: chipWidth(out), row: rowWidth(count, out) };
+}
+
+/**
+ * ui.md §7.1: `NEXT 🐃 n`, 11/600 mono, right-aligned, never wraps. Reserved
+ * rather than measured, for `STATUS_W`'s reason — the chips have to know what
+ * is left, and a width that depends on text metrics is a width the layout
+ * cannot compute before it renders.
+ */
+export const COUNTDOWN_W = 78;
+
+/** The gap between the chip row and the countdown. */
+export const COUNTDOWN_GAP = 8;
+
+/** How much width the chip row has, given the screen (or rail) width. */
+export function chipRoomFor(contentW) {
+  return Math.max(0, contentW - COUNTDOWN_W - COUNTDOWN_GAP);
 }
 
 
@@ -332,6 +503,14 @@ export function passButtonHeight(chrome) {
  * This is the AC-103 guarantee expressed in the geometry the screen actually
  * renders, rather than in the ladder's abstract budget: a negative result is a
  * scroll or a clip. `test/layout.test.js` sweeps it.
+ *
+ * It subtracts the buffalo strip because the strip is reserved whether or not
+ * it is showing (see CHROME). That reservation is also what makes this
+ * provably non-negative rather than merely measured to be: substituting the
+ * definitions gives `avail - cell x ROWS + (gaps - boardTrayGap) - 2`, and
+ * `gaps` is set 4 above `boardTrayGap` at both budgets precisely to cover the
+ * two HAIRLINEs and leave 2 over, while `cell <= floor(avail / ROWS)` makes the
+ * first term non-negative by construction.
  */
 export function verticalSlack(layout, screenH, insetTop, insetBottom) {
   if (layout.stage === STAGE.UNSUPPORTED) return 0;
@@ -340,7 +519,7 @@ export function verticalSlack(layout, screenH, insetTop, insetBottom) {
   // Stage W moves the HUD and the action bar into the rail, so the only
   // vertical chrome left is the tray.
   const bars = wide ? 0 : hudHeight(chrome) + actionBarHeight(chrome);
-  const region = screenH - insetTop - insetBottom - bars;
+  const region = screenH - insetTop - insetBottom - bars - chrome.strip;
   const group = cell * ROWS + boardTrayGap(chrome) + chrome.tray;
   return region - group;
 }

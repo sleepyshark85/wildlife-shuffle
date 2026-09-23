@@ -26,6 +26,7 @@ import {
   WIDE_GUTTERS,
   MIN_TOUCH,
   actionBarHeight,
+  boardTrayGap,
   boardLayout,
   hitSlopFor,
   hudHeight,
@@ -105,6 +106,11 @@ test('AC-102 iPhone 15 (393 x 852, insets 59/34) is 39 pt and 351 x 585', () => 
   // Was 36 pt and 360 x 540 at ten columns. Nine columns divides the same
   // width into fewer cells and the silhouette tray returned 14 pt of height,
   // so the reference device gains 3 pt of cell from two changes at once.
+  //
+  // AND IT DOES NOT MOVE FOR ui.md §7.1's BUFFALO STRIP. The strip costs the
+  // budget 8 pt at full chrome, and the reference device had 25 pt of slack
+  // and a floored cell, so the rung it lands on is unchanged. Other devices
+  // pay — see the device table below.
   const L = boardLayout(393, 852, 59, 34);
   assert.equal(L.stage, STAGE.COMFORTABLE);
   assert.equal(L.cell, 39);
@@ -124,14 +130,20 @@ test('AC-101 the board is always 9 x 15', () => {
 test('ui.md §3.2 device table: every published row reproduces', () => {
   const table = [
     ['iPhone SE 1 / 5s',      320, 568,  0,  0, STAGE.MINIMUM,     28],
-    ['iPhone SE2 / SE3 / 8',  375, 667, 20,  0, STAGE.COMFORTABLE, 32],
-    ['iPhone 12 / 13 mini',   375, 812, 50, 34, STAGE.COMFORTABLE, 37],
-    ['iPhone 14 / 15 / 16',   393, 852, 59, 34, STAGE.COMFORTABLE, 39],
-    ['iPhone 17 / 18 Pro',    402, 874, 62, 34, STAGE.COMFORTABLE, 41],
-    ['iPhone 15/16/17 Plus',  430, 932, 59, 34, STAGE.COMFORTABLE, 44],
-    ['iPhone 16/17/18 Pro Max', 440, 956, 62, 34, STAGE.COMFORTABLE, 44],
-    ['iPhone Duo, folded',    466, 678, 59, 34, STAGE.COMPACT,     30],
-    ['Display Zoom 320x693',  320, 693, 59, 34, STAGE.COMPACT,     31],
+    // WHAT THE BUFFALO STRIP COSTS, DEVICE BY DEVICE (ui.md §7.1, CHROME).
+    // Four rows lose a point of cell and one loses a rung; the reference
+    // device, the Plus, the Pro Max and the SE 1 are unchanged. The published
+    // §3.2 table still names the OLD numbers for the four that moved, which is
+    // reported rather than silently reconciled here.
+    //                                                    was ->
+    ['iPhone SE2 / SE3 / 8',  375, 667, 20,  0, STAGE.COMFORTABLE, 31],  // 32
+    ['iPhone 12 / 13 mini',   375, 812, 50, 34, STAGE.COMFORTABLE, 37],  // 37
+    ['iPhone 14 / 15 / 16',   393, 852, 59, 34, STAGE.COMFORTABLE, 39],  // 39
+    ['iPhone 17 / 18 Pro',    402, 874, 62, 34, STAGE.COMFORTABLE, 40],  // 41
+    ['iPhone 15/16/17 Plus',  430, 932, 59, 34, STAGE.COMFORTABLE, 44],  // 44
+    ['iPhone 16/17/18 Pro Max', 440, 956, 62, 34, STAGE.COMFORTABLE, 44],  // 44
+    ['iPhone Duo, folded',    466, 678, 59, 34, STAGE.MINIMUM,     29],  // compact 30
+    ['Display Zoom 320x693',  320, 693, 59, 34, STAGE.COMPACT,     30],  // compact 31
   ];
   for (const [name, w, h, it, ib, stage, cell] of table) {
     const L = boardLayout(w, h, it, ib);
@@ -140,12 +152,16 @@ test('ui.md §3.2 device table: every published row reproduces', () => {
   }
 });
 
-test('AC-112 stage 0 is used whenever a 30 pt cell fits the full 163 pt chrome', () => {
+test('AC-112 stage 0 is used whenever a 30 pt cell fits the full chrome', () => {
   const L = boardLayout(393, 852, 59, 34);
-  assert.equal(L.chromeHeight, 163);
+  // 163 + ui.md §7.1's 20 pt buffalo strip, less the 12 pt taken out of the
+  // gaps allowance to fund it. See CHROME in layout.js for why the strip is
+  // reserved whether or not it is showing.
+  assert.equal(L.chromeHeight, 171);
   assert.equal(L.chrome.hud, 52);
   assert.equal(L.chrome.action, 48);
   assert.equal(L.chrome.tray, 31);
+  assert.equal(L.chrome.strip, 20);
 });
 
 test('AC-113/AC-115 chrome yields before the board does', () => {
@@ -156,14 +172,14 @@ test('AC-113/AC-115 chrome yields before the board does', () => {
     const L = boardLayout(393, h, 59, 34);
     if (L.stage === STAGE.COMPACT) {
       sawCompact = true;
-      assert.equal(L.chromeHeight, 134);
+      assert.equal(L.chromeHeight, 144);
       assert.ok(L.cell >= 30);
       // Stage 0 at this same viewport really would have been too small.
-      assert.ok(Math.floor((h - 59 - 34 - 163) / ROWS) < 30);
+      assert.ok(Math.floor((h - 59 - 34 - 171) / ROWS) < 30);
     }
     if (L.stage === STAGE.MINIMUM) {
       sawMinimum = true;
-      assert.equal(L.chromeHeight, 134);
+      assert.equal(L.chromeHeight, 144);
       assert.ok(L.cell >= 24 && L.cell < 44);
     }
   }
@@ -189,7 +205,9 @@ test('AC-117 Display Zoom shrinks the viewport and the ladder absorbs it', () =>
   // thinner tray lift it to COMPACT at 31 — the ladder absorbing Display Zoom
   // one rung higher than it used to (ui.md §3.2).
   assert.equal(zoomed.stage, STAGE.COMPACT);
-  assert.equal(zoomed.cell, 31);
+  // 31 before ui.md §7.1's buffalo strip: it still absorbs Display Zoom one
+  // rung higher than the ten-column board did, and pays a point for the strip.
+  assert.equal(zoomed.cell, 30);
   assert.ok(fits(zoomed, 320, 693, 59, 34));
 });
 
@@ -265,11 +283,29 @@ test('AC-415 hitSlop pads any rendered body out to 44 pt', () => {
   assert.deepEqual(hitSlopFor(180, 36), { top: 4, bottom: 4, left: 0, right: 0 });
 });
 
-test('CHROME budgets are the ones ui.md §3.2 publishes', () => {
-  const total = (c) => c.hud + c.action + c.tray + c.gaps;
-  assert.equal(total(CHROME.full), 163);
-  assert.equal(total(CHROME.compact), 134);
+test('CHROME budgets are ui.md §3.2 PLUS §7.1s buffalo strip, funded from the gaps', () => {
+  // §3.2 publishes 163 / 134 / 63. §7.1 adds a 20 pt strip under the HUD and
+  // asks for "the gap between HUD and board" to absorb it — which measured, it
+  // cannot: `verticalSlack` on the shipped budget is 9-51 pt across §3.2's own
+  // device table. So 12 pt (full) / 6 pt (compact) comes out of `gaps` and the
+  // board yields the remaining 8 / 10. Stage W is untouched: its strip goes
+  // into the rail with the HUD.
+  const published = (c) => c.hud + c.action + c.tray + c.gaps;
+  const total = (c) => published(c) + c.strip;
+  assert.equal(published(CHROME.full) + 12, 163, 'the gaps line gave up 12 pt');
+  assert.equal(published(CHROME.compact) + 6, 134, 'the compact gaps line gave up 6 pt');
+  assert.equal(total(CHROME.full), 171);
+  assert.equal(total(CHROME.compact), 144);
   assert.equal(total(CHROME.rail), 63);
+  assert.equal(CHROME.rail.strip, 0, 'stage W reserved vertical space it does not use');
+
+  // `gaps` must stay clear of `boardTrayGap` by the two HAIRLINE rules plus a
+  // point, which is what makes `verticalSlack` non-negative by construction
+  // rather than by measurement. This is the arithmetic that claim rests on.
+  for (const c of [CHROME.full, CHROME.compact]) {
+    assert.ok(c.gaps - boardTrayGap(c) >= 2 * HAIRLINE,
+      `gaps ${c.gaps} against a ${boardTrayGap(c)} pt gap and two rules`);
+  }
 });
 
 
@@ -335,10 +371,13 @@ test('AC-114/AC-103 the action bar contains its own Pass button, at every stage'
  * here fails and says why.
  */
 function referenceLayout(w, h, it, ib) {
-  const FULL = { hud: 52, act: 48, tray: 31, gaps: 32 };
-  const COMPACT = { hud: 44, act: 44, tray: 26, gaps: 20 };
-  const RAIL = { hud: 0, act: 0, tray: 31, gaps: 32 };
-  const total = (c) => c.hud + c.act + c.tray + c.gaps;
+  // ui.md §3.2's budgets plus §7.1's strip, exactly as docs/v2/layout-sweep.mjs
+  // now carries them. The point of this function is to be a SECOND transcription
+  // of the design, so it reads the design's numbers rather than layout.js's.
+  const FULL = { hud: 52, act: 48, tray: 31, gaps: 20, strip: 20 };
+  const COMPACT = { hud: 44, act: 44, tray: 26, gaps: 14, strip: 16 };
+  const RAIL = { hud: 0, act: 0, tray: 31, gaps: 32, strip: 0 };
+  const total = (c) => c.hud + c.act + c.tray + c.gaps + c.strip;
   const fit = (c, lo, hi) => {
     const avail = h - it - ib - total(c);
     const raw = Math.floor(Math.min((w - 32) / BOARD.width, avail / 15));

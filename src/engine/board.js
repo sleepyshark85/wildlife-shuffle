@@ -85,9 +85,28 @@ export function filledRows(animals, width = BOARD.width, height = BOARD.height) 
   return rows;
 }
 
-/** The buffalo currently on the board, or undefined. At most one exists (D10). */
-export function buffaloOnBoard(animals) {
-  return animals.find((a) => a.type === BUFFALO);
+/**
+ * Every buffalo on the board, ordered BOTTOM ROW FIRST then left to right.
+ *
+ * PLURAL SINCE AC-311, AND THE COMMENT THAT USED TO SIT HERE WAS THE RULE: it
+ * read "At most one exists (D10)", which the owner overruled having played it
+ * — "we can have multiple buffalo, the player need to try to clear it as soon
+ * as possible". There is no population cap and nothing may add one.
+ *
+ * What survives is a narrower invariant, and it is arithmetic rather than
+ * policy: no ROW holds two buffalo, because `2 x SPECIES.buffalo.size >
+ * BOARD.width` (10 > 9). That is what leaves every rule in gameplay.md §6.4
+ * untouched — a completed row still holds exactly one buffalo or none
+ * (AC-311b).
+ *
+ * The order is the HUD's (ui.md §7.1, AC-509): chip k is buffalo k counted up
+ * from the floor, so the eye can match a chip to a body without counting. y = 0
+ * is the bottom row.
+ */
+export function buffaloesOnBoard(animals) {
+  return animals
+    .filter((a) => a.type === BUFFALO)
+    .sort((a, b) => (a.y - b.y) || (a.x - b.x));
 }
 
 export const MOVE_OK = 'ok';

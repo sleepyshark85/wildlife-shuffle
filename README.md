@@ -21,7 +21,7 @@ No Expo account is needed to run a local dev server.
 ```bash
 npm test                      # 161 unit + property tests, then lint
 node tools/play.mjs --seed 42 --turns 30   # play a seeded run as ASCII, no phone
-node tools/play.mjs --pacing               # difficulty pacing table
+node tools/play.mjs --pacing               # the run-length pacing measurement
 node docs/v2/layout-sweep.mjs              # 682,290 viewports, must be 0 overflowing
 node docs/v2/check-ac-refs.mjs             # dangling/duplicate acceptance-criteria refs
 ```
@@ -56,7 +56,7 @@ against a stale commit and got part of the feature inventory wrong.
 | | |
 |---|---|
 | `docs/development-process.md` | The team, the procedure, and the rule each incident produced |
-| `docs/v2/gameplay.md` | Rules, spawning, difficulty, scoring |
+| `docs/v2/gameplay.md` | Rules, spawning, the curve, scoring |
 | `docs/v2/ui.md` | Layout, colour, the animal component, motion |
 | `docs/v2/acceptance-criteria.md` | 249 numbered, testable criteria |
 | `docs/v2/open-questions.md` | Decisions still outstanding |

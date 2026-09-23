@@ -202,8 +202,8 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
        * Both were sitting, opaque, in a row whose occupant had not risen out
        * of it yet, and that — not the stale row this function exists for — is
        * the larger half of the measured overlap: 64 of the 78 full-cell
-       * overlaps in a 6,133-turn tundra sweep. Carrying the record lets them
-       * hold at opacity 0 until the flight would have landed, which is the
+       * overlaps in a 6,133-turn sweep on the then-Tundra table. Carrying the record
+       * lets them hold at opacity 0 until the flight would have landed, which is the
        * rule `AnimalView` applies to every other arriving body.
        */
       arrival: record.arrival,

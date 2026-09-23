@@ -1,4 +1,5 @@
-// The HUD (ui.md §3.1). Score, streak multiplier, buffalo chip, pause.
+// The HUD (ui.md §3.1) and the buffalo strip under it (ui.md §7.1). Score,
+// streak multiplier, the herd, the countdown, pause.
 // The same components appear in the stage-W rail, rearranged (AC-121).
 //
 // Two things here are not obvious.
@@ -31,16 +32,120 @@ import React, { memo, useEffect } from 'react';
 import { StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, {
   useAnimatedProps,
+  useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 
-import { hudHeight } from '../layout.js';
+import {
+  BUFFALO_BARS, COUNTDOWN_GAP, COUNTDOWN_W, buffaloStripMetrics, chipRoomFor, chipRuleFor,
+  hudHeight,
+} from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
-import { SPACE, hudScale, themed } from '../theme.js';
+import { MOTION, SPACE, hudScale, themed } from '../theme.js';
 import { useTheme } from '../progressStore.js';
 import { formatScore } from '../format.js';
+import { stripIsVisible, stripLabel } from '../buffaloStrip.js';
 import { BuffaloChip, IconButton, StreakPill } from './Controls.js';
+
+const BUFFALO_GLYPH = '\u{1F403}';
+
+/**
+ * One chip's arrival and departure (ui.md §7.1: 180 ms in, 200 ms out).
+ *
+ * The chip is mounted for as long as its buffalo is on the board, so the
+ * DEPARTURE cannot be an unmount — React has already removed the row by the
+ * time the board's settle plays it. `leaving` is therefore driven by the same
+ * plan the board is playing, exactly as the shrink is (AC-509b): the strip
+ * moves when the board moves, never on a React commit.
+ */
+const Chip = memo(function Chip({ size, rule, shrink, leaving, reduced }) {
+  const styles = STYLES[useTheme().name];
+  const on = useSharedValue(0);
+  useEffect(() => {
+    if (leaving) {
+      on.value = delay(leaving.at, withTiming(0, timing(MOTION.chipOut, EASE.out, reduced)));
+      return;
+    }
+    on.value = withTiming(1, timing(MOTION.chipIn, EASE.out, reduced));
+  }, [leaving, reduced, on]);
+  const style = useAnimatedStyle(() => ({ opacity: on.value }));
+  return (
+    <Animated.View style={[styles.chipSlot, style]}>
+      <BuffaloChip size={size} bars={BUFFALO_BARS} rule={rule} shrink={shrink} reduced={reduced} />
+    </Animated.View>
+  );
+});
+
+/**
+ * ui.md §7.1 — the buffalo strip: one chip per buffalo, bottom row first, and
+ * the turns until the next scheduled arrival.
+ *
+ * ONE CHIP PER BUFFALO (AC-509). A single chip showing one of four buffalo
+ * would be AC-301's broken-preview defect in miniature — information on screen
+ * that is true of something other than what the player is looking at.
+ *
+ * THE COUNTDOWN IS ONLY HONEST BECAUSE THE SCHEDULE IS (AC-509c, AC-310b).
+ * Under the superseded one-at-a-time rule the next buffalo depended on when the
+ * current one happened to die, which the player cannot predict; `isBuffaloTurn`
+ * is a pure function of the turn number now, so `NEXT 🐃 4` is a promise the
+ * engine always keeps.
+ *
+ * The strip's HEIGHT is reserved whether or not it is showing (src/ui/layout.js
+ * CHROME), so this renders into a fixed box and the board never moves.
+ */
+export const BuffaloStrip = memo(function BuffaloStrip({
+  chrome, rows, countdown, contentW, reduced, large, column,
+}) {
+  const styles = STYLES[useTheme().name];
+  const metrics = buffaloStripMetrics(chrome);
+  // Stage W stacks the countdown under the chips, because a 96 pt rail cannot
+  // hold a 78 pt countdown beside anything (AC-121 asks for the same
+  // components, not the same arrangement — see `railSlots`). In a column the
+  // chips get the whole content width.
+  const room = column ? contentW : chipRoomFor(contentW);
+  const rule = chipRuleFor(rows.length, room);
+  const show = stripIsVisible(rows.length, countdown);
+  return (
+    <View
+      style={column
+        ? styles.stripColumn
+        : [styles.strip, { height: metrics.height, paddingTop: metrics.padTop }]}
+      accessible
+      accessibilityLiveRegion="polite"
+      accessibilityLabel={stripLabel(rows.map((r) => r.size), countdown)}
+      importantForAccessibility={show ? 'yes' : 'no-hide-descendants'}
+      testID="buffalo-strip"
+    >
+      {show ? (
+        <>
+          <View style={[styles.chips, { gap: rule ? rule.chipGap : 0 }]}>
+            {rows.map((r) => (
+              <Chip
+                key={r.id}
+                size={r.size}
+                rule={{ ...rule, chipH: metrics.chipH }}
+                shrink={r.shrink}
+                leaving={r.leaving}
+                reduced={reduced}
+              />
+            ))}
+          </View>
+          <Text
+            allowFontScaling={false}
+            numberOfLines={1}
+            testID="buffalo-countdown"
+            style={[styles.countdown, column ? null : { width: COUNTDOWN_W }]}
+          >
+            {/* ui.md §10's HUD rule: at an accessibility size, trade the label
+                for the value, never the height. */}
+            {large ? `${BUFFALO_GLYPH} ${countdown}` : `NEXT ${BUFFALO_GLYPH} ${countdown}`}
+          </Text>
+        </>
+      ) : null}
+    </View>
+  );
+});
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
@@ -95,7 +200,7 @@ const ScoreValue = memo(function ScoreValue({ score, count, reduced, fontSize })
 });
 
 export const HudStats = memo(function HudStats({
-  score, count, streak, buffalo, buffaloShrink, reduced, compact, column,
+  score, count, streak, reduced, compact, column,
 }) {
   const theme = useTheme();
   const styles = STYLES[theme.name];
@@ -112,14 +217,6 @@ export const HudStats = memo(function HudStats({
       </View>
       <View style={column ? styles.badgesColumn : styles.badgesRow}>
         {streak.show ? <StreakPill mult={streak.mult} large={large} /> : null}
-        {buffalo ? (
-          <BuffaloChip
-            size={buffalo.size}
-            shrink={buffaloShrink}
-            reduced={reduced}
-            large={large}
-          />
-        ) : null}
       </View>
     </View>
   );
@@ -142,7 +239,7 @@ export const HudStats = memo(function HudStats({
  * than a second 150 pt button. That deviation is recorded in `layout.js`.
  */
 export const Hud = memo(function Hud({
-  chrome, score, count, streak, buffalo, buffaloShrink, reduced, onPause, pauseMuted,
+  chrome, score, count, streak, reduced, onPause, pauseMuted,
 }) {
   const styles = STYLES[useTheme().name];
   return (
@@ -151,8 +248,6 @@ export const Hud = memo(function Hud({
         score={score}
         count={count}
         streak={streak}
-        buffalo={buffalo}
-        buffaloShrink={buffaloShrink}
         reduced={reduced}
         compact={chrome.hud === 44}
       />
@@ -170,6 +265,17 @@ const STYLES = themed((T) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: T.colors.hairline,
   },
+  strip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACE.lg,
+    gap: COUNTDOWN_GAP,
+  },
+  stripColumn: { gap: SPACE.xs, alignItems: 'flex-start' },
+  chips: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
+  chipSlot: { justifyContent: 'center' },
+  countdown: { ...T.type.countdown, textAlign: 'right' },
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACE.lg, flex: 1 },
   stack: { gap: SPACE.md },
   badgesRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
