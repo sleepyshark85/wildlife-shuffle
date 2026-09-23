@@ -1,10 +1,12 @@
 // Wildlife Shuffle v2 — executable form of AC-308b (docs/v2/acceptance-criteria.md).
 // Demonstrates that gameplay.md §5.2's count-first generator realises the §5.4 weight table,
 // where the superseded capacity-constrained draw did not. 9-wide board, elephant 4, buffalo 5.
-// NOTE (gameplay.md 5.5b): the three habitats are removed. This still sweeps all three
-// weight tables because they are still in constants.js until the collapse lands; after it,
-// the meadow column is the curve and the other two go with DIFFICULTIES. It measures the
-// LONG-RUN mix only -- for the short-window property the owner reported, see
+// NOTE (gameplay.md 5.5b): the three habitats are GONE — the collapse landed, and the
+// meadow column is now the curve. The other two rows are kept here, hard-coded, because
+// this file is an argument about the GENERATOR rather than about the shipped table: a
+// weight table the generator no longer sees is still a weight table it has to realise, and
+// two extra columns are what stop the check passing because it only has one. It measures
+// the LONG-RUN mix only -- for the short-window property the owner reported, see
 // docs/v2/spawn-clustering.mjs.
 // Run: node docs/v2/species-mix.mjs
 // Expected: every realised share within ~2pp of intent, mean drawn size within ~0.10.

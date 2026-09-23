@@ -85,7 +85,7 @@ export function clearDiagnostics() {
  */
 export function recordTurn(entry) {
   if (!enabled) return;
-  run = { seed: entry.seed, difficulty: entry.difficulty };
+  run = { seed: entry.seed };
 
   const rows = entry.animals.map((animal) => {
     const probe = probes.get(animal.id);
@@ -170,8 +170,9 @@ function turnReport(record) {
 /**
  * The whole log as text, for the player to select and send.
  *
- * The seed is the most valuable line in it: with the seed and the difficulty
- * the run replays headlessly, so a report becomes a reproduction.
+ * The seed is the most valuable line in it, and since the habitats collapsed it
+ * is the ONLY line needed: with the seed alone the run replays headlessly
+ * (AC-320c), so a report becomes a reproduction.
  */
 export function diagnosticsReport() {
   if (!enabled) return 'Diagnostics are off.';
@@ -179,7 +180,6 @@ export function diagnosticsReport() {
   const head = [
     'Wildlife Shuffle — diagnostic log',
     `seed        ${run.seed}`,
-    `difficulty  ${run.difficulty}`,
     `board       ${BOARD.width} x ${BOARD.height}`,
     `replay      node tools/play.mjs --seed ${run.seed}`,
     `turns kept  last ${turns.length} of ${MAX_TURNS}`,

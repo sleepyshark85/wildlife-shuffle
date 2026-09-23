@@ -25,8 +25,9 @@ import {
   ABILITY_CHARGE_CAP,
   ABILITY_THRESHOLDS,
   BOARD,
+  BUFFALO_PHASES,
   CHAIN_GUARD_STEPS,
-  DIFFICULTIES,
+  CURVE,
   DRAWABLE,
   MAX_BATCH_CELLS,
   RAMP_EVERY_TURNS,
@@ -74,16 +75,20 @@ const ENGINE_REVISION = 1;
  * acceptable; silently resuming the wrong one is not.
  *
  * So the version is a fingerprint of the tuning surface itself rather than a
- * number somebody has to remember to bump. The designer is retuning the
- * difficulty bands right now: when that lands, every resume written before it
- * is discarded automatically, because `DIFFICULTIES` is in this hash.
+ * number somebody has to remember to bump. Collapsing the three habitats to one
+ * curve replaced `DIFFICULTIES` with `CURVE` and added `BUFFALO_PHASES`, and
+ * every resume written before that landed was discarded automatically, with no
+ * line of this file edited to make it happen. There is no migration for a
+ * replay that could be correct: replaying an old run's moves under the new
+ * spawn rebuilds a DIFFERENT board from the same inputs (gameplay.md §5.10),
+ * which is the failure AC-1016 exists to prevent.
  *
  * It also covers AC-1022's "board configuration the build no longer supports":
  * `BOARD` is in the hash, so a resume written at 10 columns cannot be replayed
  * at 9.
  */
 export const TUNING_SURFACE = Object.freeze([
-  BOARD, DIFFICULTIES, SCORE, SPECIES, DRAWABLE,
+  BOARD, CURVE, BUFFALO_PHASES, SCORE, SPECIES, DRAWABLE,
   RAMP_EVERY_TURNS, SEED_BATCHES, MAX_BATCH_CELLS, CHAIN_GUARD_STEPS,
   // Layer D belongs in the fingerprint, and the reason is sharper than "it is
   // tuning". A replay reconstructs charges by re-running the score against the
@@ -98,7 +103,7 @@ export const TUNING_SURFACE = Object.freeze([
 
 /**
  * Exported so the claim above can be EXECUTED rather than asserted: the test
- * retunes a difficulty band in a copy of the surface and watches the version
+ * retunes a band in a copy of the surface and watches the version
  * change. "This hash covers the bands" is a comment; this makes it a check.
  */
 export function engineVersionFor(surface) {
@@ -121,7 +126,7 @@ export function boardDigest(state) {
   const sort = (list) => list.map(cell).sort().join('|');
   return fnv1a(
     [
-      state.turn, state.score, state.streak, state.difficulty,
+      state.turn, state.score, state.streak,
       sort(state.animals), sort(state.queue),
       // Layer D is board state the player can see — the pips, the frozen tray,
       // the moves left in a Dart — so AC-1017 checks it. Charges reconstructed
@@ -156,11 +161,12 @@ export function appendMove(moves, action) {
 }
 
 /**
- * Open a run and stamp its `origin` — the two parameters beyond seed and
- * difficulty that `createRun` needs to reproduce it exactly.
+ * Open a run and stamp its `origin` — the parameters beyond the seed that
+ * `createRun` needs to reproduce it exactly.
  *
  * UNDERSPECIFIED IN THE DESIGN, and reported. gameplay.md §9 lists the record
- * as `{schemaVersion, engineVersion, seed, difficulty, moves[], digest}` with
+ * as `{schemaVersion, engineVersion, seed, difficulty, moves[], digest}` — the
+ * `difficulty` field is gone with the habitats (AC-320c) — with
  * `moves[] = [{t:'M', id, x}|{t:'P'}]`. That is not replayable on its own:
  * animal ids are namespaced by `runIndex` and numbered from `nextAnimalId`
  * (AC-214), both of which are carried across a RESTART, so a run reached by
@@ -175,8 +181,8 @@ export function appendMove(moves, action) {
  * replay a measurement run as a played run, grant it charges it never had, and
  * fail the digest for a reason nobody could read.
  */
-export function openRun({ seed, difficulty, runIndex = 1, nextAnimalId = 1, abilities = true }) {
-  const state = createRun({ seed, difficulty, runIndex, nextAnimalId, abilities });
+export function openRun({ seed, runIndex = 1, nextAnimalId = 1, abilities = true }) {
+  const state = createRun({ seed, runIndex, nextAnimalId, abilities });
   return { ...state, origin: { runIndex, nextAnimalId, abilities }, moves: [] };
 }
 
@@ -203,7 +209,6 @@ export function buildResume(state) {
     schemaVersion: RESUME_SCHEMA_VERSION,
     engineVersion: ENGINE_VERSION,
     seed: state.seed,
-    difficulty: state.difficulty,
     start: state.origin || { runIndex: state.runIndex, nextAnimalId: 1, abilities: true },
     moves: state.moves || [],
     digest: boardDigest(state),
@@ -237,10 +242,17 @@ export function parseResume(text) {
   if (raw.schemaVersion !== RESUME_SCHEMA_VERSION) return null;
   if (raw.engineVersion !== ENGINE_VERSION) return null;            // AC-1016
   if (typeof raw.seed !== 'string' && typeof raw.seed !== 'number') return null;
-  // Own-property, not `DIFFICULTIES[id]`: `DIFFICULTIES['__proto__']` is
-  // `Object.prototype` and therefore truthy. The AC-1022 test found this by
-  // putting `__proto__` in the field and watching the record be accepted.
-  if (!Object.prototype.hasOwnProperty.call(DIFFICULTIES, raw.difficulty)) return null; // AC-1022
+  // AC-1022's difficulty half is gone with the habitats (AC-320): there is no
+  // difficulty field left to name a mode the build no longer supports. Its
+  // board half still stands, and still stands HERE rather than in a check of
+  // its own — `BOARD` is in TUNING_SURFACE, so a record written at 10 columns
+  // fails the `engineVersion` comparison four lines above and is discarded
+  // before a single move is replayed.
+  //
+  // The `__proto__` lesson that check taught is not discarded with it: every
+  // remaining table lookup off the disk — `ABILITIES[move.a]` below, and
+  // `SETTING_IS_VALID[key]` in progress.js — is an own-property test, because
+  // `ABILITIES['__proto__']` is truthy and is not an ability.
   if (!isObject(raw.start)) return null;
   if (!isIndex(raw.start.runIndex) || !isIndex(raw.start.nextAnimalId)) return null;
   // AC-1014b: every createRun input, checked as strictly as the seed is.
@@ -277,7 +289,6 @@ export function parseResume(text) {
     schemaVersion: raw.schemaVersion,
     engineVersion: raw.engineVersion,
     seed: raw.seed,
-    difficulty: raw.difficulty,
     start: {
       runIndex: raw.start.runIndex,
       nextAnimalId: raw.start.nextAnimalId,
@@ -303,7 +314,7 @@ export function parseResume(text) {
  *     AC-1020 says the record is cleared when a run ends, so this file should
  *     not exist.
  *   - a digest mismatch (AC-1017).
- *   - anything at all throwing: `createRun` throws on an unknown difficulty and
+ *   - anything at all throwing: `createRun` throws on a missing seed and
  *     `moveAnimal` on a missing id, and a launch path may not be the place a
  *     bad file gets to raise.
  */
@@ -312,7 +323,6 @@ export function replayResume(record) {
   try {
     let state = openRun({
       seed: record.seed,
-      difficulty: record.difficulty,
       runIndex: record.start.runIndex,
       nextAnimalId: record.start.nextAnimalId,
       abilities: record.start.abilities,

@@ -4,7 +4,7 @@
 // This is not part of the game. It is a harness: it only ever calls the public
 // reducer, so anything it can do a player could do.
 
-import { BOARD, BUFFALO, DIFFICULTIES, STATUS } from '../src/engine/constants.js';
+import { BOARD, BUFFALO, STATUS } from '../src/engine/constants.js';
 import { checkMove, MOVE_OK } from '../src/engine/board.js';
 import {
   ABILITIES, MIGRATE_SPECIES, abilityCost, stampede,
@@ -68,7 +68,10 @@ export function chooseAction(state) {
 }
 
 /**
- * AC-318: median turns per run, 30 seeds per difficulty, greedy bot.
+ * AC-318 / AC-320h: median turns per run over `seeds` seeds, greedy bot.
+ *
+ * ONE ROW, because there is one curve (gameplay.md §5.5b). It used to return a
+ * row per habitat.
  *
  * AC-1404: **abilities are off**, explicitly, and that word is doing work. It
  * held by construction while no ability code existed — this bot never
@@ -86,27 +89,33 @@ export function measurePacing(seeds = 30, turnCap = 3000) {
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   };
 
-  const rows = {};
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    const turns = [];
-    const scores = [];
-    for (let seed = 1; seed <= seeds; seed++) {
-      let state = createRun({ seed, difficulty, abilities: false });
-      while (state.status === STATUS.READY && state.turn < turnCap) {
-        state = reduce(state, chooseAction(state));
-      }
-      turns.push(state.turn);
-      scores.push(state.score);
+  const pct = (values, p) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+  };
+
+  const turns = [];
+  const scores = [];
+  for (let seed = 1; seed <= seeds; seed++) {
+    let state = createRun({ seed, abilities: false });
+    while (state.status === STATUS.READY && state.turn < turnCap) {
+      state = reduce(state, chooseAction(state));
     }
-    rows[difficulty] = {
-      median: median(turns),
-      mean: turns.reduce((a, b) => a + b, 0) / turns.length,
-      min: Math.min(...turns),
-      max: Math.max(...turns),
-      medianScore: median(scores),
-    };
+    turns.push(state.turn);
+    scores.push(state.score);
   }
-  return rows;
+  return {
+    median: median(turns),
+    mean: turns.reduce((a, b) => a + b, 0) / turns.length,
+    min: Math.min(...turns),
+    max: Math.max(...turns),
+    // AC-320h asks for the spread beside the median, because the gate is
+    // "the curve has not moved", not a target to tune toward.
+    p10: pct(turns, 10),
+    p90: pct(turns, 90),
+    medianScore: median(scores),
+    scores,
+  };
 }
 
 
@@ -188,8 +197,8 @@ export function chooseAbility(state, { policy = 'value' } = {}) {
  * `turnCap` is a bound on the harness, not on the game: a run that reaches it
  * has NOT terminated, and that is the failure AC-1409 is about.
  */
-export function playAbilityRun(seed, difficulty, turnCap = 3000, policy = {}) {
-  let state = createRun({ seed, difficulty, abilities: true });
+export function playAbilityRun(seed, turnCap = 3000, policy = {}) {
+  let state = createRun({ seed, abilities: true });
   let spent = 0;
   let frozenTurns = 0;
   while (state.status === STATUS.READY && state.turn < turnCap) {

@@ -30,7 +30,6 @@ const turn = (animals = board) => ({
   turn: 12,
   action: 'MOVE',
   seed: 'mfr2f6yo.8roxq0',
-  difficulty: 'savanna',
   score: 1240,
   gained: 100,
   lockMs: 898,
@@ -84,7 +83,9 @@ test('the log leads with the seed, so a report is a reproduction', () => {
   // `replay ... --seed <seed>` line below, so deleting the seed header left it
   // green. A check that another line satisfies is not a check.
   assert.match(report, /^seed {8}mfr2f6yo\.8roxq0$/m);
-  assert.match(report, /^difficulty {2}savanna$/m);
+  // AC-320c: the seed alone reproduces a run, so there is no habitat line
+  // left to print — and `tools/play.mjs` no longer takes one either.
+  assert.doesNotMatch(report, /^difficulty/m);
   assert.match(report, /node tools\/play\.mjs --seed mfr2f6yo\.8roxq0/);
   assert.match(report, /turn 12\s+MOVE\s+score 1,240\s+\+100/);
   reset();

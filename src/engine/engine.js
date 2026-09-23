@@ -13,8 +13,6 @@ import {
   ABILITY_CHARGE_CAP,
   ABILITY_THRESHOLDS,
   BOARD,
-  DEFAULT_DIFFICULTY,
-  DIFFICULTIES,
   PHASE,
   SCORE,
   SEED_BATCHES,
@@ -34,7 +32,7 @@ import {
   MOVE_NOOP,
   MOVE_OK,
   applyGravity,
-  buffaloOnBoard,
+  buffaloesOnBoard,
   checkMove,
   diffRows,
   moveAnimal,
@@ -84,8 +82,8 @@ function arrive(animals, queue) {
  * and must: that is the same run, and AC-202/AC-314 require it to replay
  * identically.
  */
-export function runIdPrefix(seed, runIndex, difficulty) {
-  return `${runIndex}.${makeRng(`${difficulty}:${seed}`).toString(36)}.`;
+export function runIdPrefix(seed, runIndex) {
+  return `${runIndex}.${makeRng(String(seed)).toString(36)}.`;
 }
 
 /**
@@ -108,7 +106,6 @@ export function runIdPrefix(seed, runIndex, difficulty) {
  */
 export function createRun({
   seed,
-  difficulty = DEFAULT_DIFFICULTY,
   runIndex = 1,
   nextAnimalId = 1,
   abilities = true,
@@ -116,9 +113,8 @@ export function createRun({
   if (seed === undefined || seed === null) {
     throw new Error('createRun requires a seed: the engine has no other source of randomness');
   }
-  if (!DIFFICULTIES[difficulty]) throw new Error(`Unknown difficulty: ${difficulty}`);
 
-  const idPrefix = runIdPrefix(seed, runIndex, difficulty);
+  const idPrefix = runIdPrefix(seed, runIndex);
   let rng = makeRng(seed);
   let nextId = nextAnimalId;
   let animals = [];
@@ -131,7 +127,6 @@ export function createRun({
   for (let i = 0; i < SEED_BATCHES || (animals.length === 0 && i < maxSeedBatches); i++) {
     const generated = generateBatch({
       turn: 1,
-      difficulty,
       rng,
       nextId,
       idPrefix,
@@ -146,17 +141,14 @@ export function createRun({
 
   const queued = generateBatch({
     turn: 1,
-    difficulty,
     rng,
     nextId,
     idPrefix,
-    hasBuffaloOnBoard: Boolean(buffaloOnBoard(animals)),
   });
 
   return {
     seed,
     rng: queued.rng,
-    difficulty,
     runIndex,
     idPrefix,
     nextAnimalId: queued.nextId,
@@ -229,7 +221,7 @@ function grantCharges(state, score, animals, events) {
   if (!state.abilities) {
     return { charges: state.charges, ladder: state.ladder, lastStand: state.lastStand };
   }
-  const thresholds = ABILITY_THRESHOLDS[state.difficulty];
+  const thresholds = ABILITY_THRESHOLDS;
   let charges = state.charges;
   let ladder = state.ladder;
   let lastStand = state.lastStand;
@@ -408,11 +400,9 @@ function resolveTurn(state, action, complete = true) {
       ? { batch: state.queue, rng: state.rng, nextId: state.nextAnimalId }
       : generateBatch({
         turn,
-        difficulty: state.difficulty,
         rng: state.rng,
         nextId: state.nextAnimalId,
         idPrefix: state.idPrefix,
-        hasBuffaloOnBoard: Boolean(buffaloOnBoard(animals)),
       });
 
     events.push({
@@ -556,7 +546,6 @@ export function reduce(state, action) {
     case ACTIONS.RESTART:
       return createRun({
         seed: action.seed !== undefined ? action.seed : state.seed,
-        difficulty: action.difficulty || state.difficulty,
         runIndex: state.runIndex + 1,
         nextAnimalId: state.nextAnimalId,
         // AC-1404's switch is a property of the session, not of the run: a
@@ -653,8 +642,8 @@ export function chargeState(state) {
     /** Moves left in an open Dart turn; 0 when no Dart is in progress. */
     dart: state.dart,
     /** The next rung, or null at the top of the ladder. */
-    nextThreshold: state.ladder < ABILITY_THRESHOLDS[state.difficulty].length
-      ? ABILITY_THRESHOLDS[state.difficulty][state.ladder]
+    nextThreshold: state.ladder < ABILITY_THRESHOLDS.length
+      ? ABILITY_THRESHOLDS[state.ladder]
       : null,
   };
 }
@@ -664,9 +653,17 @@ export function queueCells(state) {
   return batchCells(state.queue);
 }
 
-/** The buffalo on the board, or undefined — drives the HUD chip (AC-509/510). */
-export function currentBuffalo(state) {
-  return buffaloOnBoard(state.animals);
+/**
+ * Every buffalo on the board, bottom row first — drives the HUD chip row
+ * (AC-509/509c/510, ui.md §7.1).
+ *
+ * PLURAL SINCE AC-311. It was `currentBuffalo` and it returned one, which was
+ * the HUD showing a fact that was true of something other than what the player
+ * was looking at the moment a second buffalo landed — AC-301's broken-preview
+ * defect in miniature.
+ */
+export function currentBuffaloes(state) {
+  return buffaloesOnBoard(state.animals);
 }
 
 /** Legal-move predicate for the drag preview (AC-407/408). */
@@ -694,7 +691,6 @@ export function streakPill(state) {
 export function runRecord(state) {
   return {
     seed: state.seed,
-    difficulty: state.difficulty,
     score: state.score,
     turns: state.turn,
     rowsCleared: state.stats.rowsCleared,

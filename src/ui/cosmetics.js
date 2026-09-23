@@ -52,7 +52,17 @@ export const UNLOCKS = Object.freeze([
     need: 25000,
     unit: 'best score in one run',
     blurb: 'One cold hue, size still the only thing that changes.',
-    progress: (save) => Math.max(...Object.values(save.best).map((b) => b.score), 0),
+    /**
+     * AC-320e. This read `Math.max(...Object.values(save.best).map((b) =>
+     * b.score), 0)` while `best` was a map of three habitats. Against the
+     * single record set of AC-320d that is `Math.max(NaN, NaN, NaN, NaN, 0)` —
+     * `NaN` — so the Collection screen would have shown a progress counter that
+     * is not a number and this palette would silently never have unlocked.
+     *
+     * It is a reminder that a shape change has consumers a grep for the type's
+     * NAME does not find: nothing here said "difficulty".
+     */
+    progress: (save) => save.best.score,
   }),
   Object.freeze({
     id: 'ratKing',

@@ -23,7 +23,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { ABILITY_CHARGE_CAP, BOARD, SPECIES } from '../src/engine/constants.js';
+import {
+  ABILITY_CHARGE_CAP, ABILITY_PERCENTILES, BOARD, SPECIES,
+} from '../src/engine/constants.js';
 import {
   ABILITIES, abilityCost, burrow, migrate, stampede,
 } from '../src/engine/abilities.js';
@@ -74,16 +76,16 @@ import { animal } from './helpers.js';
  * from its inputs, so a charge nobody earned is a charge the replay cannot
  * find. Everything below this line has to be reachable by playing.
  */
-function playedToCharges(seed, difficulty, want = 1, maxTurns = 600) {
-  let state = openRun({ seed, difficulty });
+function playedToCharges(seed, want = 1, maxTurns = 600) {
+  let state = openRun({ seed });
   while (state.status === 'READY' && state.turn < maxTurns && state.charges < want) {
     state = runReducer(state, chooseAction(state));
   }
   return state;
 }
 
-function board({ animals, charges = 0, difficulty = 'savanna', ...rest }) {
-  const base = createRun({ seed: 'ui-abilities', difficulty });
+function board({ animals, charges = 0, ...rest }) {
+  const base = createRun({ seed: 'ui-abilities' });
   return { ...base, animals, charges, ...rest };
 }
 
@@ -673,7 +675,7 @@ test('AC-1405/AC-1408b the plan carries the charge grants, and says which is whi
 // ---- AC-1416 / AC-1014b · the resume reconstructs charges ---------------
 
 test('AC-1416 an ability use is a third move type and nothing new is persisted', () => {
-  let state = playedToCharges('resume-ability', 'meadow', abilityCost('burrow'));
+  let state = playedToCharges('resume-ability', abilityCost('burrow'));
   assert.equal(state.status, 'READY', 'the run ended before it earned anything');
   assert.ok(state.charges >= abilityCost('burrow'), 'the run never earned enough to spend');
   const victim = state.animals.find((a) => a.type !== 'buffalo');
@@ -688,7 +690,7 @@ test('AC-1416 an ability use is a third move type and nothing new is persisted',
   // Nothing new is persisted: the record has exactly the fields it had before.
   assert.deepEqual(
     Object.keys(record).sort(),
-    ['difficulty', 'digest', 'engineVersion', 'moves', 'schemaVersion', 'seed', 'start'],
+    ['digest', 'engineVersion', 'moves', 'schemaVersion', 'seed', 'start'],
   );
   assert.equal(record.charges, undefined, 'the charge count was persisted');
   assert.equal(record.lastStand, undefined, 'Last Stand was persisted');
@@ -700,7 +702,7 @@ test('AC-1416 an ability use is a third move type and nothing new is persisted',
 });
 
 test('AC-1416 a Dart replays as an arming plus its moves', () => {
-  let state = playedToCharges('resume-dart', 'meadow', abilityCost('dart'));
+  let state = playedToCharges('resume-dart', abilityCost('dart'));
   assert.equal(state.status, 'READY');
   assert.ok(state.charges >= abilityCost('dart'));
 
@@ -723,7 +725,7 @@ test('AC-1416 a Dart replays as an arming plus its moves', () => {
 });
 
 test('AC-1416 charges, the ladder, the freeze and Last Stand all come back', () => {
-  let state = playedToCharges('resume-economy', 'meadow', abilityCost('hold'));
+  let state = playedToCharges('resume-economy', abilityCost('hold'));
   assert.equal(state.status, 'READY');
   for (let i = 0; i < 12 && state.status === 'READY'; i += 1) {
     state = state.charges >= abilityCost('hold') && state.dart === 0
@@ -749,9 +751,9 @@ test('AC-1014b/AC-1014c the record carries `abilities`, and a restart proves it'
   // run reach different boards from the same seed and the same moves — the
   // measurement never grants a charge — so a record that omitted the switch
   // would resume one as the other.
-  let state = openRun({ seed: 'carried', difficulty: 'savanna', abilities: false });
+  let state = openRun({ seed: 'carried', abilities: false });
   for (let i = 0; i < 5; i += 1) state = runReducer(state, { type: ACTIONS.PASS });
-  state = runReducer(state, { type: ACTIONS.RESTART, seed: 'carried-2', difficulty: 'savanna' });
+  state = runReducer(state, { type: ACTIONS.RESTART, seed: 'carried-2' });
   assert.equal(state.abilities, false, 'the switch did not survive a restart');
   for (let i = 0; i < 5; i += 1) state = runReducer(state, { type: ACTIONS.PASS });
 
@@ -775,8 +777,9 @@ test('AC-1016 repricing the ladder invalidates every resume written before it', 
   // moves. The surface is rehashed from a copy with one rung moved.
   const before = engineVersionFor(TUNING_SURFACE);
   const reprice = TUNING_SURFACE.map((entry) => (
-    entry && entry.savanna && Array.isArray(entry.savanna)
-      ? { ...entry, savanna: [1, ...entry.savanna.slice(1)] }
+    Array.isArray(entry) && entry.length === ABILITY_PERCENTILES.length
+      && entry.every((v) => typeof v === 'number')
+      ? [1, ...entry.slice(1)]
       : entry
   ));
   assert.notEqual(engineVersionFor(reprice), before,

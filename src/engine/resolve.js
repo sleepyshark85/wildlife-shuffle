@@ -25,11 +25,30 @@ function isDevelopment() {
  * and that row does NOT clear (AC-506). A buffalo reduced to 0 is retired
  * (AC-507). Gravity then runs and the loop repeats (AC-503).
  *
- * Termination is by construction, not by a counter (AC-504): every step removes
- * at least one completed row — ten occupied cells, of which at most four can
- * belong to the single permitted buffalo — so board mass strictly decreases from
- * a maximum of width x height. `CHAIN_GUARD_STEPS` is a crash guard against an
- * engine bug and nothing else (AC-504b).
+ * Termination is by construction, not by a counter (AC-504), and the argument
+ * is re-derived rather than deleted now that a herd is permitted. It used to
+ * read "of which at most four can belong to the single permitted buffalo",
+ * which AC-311 overruled.
+ *
+ * AC-504's replacement — "at most SPECIES.buffalo.size can belong to a buffalo,
+ * because two buffalo cannot share a row" — IS ALSO FALSE, and the measurement
+ * is in `constants.js` beside CHAIN_GUARD_STEPS: a shrunk buffalo and a full one
+ * fit a 9-wide row exactly, and four buffalo were measured sharing one. The
+ * conclusion survives on a weaker floor:
+ *
+ *   a completed row is `BOARD.width` cells; every non-buffalo cell in it leaves
+ *   and every buffalo in it spends one segment, so `(width - B) + n` cells
+ *   leave. `B - n` is the sum of `size - 1` over that row's buffalo, at most 7
+ *   at `size <= 5` and `B <= width`, so at least TWO cells leave every step
+ *
+ * and board mass strictly decreases from a maximum of width x height.
+ * `CHAIN_GUARD_STEPS` is a crash guard against an engine bug and nothing else
+ * (AC-504b) — see its comment for what that floor costs its headroom.
+ *
+ * NOTHING IN THE LOOP BELOW CHANGES FOR A SHARED ROW, and that is why the defect
+ * is in the argument rather than in the code: it iterates every animal in every
+ * completed row and shrinks each buffalo it finds, so two in a row shrink twice,
+ * score twice, and the row still refuses to clear.
  *
  * Score and statistics are both read back off `events` by summariseEvents(),
  * so this returns no counters of its own (AC-706b).

@@ -18,7 +18,6 @@ import {
   ABILITY_PERCENTILES,
   ABILITY_THRESHOLDS,
   BOARD,
-  DIFFICULTIES,
   SPECIES,
   STATUS,
 } from '../src/engine/constants.js';
@@ -44,11 +43,11 @@ import {
 import { ACTIONS, chargeState, createRun, reduce, runRecord } from '../src/engine/engine.js';
 import { summariseEvents } from '../src/engine/summary.js';
 import { chooseAction, measurePacing, playAbilityRun } from '../tools/bot.mjs';
-import { animal, eventOfType, rowString } from './helpers.js';
+import { LAST, animal, eventOfType, rowString } from './helpers.js';
 
 /** A run with the board and the economy forced to a chosen state. */
-function board({ animals, charges = 0, difficulty = 'savanna', score = 0, ...rest }) {
-  const base = createRun({ seed: 'abilities', difficulty });
+function board({ animals, charges = 0, score = 0, ...rest }) {
+  const base = createRun({ seed: 'abilities' });
   return { ...base, animals, charges, score, queue: base.queue, ...rest };
 }
 
@@ -185,7 +184,7 @@ test('AC-1404 the AC-318 harness measures with abilities disabled, explicitly', 
   // Not "the bot happens not to press the button": the switch is passed, and
   // with it off nothing in the economy runs at all — including Last Stand,
   // which grants without being asked.
-  const state = createRun({ seed: 1, difficulty: 'tundra', abilities: false });
+  const state = createRun({ seed: 1, abilities: false });
   assert.equal(state.abilities, false);
   assert.equal(chargeState(state).enabled, false);
 
@@ -200,7 +199,7 @@ test('AC-1404 the AC-318 harness measures with abilities disabled, explicitly', 
     ABILITY_DISABLED);
 
   // ...and the same seed WITH abilities does earn, so the switch is the cause.
-  let lit = createRun({ seed: 1, difficulty: 'tundra', abilities: true });
+  let lit = createRun({ seed: 1, abilities: true });
   while (lit.status === STATUS.READY && lit.turn < 400) lit = reduce(lit, chooseAction(lit));
   assert.ok(lit.stats.chargesEarned > 0, 'an enabled run earned nothing, so the check is blind');
 
@@ -218,23 +217,39 @@ test('AC-1404 measurePacing itself is the harness that passes the switch', () =>
 
 // ---- AC-1405 · the ladder ------------------------------------------------
 
-test('AC-1405 the ladder is priced per difficulty and escalates', () => {
-  assert.deepEqual(Object.keys(ABILITY_THRESHOLDS).sort(), Object.keys(DIFFICULTIES).sort());
+test('AC-320g ONE ability ladder, six rungs, escalating', () => {
+  // Three ladders existed only because three medians differed by 1.68x and
+  // 1.84x. There is one curve, so there is one ladder (gameplay.md §5.9).
+  assert.ok(Array.isArray(ABILITY_THRESHOLDS), 'the ladder is still a map of habitats');
   assert.equal(ABILITY_PERCENTILES.length, 6);
-  for (const [difficulty, rungs] of Object.entries(ABILITY_THRESHOLDS)) {
-    assert.equal(rungs.length, ABILITY_PERCENTILES.length, difficulty);
-    for (let i = 1; i < rungs.length; i += 1) {
-      assert.ok(rungs[i] > rungs[i - 1], `${difficulty} rung ${i} does not escalate`);
-    }
+  assert.equal(ABILITY_THRESHOLDS.length, ABILITY_PERCENTILES.length);
+  for (let i = 1; i < ABILITY_THRESHOLDS.length; i += 1) {
+    assert.ok(ABILITY_THRESHOLDS[i] > ABILITY_THRESHOLDS[i - 1], `rung ${i} does not escalate`);
   }
-  // Three ladders and not one: a Meadow-priced first charge is beyond an entire
-  // median Tundra run, which is why §13.2c refuses to share a table.
-  assert.ok(ABILITY_THRESHOLDS.meadow[0] > ABILITY_THRESHOLDS.savanna[0]);
-  assert.ok(ABILITY_THRESHOLDS.savanna[0] > ABILITY_THRESHOLDS.tundra[0]);
+});
+
+test('AC-1405f the ladder is the MEASURED percentiles of THIS curve', () => {
+  // AC-1405f: each rung is a percentile of the measured final-score
+  // distribution. The collapse shortens the median run 69 -> 58 turns and the
+  // median score 2,655 -> 2,325, so carrying the shipped Meadow ladder over
+  // would have sold the first charge at the 47th percentile of a table that
+  // says p35. Re-measured here from the same bot the pacing gate uses, so a
+  // retune that stranded the ladder fails here rather than in a document.
+  const scores = measurePacing(120).scores.slice().sort((a, b) => a - b);
+  const pct = (q) => scores[Math.min(scores.length - 1, Math.floor((q / 100) * scores.length))];
+  const want = [pct(35), pct(50), pct(75), pct(90)];
+  want.forEach((raw, i) => {
+    const rung = ABILITY_THRESHOLDS[i];
+    assert.ok(Math.abs(rung - raw) < Math.max(200, raw * 0.15),
+      `${ABILITY_PERCENTILES[i]} rung ${rung} against a measured ${raw}`);
+  });
+  // The last two are multiples of the p90 rung, exactly.
+  assert.ok(Math.abs(ABILITY_THRESHOLDS[4] - ABILITY_THRESHOLDS[3] * 1.6) <= 100);
+  assert.ok(Math.abs(ABILITY_THRESHOLDS[5] - ABILITY_THRESHOLDS[3] * 2.4) <= 100);
 });
 
 test('AC-1405 crossing a threshold grants exactly one charge', () => {
-  const rungs = ABILITY_THRESHOLDS.savanna;
+  const rungs = ABILITY_THRESHOLDS;
   const under = board({ animals: [animal('rat', 0, 0)], score: rungs[0] - 1 });
   // A pass that scores nothing leaves the score under the rung: no charge.
   assert.equal(reduce(under, { type: ACTIONS.PASS }).charges, 0);
@@ -249,7 +264,7 @@ test('AC-1405 crossing a threshold grants exactly one charge', () => {
 });
 
 test('AC-1405c the ladder PAUSES at the cap and the charge is never lost', () => {
-  const rungs = ABILITY_THRESHOLDS.savanna;
+  const rungs = ABILITY_THRESHOLDS;
   // Full, and holding a score past the next two rungs.
   const full = board({
     animals: [animal('rat', 0, 0), animal('rat', 4, 0)],
@@ -277,7 +292,7 @@ test('AC-1405d score keeps accumulating while saturated', () => {
   const full = board({
     animals: [...Array.from({ length: BOARD.width }, (_, x) => animal('rat', x, 1))],
     charges: ABILITY_CHARGE_CAP,
-    score: ABILITY_THRESHOLDS.savanna[5] + 1,
+    score: ABILITY_THRESHOLDS[5] + 1,
     ladder: 6,
   });
   const next = reduce(full, { type: ACTIONS.PASS });
@@ -289,11 +304,12 @@ test('AC-1405e a median run earns two charges and a p90 run earns four', () => {
   // Measured, not asserted: the ladder's percentiles are read back off the same
   // bot the pacing measurement uses, so a reprice that broke the claim shows up
   // here rather than in a document.
-  for (const [difficulty, rungs] of Object.entries(ABILITY_THRESHOLDS)) {
+  {
+    const rungs = ABILITY_THRESHOLDS;
     const earnedAt = (score) => rungs.filter((r) => score >= r).length;
     // p50 and p90 are rungs 2 and 4 by construction (AC-1405f).
-    assert.equal(earnedAt(rungs[1]), 2, `${difficulty}: a p50 score does not buy two charges`);
-    assert.equal(earnedAt(rungs[3]), 4, `${difficulty}: a p90 score does not buy four`);
+    assert.equal(earnedAt(rungs[1]), 2, 'a p50 score does not buy two charges');
+    assert.equal(earnedAt(rungs[3]), 4, 'a p90 score does not buy four');
     // Four is past the cap, so a p90 run MUST have spent to hold them all.
     assert.ok(4 > ABILITY_CHARGE_CAP, 'saturation is no longer reachable by good play');
   }
@@ -442,7 +458,17 @@ test('AC-1408 a clear an ability caused scores like any other', () => {
     animal('rat', 5, 0), animal('rat', 6, 0), animal('rat', 7, 0), animal('rat', 8, 0),
     animal('elk', 0, 1),
   ];
-  const state = board({ animals, charges: ABILITY_CHARGE_CAP });
+  // THE QUEUE IS EXPLICIT, and it was not: this fixture used to inherit
+  // whatever `createRun` happened to draw for its seed, and it cleared only
+  // because that draw happened to land on the last column. Collapsing the
+  // habitats changed the draw and the fixture stopped clearing — which is a
+  // fixture that was passing by luck, not a rule that moved. The arrival is
+  // what completes the row after the stampede packs it, so it has to be stated.
+  const state = board({
+    animals,
+    charges: ABILITY_CHARGE_CAP,
+    queue: [animal('rat', LAST, 0)],
+  });
   assert.equal(rowString(state.animals, 0), 'R.RRRRRRR');
   const next = reduce(state, use('stampede'));
   const steps = next.lastTurn.events.filter((e) => e.type === 'CLEAR_STEP');
@@ -494,7 +520,7 @@ test('AC-1408b Last Stand fires once per run and not again', () => {
 
 test('AC-1408d a run that never reaches the band never sees Last Stand', () => {
   // Abilities on, a board that stays low: the bot clears rather than stacks.
-  let state = createRun({ seed: 3, difficulty: 'meadow', abilities: true });
+  let state = createRun({ seed: 3, abilities: true });
   for (let i = 0; i < 6 && state.status === STATUS.READY; i += 1) {
     assert.ok(!state.animals.some((a) => a.y >= BOARD.dangerBandLow));
     assert.equal(state.lastStand, false);
@@ -506,7 +532,7 @@ test('AC-1408f whether Last Stand has fired is reconstructed, never stored', () 
   // The engine knows when the band was first entered, so replaying the same
   // inputs replays the grant. Nothing in the run state is set from outside it.
   const play = () => {
-    let s = createRun({ seed: 'lastStand', difficulty: 'tundra', abilities: true });
+    let s = createRun({ seed: 'lastStand', abilities: true });
     const log = [];
     while (s.status === STATUS.READY && s.turn < 200) {
       s = reduce(s, { type: ACTIONS.PASS });
@@ -530,13 +556,12 @@ test('AC-1409 a player who spends every charge still reaches game over', () => {
   // Stampede costs — measured over 60 runs it took Stampede zero times, so one
   // policy had silently stopped testing the strongest ability in the set.
   for (const policy of ['value', 'freeze', 'stampede']) {
-    for (const difficulty of Object.keys(DIFFICULTIES)) {
-      for (let seed = 1; seed <= 6; seed += 1) {
-        const run = playAbilityRun(seed, difficulty, 2000, { policy });
-        assert.equal(run.ended, true,
-          `${difficulty} seed ${seed} (${policy}) did not end within 2000 turns`);
-        report.push({ ...run, policy });
-      }
+    // Eighteen seeds on the one curve, where this was six on each of three
+    // habitats (gameplay.md §5.5b): the sample size is unchanged.
+    for (let seed = 1; seed <= 18; seed += 1) {
+      const run = playAbilityRun(seed, 2000, { policy });
+      assert.equal(run.ended, true, `seed ${seed} (${policy}) did not end within 2000 turns`);
+      report.push({ ...run, policy });
     }
   }
   // Per POLICY rather than per run: an individual seed can die before it can
@@ -735,7 +760,7 @@ test('AC-1413 only the ABILITY action spends; asking costs nothing', () => {
 
 test('AC-202 the same inputs including abilities replay to the same board', () => {
   const play = () => {
-    let s = createRun({ seed: 'det', difficulty: 'savanna', abilities: true });
+    let s = createRun({ seed: 'det', abilities: true });
     const script = [];
     for (let i = 0; i < 60 && s.status === STATUS.READY; i += 1) {
       const action = s.charges > 0 && s.dart === 0
@@ -755,9 +780,9 @@ test('AC-202 the same inputs including abilities replay to the same board', () =
 });
 
 test('an ability turn leaves the board legal: no overlap, nothing floating', () => {
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 1; seed <= 4; seed += 1) {
-      let s = createRun({ seed, difficulty, abilities: true });
+  {
+    for (let seed = 1; seed <= 12; seed += 1) {
+      let s = createRun({ seed, abilities: true });
       while (s.status === STATUS.READY && s.turn < 200) {
         const action = s.charges > 0 && s.dart === 0
           ? { type: ACTIONS.ABILITY, ability: ABILITY_IDS[s.turn % ABILITY_IDS.length],
@@ -766,7 +791,7 @@ test('an ability turn leaves the board legal: no overlap, nothing floating', () 
         const next = reduce(s, action);
         s = next.lastAction && next.lastAction.type === 'REJECTED'
           ? reduce(s, chooseAction(s)) : next;
-        assertLegal(s, `${difficulty}/${seed}/${s.turn}`);
+        assertLegal(s, `seed ${seed}/turn ${s.turn}`);
       }
     }
   }

@@ -1,4 +1,4 @@
-// AC-3xx spawning and the difficulty bands.
+// AC-3xx spawning, the band, and the buffalo schedule.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,24 +7,27 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { BOARD, DIFFICULTIES, MAX_BATCH_CELLS, meanDrawnSize } from '../src/engine/constants.js';
+import {
+  BOARD, BUFFALO_PHASES, CURVE, MAX_BATCH_CELLS, SPECIES, meanDrawnSize,
+} from '../src/engine/constants.js';
 import {
   bandFloorViolations,
   bandForTurn,
   batchCells,
   generateBatch,
   isBuffaloTurn,
+  turnsUntilBuffalo,
 } from '../src/engine/spawn.js';
 import { makeRng, nextFraction, nextInt } from '../src/engine/rng.js';
 
 
-/** Generate `count` batches for one difficulty, cycling through turns. */
-function sample({ difficulty, turns, seed = 7, hasBuffaloOnBoard = false }) {
+/** Generate a batch per turn, cycling through `turns`. */
+function sample({ turns, seed = 7, allowBuffalo = true }) {
   let rng = makeRng(seed);
   let nextId = 1;
   const batches = [];
   for (const turn of turns) {
-    const out = generateBatch({ turn, difficulty, rng, nextId, hasBuffaloOnBoard });
+    const out = generateBatch({ turn, rng, nextId, allowBuffalo });
     rng = out.rng;
     nextId = out.nextId;
     batches.push({ turn, batch: out.batch, target: out.target });
@@ -34,9 +37,9 @@ function sample({ difficulty, turns, seed = 7, hasBuffaloOnBoard = false }) {
 
 const ALL_TURNS = Array.from({ length: 200 }, (_, i) => i + 1);
 
-for (const difficulty of Object.keys(DIFFICULTIES)) {
-  test(`AC-303/304/305 batch invariants hold for ${difficulty} over 200 turns`, () => {
-    for (const { turn, batch } of sample({ difficulty, turns: ALL_TURNS })) {
+{
+  test('AC-303/304/305 batch invariants hold over 200 turns', () => {
+    for (const { turn, batch } of sample({ turns: ALL_TURNS })) {
       const cells = batchCells(batch);
       assert.ok(cells <= MAX_BATCH_CELLS, `turn ${turn}: ${cells} cells exceeds 9`);
 
@@ -55,35 +58,32 @@ for (const difficulty of Object.keys(DIFFICULTIES)) {
   });
 }
 
-test('AC-306 the Savanna band ramps 2-4 / 3-5 / 4-6 and stops', () => {
-  // Retuned (gameplay.md §5.6a): start and ceiling both dropped by 1 after the
-  // bot measured a median of 35.5 turns against a 60-90 hypothesis.
-  assert.deepEqual(bandForTurn('savanna', 1), [2, 4]);
-  assert.deepEqual(bandForTurn('savanna', 12), [2, 4]);
-  assert.deepEqual(bandForTurn('savanna', 13), [3, 5]);
-  assert.deepEqual(bandForTurn('savanna', 25), [4, 6]);
-  assert.deepEqual(bandForTurn('savanna', 37), [4, 6], 'the ceiling holds');
-  assert.deepEqual(bandForTurn('savanna', 400), [4, 6]);
+test('AC-306 the band ramps 2-4 -> 3-5 and stops', () => {
+  assert.deepEqual(bandForTurn(1), [2, 4]);
+  assert.deepEqual(bandForTurn(12), [2, 4]);
+  assert.deepEqual(bandForTurn(13), [3, 5]);
 });
 
-test('AC-307 Meadow and Tundra bands and ceilings', () => {
-  // Meadow reaches its ceiling one ramp sooner than the others now: 2-4 is its
-  // FLOOR (AC-306b) and 3-5 its ceiling, so there is exactly one step.
-  assert.deepEqual(bandForTurn('meadow', 1), [2, 4]);
-  assert.deepEqual(bandForTurn('meadow', 12), [2, 4]);
-  assert.deepEqual(bandForTurn('meadow', 13), [3, 5]);
-  assert.deepEqual(bandForTurn('meadow', 25), [3, 5], 'the ceiling holds one ramp early');
-  assert.deepEqual(bandForTurn('meadow', 500), [3, 5]);
-  assert.deepEqual(bandForTurn('tundra', 1), [3, 5]);
-  assert.deepEqual(bandForTurn('tundra', 13), [4, 6]);
-  assert.deepEqual(bandForTurn('tundra', 25), [5, 7]);
-  assert.deepEqual(bandForTurn('tundra', 500), [5, 7]);
-  // The W-1 = 8 cap that once forced Tundra's ceiling to 6-8 rather than 7-9
-  // is no longer what binds it — the retune is. The invariant still stands
-  // above it, and this records the headroom rather than pretending the cap is
-  // still doing the work.
-  assert.ok(bandForTurn('tundra', 500)[1] < MAX_BATCH_CELLS,
-    'Tundra now sits UNDER the cap; the cap is a ceiling on the table, not the table');
+test('AC-307d the ramp reaches its ceiling at turn 13 and never leaves it', () => {
+  // The curve's escalation past turn 13 is the BUFFALO, not the band
+  // (gameplay.md §5.5b). A band that kept climbing would be a second
+  // escalating lever and would make the pacing measurement unattributable, so
+  // "flat for ever" is the assertion rather than "flat for a while".
+  for (let turn = 13; turn <= 1000; turn += 1) {
+    assert.deepEqual(bandForTurn(turn), [3, 5], `turn ${turn}`);
+  }
+  // And nothing ANY turn produces is wider or higher than the ceiling.
+  let widest = 0;
+  let highest = 0;
+  for (let turn = 1; turn <= 1000; turn += 1) {
+    const [lo, hi] = bandForTurn(turn);
+    widest = Math.max(widest, hi - lo);
+    highest = Math.max(highest, hi);
+  }
+  assert.equal(highest, CURVE.ceilingBand[1]);
+  assert.equal(widest, CURVE.ceilingBand[1] - CURVE.ceilingBand[0]);
+  assert.ok(highest < MAX_BATCH_CELLS,
+    'the band sits UNDER the cap; the cap is a ceiling on the table, not the table');
 });
 
 test('AC-306b no band asks for less than one animal', () => {
@@ -97,11 +97,11 @@ test('AC-306b no band asks for less than one animal', () => {
   // And the floor is where Meadow actually SITS, not somewhere far below it:
   // a table that satisfied AC-306b with room to spare would mean the floor was
   // never the reason Meadow stayed at 2-4.
-  const [low, high] = bandForTurn('meadow', 1);
+  const [low, high] = bandForTurn(1);
   assert.equal(low, 2, 'the lowest legal low');
-  assert.ok((low + high) / 2 >= meanDrawnSize('meadow'), 'and at the mean-size floor');
-  assert.ok((low + high) / 2 - meanDrawnSize('meadow') < 1,
-    `Meadow's start is ${(low + high) / 2} against a ${meanDrawnSize('meadow')} floor — not a floor at all`);
+  assert.ok((low + high) / 2 >= meanDrawnSize(), 'and at the mean-size floor');
+  assert.ok((low + high) / 2 - meanDrawnSize() < 1,
+    `the start is ${(low + high) / 2} against a ${meanDrawnSize()} floor — not a floor at all`);
 });
 
 test('AC-306b the floor is measurable, not just arithmetic', () => {
@@ -115,10 +115,10 @@ test('AC-306b the floor is measurable, not just arithmetic', () => {
     // Roll inside the hypothetical 1-3 band and feed the generator directly.
     const rolled = nextInt(rng, lo, hi);
     const target = rolled.value;
-    const raw = target / meanDrawnSize('meadow');
+    const raw = target / meanDrawnSize();
     const carry = nextFraction(rolled.rng);
     const k = Math.max(1, Math.floor(raw) + (carry.value < raw - Math.floor(raw) ? 1 : 0));
-    cells += k * meanDrawnSize('meadow');
+    cells += k * meanDrawnSize();
   }
   const measured = cells / batches;
   const onPaper = (lo + hi) / 2;
@@ -127,26 +127,17 @@ test('AC-306b the floor is measurable, not just arithmetic', () => {
   assert.ok(Math.abs(measured - 2.41) < 0.15, `the designer measured 2.41, this measured ${measured.toFixed(2)}`);
 });
 
-test('gameplay.md §5.5 every band holds its fraction of the row', () => {
+test('gameplay.md §5.5 the band holds its fraction of the row', () => {
   // Fraction-of-row is how the bands were DERIVED for a 9-wide board (§5.6),
   // and it is no longer how they are SET: §5.6a lowered them against a
-  // measurement, so these numbers now record where the retune landed rather
-  // than reproducing the 10-wide design's 30/60, 40/70, 50/80.
-  const fraction = (d, turn) => {
-    const [lo, hi] = bandForTurn(d, turn);
+  // measurement, so these numbers record where the retune landed rather than
+  // reproducing the 10-wide design's 30 -> 60.
+  const fraction = (turn) => {
+    const [lo, hi] = bandForTurn(turn);
     return ((lo + hi) / 2) / BOARD.width;
   };
   const pct = (v) => Math.round(v * 100);
-  assert.deepEqual([pct(fraction('meadow', 1)), pct(fraction('meadow', 500))], [33, 44]);
-  assert.deepEqual([pct(fraction('savanna', 1)), pct(fraction('savanna', 500))], [33, 56]);
-  assert.deepEqual([pct(fraction('tundra', 1)), pct(fraction('tundra', 500))], [44, 67]);
-
-  // Meadow and Savanna now SHARE a starting band, which §5.6a flags as a
-  // consequence to watch: for twelve turns they differ only in species mix.
-  // Asserted so it is a known state rather than a surprise.
-  assert.deepEqual(bandForTurn('meadow', 1), bandForTurn('savanna', 1));
-  assert.notDeepEqual(bandForTurn('meadow', 500), bandForTurn('savanna', 500),
-    'and they must still diverge by the ceiling, or the choice stops mattering');
+  assert.deepEqual([pct(fraction(1)), pct(fraction(500))], [33, 44]);
 });
 
 test('AC-307b the batch SCATTERS around its target, and the mean lands on it', () => {
@@ -158,55 +149,47 @@ test('AC-307b the batch SCATTERS around its target, and the mean lands on it', (
   // MEAN that misses it is.
   let scattered = 0;
   let batches = 0;
-  const error = {};
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    let sum = 0;
-    let targets = 0;
-    for (let seed = 0; seed < 60; seed++) {
-      for (const { batch, target } of sample({ difficulty, turns: ALL_TURNS, seed })) {
-        const cells = batchCells(batch);
-        if (cells !== target) scattered += 1;
-        sum += cells;
-        targets += target;
-        batches += 1;
-      }
+  let sum = 0;
+  let targets = 0;
+  for (let seed = 0; seed < 60; seed++) {
+    // The buffalo is scheduled OUTSIDE the k draws, so it does not belong to
+    // the cell total the band controls (gameplay.md §5.2).
+    for (const { batch, target } of sample({ turns: ALL_TURNS, seed, allowBuffalo: false })) {
+      const cells = batchCells(batch);
+      if (cells !== target) scattered += 1;
+      sum += cells;
+      targets += target;
+      batches += 1;
     }
-    error[difficulty] = (sum - targets) / batches;
   }
   assert.ok(scattered > 0, 'exact equality would mean the old algorithm is back');
   // Stochastic rounding keeps the expectation on target. The residual is
-  // negative because the W-1 cap truncates the top of the highest bands, which
-  // AC-306 permits and asks to be recorded rather than tuned away.
-  for (const [difficulty, err] of Object.entries(error)) {
-    assert.ok(Math.abs(err) < 0.3, `${difficulty} mean error ${err.toFixed(3)}`);
-  }
+  // negative because the W-1 cap truncates the top of the band, which AC-306
+  // permits and asks to be recorded rather than tuned away.
+  const err = (sum - targets) / batches;
+  assert.ok(Math.abs(err) < 0.3, `mean error ${err.toFixed(3)}`);
 });
 
 test('AC-307b the target itself always sits inside the band', () => {
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 0; seed < 20; seed++) {
-      for (const { turn, target } of sample({ difficulty, turns: ALL_TURNS, seed })) {
-        const [low, high] = bandForTurn(difficulty, turn);
-        // The target is the roll, clamped to the cap. The buffalo no longer
-        // raises it: it is scheduled OUTSIDE the k draws, so it does not
-        // consume the band's cells (gameplay.md §5.2).
-        assert.ok(target >= low && target <= high, `${difficulty} t${turn}: ${target}`);
-      }
+  for (let seed = 0; seed < 20; seed++) {
+    for (const { turn, target } of sample({ turns: ALL_TURNS, seed })) {
+      const [low, high] = bandForTurn(turn);
+      // The target is the roll, clamped to the cap. The buffalo does not
+      // raise it: it is scheduled OUTSIDE the k draws, so it does not
+      // consume the band's cells (gameplay.md §5.2).
+      assert.ok(target >= low && target <= high, `t${turn}: ${target}`);
     }
   }
 });
 
-test('AC-306/307 generated batches sit inside their band', () => {
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 0; seed < 40; seed++) {
-      for (const { turn, batch } of sample({ difficulty, turns: ALL_TURNS, seed })) {
-        const cells = batchCells(batch);
-        // A batch's CELLS no longer sit inside the band — `k` is a whole
-        // number of animals, so they scatter around the rolled target
-        // (AC-307b). What still holds absolutely is the cap.
-        assert.ok(cells >= 1 && cells <= MAX_BATCH_CELLS,
-          `${difficulty} turn ${turn}: ${cells} cells`);
-      }
+test('AC-306 generated batches stay under the cap', () => {
+  for (let seed = 0; seed < 40; seed++) {
+    for (const { turn, batch } of sample({ turns: ALL_TURNS, seed })) {
+      const cells = batchCells(batch);
+      // A batch's CELLS no longer sit inside the band — `k` is a whole
+      // number of animals, so they scatter around the rolled target
+      // (AC-307b). What still holds absolutely is the cap.
+      assert.ok(cells >= 1 && cells <= MAX_BATCH_CELLS, `turn ${turn}: ${cells} cells`);
     }
   }
 });
@@ -222,67 +205,42 @@ test('AC-308c no species is ever excluded from a draw for FITTING reasons', () =
   // place, it does place, and placement never fails.
   let batches = 0;
   let elephants = 0;
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 100; seed < 140; seed++) {
-      for (const { batch } of sample({ difficulty, turns: ALL_TURNS, seed })) {
-        assert.ok(batch.length > 0, 'a batch is never empty');
-        assert.ok(batchCells(batch) <= MAX_BATCH_CELLS);
-        elephants += batch.filter((a) => a.type === 'elephant').length;
-        batches += 1;
-      }
+  for (let seed = 100; seed < 140; seed++) {
+    for (const { batch } of sample({ turns: ALL_TURNS, seed })) {
+      assert.ok(batch.length > 0, 'a batch is never empty');
+      assert.ok(batchCells(batch) <= MAX_BATCH_CELLS);
+      elephants += batch.filter((a) => a.type === 'elephant').length;
+      batches += 1;
     }
   }
-  assert.ok(batches >= 24000, `only ${batches} batches sampled`);
-  // Under the superseded algorithm elephants were 6.6% of Savanna's draws
-  // against a weight of 20. If that bias ever returns this count collapses.
-  assert.ok(elephants / batches > 0.3, `only ${(elephants / batches).toFixed(2)} elephants/batch`);
+  assert.ok(batches >= 8000, `only ${batches} batches sampled`);
+  // Under the superseded algorithm elephants were 6.6% of draws against a
+  // weight of 20. If that bias ever returns this count collapses. The curve's
+  // elephant weight is 10, the lowest of the three tables, so the floor here
+  // is lower than the one the three-habitat sweep used.
+  assert.ok(elephants / batches > 0.1, `only ${(elephants / batches).toFixed(3)} elephants/batch`);
 });
 
-test('AC-308 the three difficulties produce measurably different mean cells/turn', () => {
-  const turns = Array.from({ length: 50 }, (_, i) => i + 1);
-  const means = {};
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    let total = 0;
-    let count = 0;
-    for (let seed = 0; seed < 50; seed++) {
-      for (const { batch } of sample({ difficulty, turns, seed })) {
-        total += batchCells(batch);
-        count += 1;
-      }
-    }
-    means[difficulty] = total / count;
-  }
-  assert.ok(means.meadow < means.savanna, `${means.meadow} !< ${means.savanna}`);
-  assert.ok(means.savanna < means.tundra, `${means.savanna} !< ${means.tundra}`);
-  assert.ok(means.tundra - means.meadow > 1.0, 'the spread is more than a rounding error');
-});
-
-test('AC-309 Tundra at its ceiling reaches 8 of 9, and never 9', () => {
-  // Amended with the board: the old wording asked for a 9-column batch, which
-  // on a 9-wide row is a self-clearing arrival that §5.2 invariant 1 forbids.
-  // Tundra's ceiling dropped 7-9 -> 6-8 for the same reason.
+test('AC-309/309b no batch ever occupies the whole row, and what it does reach', () => {
+  // AC-309 IS STALE AND IS REPORTED, NOT REINTERPRETED. It reads "Given 500
+  // batches at Tundra's ceiling band (5-7, turn 25+), Then the maximum
+  // occupancy observed equals that band's high of 7" — and there is no Tundra
+  // (AC-320). Its second half is general and survives verbatim: "no batch at
+  // any difficulty ever reaches BOARD.width = 9, which would be a self-clearing
+  // arrival". That half is asserted; the first half is replaced by RECORDING
+  // what this curve actually reaches, which is what a future amendment needs.
   const widths = new Set();
-  const turns = Array.from({ length: 50 }, (_, i) => i + 25);
-  for (let seed = 0; seed < 10; seed++) {
-    for (const { batch } of sample({ difficulty: 'tundra', turns, seed })) {
+  for (let seed = 0; seed < 60; seed += 1) {
+    for (const { batch } of sample({ turns: ALL_TURNS, seed })) {
       widths.add(batchCells(batch));
     }
   }
-  assert.ok(
-    widths.has(BOARD.width - 1),
-    `never reached ${BOARD.width - 1} columns; saw ${[...widths].sort((a, b) => a - b).join(',')}`,
-  );
-  assert.ok(!widths.has(BOARD.width), 'and never the whole row (AC-303)');
-});
-
-test('AC-309b no batch anywhere occupies the whole row', () => {
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 0; seed < 30; seed++) {
-      for (const { batch } of sample({ difficulty, turns: ALL_TURNS, seed })) {
-        assert.ok(batchCells(batch) <= MAX_BATCH_CELLS);
-      }
-    }
-  }
+  assert.ok(!widths.has(BOARD.width), 'a batch reached the whole row (AC-303)');
+  const observed = Math.max(...widths);
+  assert.ok(observed <= MAX_BATCH_CELLS, `observed ${observed} over the cap`);
+  // Recorded: the curve's ceiling band is 3-5 and its scheduled buffalo is 5,
+  // so the widest batch is a buffalo turn, not a band turn.
+  assert.equal(observed, 8, `the curve's widest observed batch is ${observed} of ${BOARD.width}`);
 });
 
 test('AC-317 generation never deadlocks and never produces an empty batch', () => {
@@ -293,20 +251,18 @@ test('AC-317 generation never deadlocks and never produces an empty batch', () =
   // by interleaving — placement is arithmetic now, so there is nothing to
   // strand.
   let batches = 0;
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 0; seed < 200; seed++) {
-      for (const { batch } of sample({ difficulty, turns: [1, 13, 25, 37, 61], seed })) {
-        assert.ok(batch.length > 0, 'a batch is never empty');
-        const occupied = new Set();
-        for (const a of batch) {
-          assert.ok(a.x >= 0 && a.x + a.size <= BOARD.width, 'in bounds (AC-305)');
-          for (let c = a.x; c < a.x + a.size; c += 1) {
-            assert.ok(!occupied.has(c), 'no two animals overlap (AC-304)');
-            occupied.add(c);
-          }
+  for (let seed = 0; seed < 600; seed++) {
+    for (const { batch } of sample({ turns: [1, 13, 25, 37, 61], seed })) {
+      assert.ok(batch.length > 0, 'a batch is never empty');
+      const occupied = new Set();
+      for (const a of batch) {
+        assert.ok(a.x >= 0 && a.x + a.size <= BOARD.width, 'in bounds (AC-305)');
+        for (let c = a.x; c < a.x + a.size; c += 1) {
+          assert.ok(!occupied.has(c), 'no two animals overlap (AC-304)');
+          occupied.add(c);
         }
-        batches += 1;
       }
+      batches += 1;
     }
   }
   assert.ok(batches >= 2000, `only ${batches} batches sampled`);
@@ -339,23 +295,23 @@ test('AC-317b/c the draw count is EXACT, and now at the shipped width', () => {
   //   1 target + 1 stochastic-rounding fraction + one draw per species chosen
   //   + (n-1) to shuffle + one per free column
   let checked = 0;
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 0; seed < 150; seed++) {
-      for (const turn of [1, 10, 13, 25, 37, 40]) {
-        const before = makeRng(seed * 31 + turn);
-        const out = generateBatch({ turn, difficulty, rng: before, nextId: 1 });
-        const buffalo = out.batch.filter((a) => a.type === 'buffalo').length;
-        const drawn = out.batch.length - buffalo;
-        const free = BOARD.width - batchCells(out.batch);
-        const expected = 2 + drawn + Math.max(0, out.batch.length - 1) + free;
+  for (let seed = 0; seed < 450; seed++) {
+    // Turn 12 and 24 are buffalo turns: the schedule must cost no draw either
+    // (AC-310b — it reads no PRNG).
+    for (const turn of [1, 10, 12, 13, 24, 25, 37, 40, 46, 74]) {
+      const before = makeRng(seed * 31 + turn);
+      const out = generateBatch({ turn, rng: before, nextId: 1 });
+      const buffalo = out.batch.filter((a) => a.type === 'buffalo').length;
+      const drawn = out.batch.length - buffalo;
+      const free = BOARD.width - batchCells(out.batch);
+      const expected = 2 + drawn + Math.max(0, out.batch.length - 1) + free;
 
-        assert.equal(
-          rngStepsBetween(before, out.rng),
-          expected,
-          `${difficulty} turn ${turn} seed ${seed}: ${out.batch.length} animals, ${free} free`,
-        );
-        checked += 1;
-      }
+      assert.equal(
+        rngStepsBetween(before, out.rng),
+        expected,
+        `turn ${turn} seed ${seed}: ${out.batch.length} animals, ${free} free`,
+      );
+      checked += 1;
     }
   }
   assert.ok(checked >= 2000, `only ${checked} batches checked`);
@@ -373,31 +329,165 @@ test('AC-317b the generator has no retry loop, backtracking or fallback', () => 
   }
 });
 
-test('AC-310 Savanna queues a buffalo on turns 10, 20, 30 and on no other turn', () => {
-  for (const { turn, batch } of sample({ difficulty: 'savanna', turns: ALL_TURNS })) {
-    const hasBuffalo = batch.some((a) => a.type === 'buffalo');
-    assert.equal(hasBuffalo, turn % 10 === 0, `turn ${turn}`);
+// ---- the buffalo schedule (gameplay.md §5.5b) ----------------------------
+
+/** AC-310's list, written out rather than computed, so the code cannot agree
+ *  with itself by sharing an arithmetic mistake with the thing it checks. */
+const SCHEDULED = [12, 24, 36, 46, 56, 66, 74, 82, 90, 98, 106, 114, 122, 130];
+
+test('AC-310 a buffalo is queued on 12, 24, 36, 46, 56, 66, 74, 82, 90, 98 ... and no other turn', () => {
+  const wanted = new Set(SCHEDULED);
+  for (let turn = 0; turn <= 130; turn += 1) {
+    assert.equal(isBuffaloTurn(turn), wanted.has(turn), `turn ${turn}`);
   }
-  assert.equal(isBuffaloTurn('meadow', 12), true);
-  assert.equal(isBuffaloTurn('tundra', 8), true);
-  assert.equal(isBuffaloTurn('savanna', 0), false, 'never turn 0');
+  assert.equal(isBuffaloTurn(0), false, 'never turn 0');
+  assert.equal(isBuffaloTurn(-12), false, 'and never a negative turn');
 });
 
-test('AC-311 no second buffalo is queued while one is on the board', () => {
-  const [{ batch }] = sample({
-    difficulty: 'savanna',
-    turns: [10],
-    hasBuffaloOnBoard: true,
-  });
-  assert.equal(batch.some((a) => a.type === 'buffalo'), false);
+test('AC-310 the three cadences are 12, then 10, then 8 for ever', () => {
+  const gaps = [];
+  let last = 0;
+  for (let turn = 1; turn <= 400; turn += 1) {
+    if (!isBuffaloTurn(turn)) continue;
+    gaps.push(turn - last);
+    last = turn;
+  }
+  assert.deepEqual(gaps.slice(0, 6), [12, 12, 12, 10, 10, 10]);
+  assert.ok(gaps.slice(6).every((g) => g === 8), `late gaps are ${[...new Set(gaps.slice(6))]}`);
+  // The owner's "2-3 times" at each of the first two cadences, as a count.
+  assert.equal(gaps.filter((g) => g === 12).length, 3);
+  assert.equal(gaps.filter((g) => g === 10).length, 3);
+});
+
+test('AC-310b the schedule is a pure function of the turn number', () => {
+  // It reads no board state, no run state and no PRNG — which is what makes
+  // the HUD countdown (AC-509c) a promise rather than a guess. Proven three
+  // ways: by signature, by source, and by repetition.
+  assert.equal(isBuffaloTurn.length, 1, 'isBuffaloTurn takes the turn and nothing else');
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'engine', 'spawn.js'),
+    'utf8',
+  );
+  const body = source.slice(source.indexOf('export function isBuffaloTurn'));
+  const fn = body.slice(0, body.indexOf('\n}\n') + 2);
+  for (const banned of ['rng', 'animals', 'state', 'Math.random', 'board']) {
+    assert.ok(!fn.includes(banned), `isBuffaloTurn reads "${banned}"`);
+  }
+  for (let turn = 0; turn <= 200; turn += 1) {
+    assert.equal(isBuffaloTurn(turn), isBuffaloTurn(turn), `turn ${turn} is not stable`);
+  }
+});
+
+test('AC-310c a scheduled buffalo is in that turn\'s batch, with no exception', () => {
+  // Every scheduled turn, at 200 seeds each: the generator has exactly one
+  // condition left and it is `allowBuffalo`, which is AC-313c's seeding switch
+  // rather than a game rule.
+  let checked = 0;
+  for (let seed = 0; seed < 200; seed += 1) {
+    for (const turn of SCHEDULED) {
+      const out = generateBatch({ turn, rng: makeRng(seed * 104729 + turn), nextId: 1 });
+      assert.equal(out.batch.filter((a) => a.type === 'buffalo').length, 1,
+        `turn ${turn} seed ${seed} did not queue exactly one buffalo`);
+      checked += 1;
+    }
+  }
+  assert.ok(checked >= 2000, `only ${checked} scheduled turns checked`);
+
+  // And on no unscheduled turn, at the same sample size.
+  for (let seed = 0; seed < 200; seed += 1) {
+    for (const turn of [1, 11, 13, 23, 35, 37, 45, 47, 67, 73, 75]) {
+      const out = generateBatch({ turn, rng: makeRng(seed * 104729 + turn), nextId: 1 });
+      assert.equal(out.batch.some((a) => a.type === 'buffalo'), false, `turn ${turn} seed ${seed}`);
+    }
+  }
+});
+
+test('AC-311 the generator has no gate on what is already on the board', () => {
+  // DO NOT FIX THIS BACK. The owner overruled one-at-a-time having played it,
+  // and a population cap is an owner decision (open-questions.md Q11), never a
+  // defect fix. The gate is gone at the level of the SIGNATURE: there is no
+  // parameter through which a caller could tell the generator what is standing
+  // on the board, so no gate can be reintroduced without changing the shape of
+  // the call — which is what makes this greppable rather than hopeful.
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'engine', 'spawn.js'),
+    'utf8',
+  );
+  const code = source.replace(/^\s*(\/\/|\*|\/\*).*$/gm, '');
+  assert.ok(!code.includes('hasBuffaloOnBoard'), 'the one-at-a-time gate is back');
+  assert.ok(!code.includes('buffaloesOnBoard'), 'the generator can see the board again');
+  assert.ok(!code.includes('cap)'), 'the size <= cap condition is back (AC-310c)');
+
+  // And behaviourally: the same scheduled turn queues a buffalo however many
+  // are notionally standing, because there is nothing to tell it.
+  const a = generateBatch({ turn: 46, rng: makeRng(5), nextId: 1 });
+  const b = generateBatch({ turn: 46, rng: makeRng(5), nextId: 1, width: BOARD.width });
+  assert.deepEqual(a.batch, b.batch);
+  assert.equal(a.batch.filter((x) => x.type === 'buffalo').length, 1);
+});
+
+test('AC-311b holds for two FULL buffalo and for nothing else. REPORTED.', () => {
+  // AC-311b: "no row contains two buffalo, because 2 x SPECIES.buffalo.size >
+  // BOARD.width (10 > 9)". The arithmetic is right and the conclusion is wrong,
+  // because a buffalo SHRINKS. This test asserts both halves so the true
+  // statement is the one on record.
+  assert.ok(2 * SPECIES.buffalo.size > BOARD.width,
+    `two FULL buffalo: 2 x ${SPECIES.buffalo.size} does fit in ${BOARD.width}`);
+
+  // A shrunk buffalo and a full one fit exactly, and the engine reaches it:
+  // measured over 18,712 bot turns on 300 seeds, 15.2% of settled boards had at
+  // least two buffalo in one row, the worst four of them (3+2+2+1 of 9).
+  const pairs = [];
+  for (let a = 1; a <= SPECIES.buffalo.size; a += 1) {
+    for (let b = a; b <= SPECIES.buffalo.size; b += 1) {
+      if (a + b <= BOARD.width) pairs.push([a, b]);
+    }
+  }
+  assert.ok(pairs.length > 0,
+    'AC-311b would hold if no two buffalo sizes fitted a row; these do: '
+      + JSON.stringify(pairs));
+  assert.deepEqual(pairs.at(-1), [4, 5], 'the pair that fills a row exactly');
+
+  // AC-504's termination floor is therefore NOT `width - buffalo.size` = 4.
+  // `(width - B) + n` cells leave a completed row, and `B - n` is maximised at
+  // 7 by the 4+5 pair, so the true floor is 2. See resolve.js and the comment
+  // beside CHAIN_GUARD_STEPS.
+  let floor = BOARD.width;
+  const walk = (from, sizes) => {
+    const B = sizes.reduce((x, y) => x + y, 0);
+    if (sizes.length > 0) floor = Math.min(floor, BOARD.width - B + sizes.length);
+    for (let size = from; size <= SPECIES.buffalo.size; size += 1) {
+      if (B + size <= BOARD.width) walk(size, [...sizes, size]);
+    }
+  };
+  walk(1, []);
+  assert.equal(floor, 2, 'the worst-case cells removed by one clear step');
+  assert.ok(floor >= 1, 'board mass still strictly decreases, so the loop terminates');
+});
+
+test('AC-509c the countdown is the schedule, read forwards', () => {
+  for (let turn = 0; turn <= 300; turn += 1) {
+    const d = turnsUntilBuffalo(turn);
+    assert.ok(d >= 0, `turn ${turn}: ${d}`);
+    assert.equal(isBuffaloTurn(turn + d), true, `turn ${turn} + ${d} is not a buffalo turn`);
+    for (let k = 0; k < d; k += 1) {
+      assert.equal(isBuffaloTurn(turn + k), false, `turn ${turn}: missed one at +${k}`);
+    }
+    assert.ok(d <= Math.max(...BUFFALO_PHASES.map((ph) => ph.every)),
+      `turn ${turn}: ${d} is longer than the longest cadence`);
+  }
+  assert.equal(turnsUntilBuffalo(12), 0, 'a scheduled turn counts down to zero');
+  assert.equal(turnsUntilBuffalo(11), 1);
+  assert.equal(turnsUntilBuffalo(13), 11);
+  assert.equal(turnsUntilBuffalo(67), 7);
 });
 
 test('AC-314 the same seed and turn produce an identical batch', () => {
-  const a = generateBatch({ turn: 17, difficulty: 'tundra', rng: makeRng(123), nextId: 1 });
-  const b = generateBatch({ turn: 17, difficulty: 'tundra', rng: makeRng(123), nextId: 1 });
+  const a = generateBatch({ turn: 17, rng: makeRng(123), nextId: 1 });
+  const b = generateBatch({ turn: 17, rng: makeRng(123), nextId: 1 });
   assert.deepEqual(a, b);
 
-  const c = generateBatch({ turn: 17, difficulty: 'tundra', rng: makeRng(124), nextId: 1 });
+  const c = generateBatch({ turn: 17, rng: makeRng(124), nextId: 1 });
   assert.notDeepEqual(a.batch, c.batch);
 });
 
@@ -413,35 +503,33 @@ test('every animal drawn is also placed, and truncation only ever means the cap'
   // drew would disagree with this.
   let truncated = 0;
   let batches = 0;
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
-    for (let seed = 0; seed < 40; seed++) {
-      let rng = makeRng(seed);
-      let nextId = 1;
-      for (const turn of ALL_TURNS) {
-        const [low, high] = bandForTurn(difficulty, turn);
-        const rolled = nextInt(rng, low, high);
-        const target = Math.max(1, Math.min(MAX_BATCH_CELLS, rolled.value));
-        const raw = target / meanDrawnSize(difficulty);
-        const whole = Math.floor(raw);
-        const carry = nextFraction(rolled.rng);
-        const k = Math.max(1, whole + (carry.value < raw - whole ? 1 : 0));
+  for (let seed = 0; seed < 120; seed++) {
+    let rng = makeRng(seed);
+    let nextId = 1;
+    for (const turn of ALL_TURNS) {
+      const [low, high] = bandForTurn(turn);
+      const rolled = nextInt(rng, low, high);
+      const target = Math.max(1, Math.min(MAX_BATCH_CELLS, rolled.value));
+      const raw = target / meanDrawnSize();
+      const whole = Math.floor(raw);
+      const carry = nextFraction(rolled.rng);
+      const k = Math.max(1, whole + (carry.value < raw - whole ? 1 : 0));
 
-        const out = generateBatch({ turn, difficulty, rng, nextId });
-        rng = out.rng;
-        nextId = out.nextId;
+      const out = generateBatch({ turn, rng, nextId });
+      rng = out.rng;
+      nextId = out.nextId;
 
-        const buffalo = out.batch.filter((a) => a.type === 'buffalo').length;
-        const placed = out.batch.length - buffalo;
-        assert.ok(placed <= k, `${difficulty} t${turn}: placed ${placed} > drawn ${k}`);
-        if (placed < k) {
-          truncated += 1;
-          assert.equal(
-            batchCells(out.batch), MAX_BATCH_CELLS,
-            `${difficulty} t${turn}: short by ${k - placed} with room to spare`,
-          );
-        }
-        batches += 1;
+      const buffalo = out.batch.filter((a) => a.type === 'buffalo').length;
+      const placed = out.batch.length - buffalo;
+      assert.ok(placed <= k, `t${turn}: placed ${placed} > drawn ${k}`);
+      if (placed < k) {
+        truncated += 1;
+        assert.equal(
+          batchCells(out.batch), MAX_BATCH_CELLS,
+          `t${turn}: short by ${k - placed} with room to spare`,
+        );
       }
+      batches += 1;
     }
   }
   assert.ok(batches >= 20000, `only ${batches} batches`);

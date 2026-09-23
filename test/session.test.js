@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BOARD, DIFFICULTIES, STATUS } from '../src/engine/constants.js';
+import { BOARD, STATUS } from '../src/engine/constants.js';
 import { ACTIONS, canMove, reduce } from '../src/engine/engine.js';
 import { runReducer } from '../src/ui/useGameRun.js';
 import {
@@ -43,8 +43,8 @@ import { animal, fullRow } from './helpers.js';
  * the engine's `reduce` is deliberate: the move log is its responsibility, so
  * a replay built from anything else would be testing a fixture.
  */
-function playedRun(seed, n, difficulty = 'savanna') {
-  let state = openRun({ seed, difficulty });
+function playedRun(seed, n) {
+  let state = openRun({ seed });
   for (let i = 0; i < n; i += 1) {
     const pick = state.animals[(i * 7) % state.animals.length];
     let action = { type: ACTIONS.PASS };
@@ -93,10 +93,10 @@ function assertLegalBoard(state, why) {
 // ---- AC-1012 · the no-regression case ------------------------------------
 
 test('AC-1012 a backgrounded run comes back at exactly the state it was left in', () => {
-  for (const [seed, turns, difficulty] of [
-    ['bg-a', 25, 'savanna'], ['bg-b', 40, 'meadow'], ['bg-c', 18, 'tundra'], ['bg-d', 1, 'savanna'],
+  for (const [seed, turns] of [
+    ['bg-a', 25], ['bg-b', 40], ['bg-c', 18], ['bg-d', 1],
   ]) {
-    const live = playedRun(seed, turns, difficulty);
+    const live = playedRun(seed, turns);
     const blob = serialiseResume(buildResume(live));
     const back = restoreResume(blob);
 
@@ -107,7 +107,6 @@ test('AC-1012 a backgrounded run comes back at exactly the state it was left in'
     assert.equal(back.turn, live.turn, `${seed}: turn`);
     assert.deepEqual(back.queue, live.queue, `${seed}: queued batch`);
     assert.deepEqual(back.stats, live.stats, `${seed}: run statistics`);
-    assert.equal(back.difficulty, live.difficulty);
   }
 });
 
@@ -116,7 +115,7 @@ test('AC-1012 a run reached through Play Again resumes too', () => {
   // id namespace from `runIndex` and the inherited id counter (AC-214), so a
   // replay that assumed runIndex 1 would look up animals that do not exist.
   let state = playedRun('restart-first', 12);
-  state = runReducer(state, { type: ACTIONS.RESTART, seed: 'restart-second', difficulty: 'savanna' });
+  state = runReducer(state, { type: ACTIONS.RESTART, seed: 'restart-second' });
   assert.equal(state.runIndex, 2);
   assert.deepEqual(state.moves, [], 'a restart starts a new move log');
 
@@ -165,8 +164,9 @@ test('AC-1014 the stored record is a replay and carries no board at all', () => 
   const live = playedRun('shape', 30);
   const record = buildResume(live);
 
+  // AC-320c: no `difficulty` field. The seed alone reproduces a run.
   assert.deepEqual(Object.keys(record).sort(), [
-    'difficulty', 'digest', 'engineVersion', 'moves', 'schemaVersion', 'seed', 'start',
+    'digest', 'engineVersion', 'moves', 'schemaVersion', 'seed', 'start',
   ]);
   assert.equal(record.schemaVersion, RESUME_SCHEMA_VERSION);
   assert.equal(record.engineVersion, ENGINE_VERSION);
@@ -187,7 +187,7 @@ test('AC-1014 only a turn that RESOLVED is recorded', () => {
   // not there all leave the board alone. A replay that recorded them would
   // reconstruct a different run — and `lastTurn`'s identity is the only thing
   // that knows the difference.
-  const base = openRun({ seed: 'rejects', difficulty: 'savanna' });
+  const base = openRun({ seed: 'rejects' });
   const wall = [...fullRow(0), animal('rat', 0, 1), animal('rat', 2, 1)];
   const state = { ...base, animals: wall, queue: [], moves: [] };
   const blocked = state.animals.find((a) => a.y === 1 && a.x === 0);
@@ -216,15 +216,28 @@ test('AC-1016 a retune of the bands, weights or scoring changes the engine versi
   assert.equal(engineVersionFor(TUNING_SURFACE), ENGINE_VERSION, 'the shipped version is this hash');
 
   const retunedBand = copy();
-  retunedBand[1].savanna.startBand = [4, 6];
+  retunedBand[1].startBand = [4, 6];
   assert.notEqual(engineVersionFor(retunedBand), ENGINE_VERSION, 'a band retune did not invalidate');
 
   const retunedWeights = copy();
-  retunedWeights[1].meadow.weights.rat = 34;
+  retunedWeights[1].weights.rat = 34;
   assert.notEqual(engineVersionFor(retunedWeights), ENGINE_VERSION, 'a weight retune did not invalidate');
 
+  // gameplay.md §5.10 says pass 1 moves the fingerprint AUTOMATICALLY, because
+  // DIFFICULTIES is in the surface. It was replaced by CURVE and joined by
+  // BUFFALO_PHASES, so the claim is checked rather than assumed — and the
+  // SHIPPED version string is pinned, so a future change that happened to hash
+  // back to it would fail here.
+  assert.equal(ENGINE_VERSION, 'e1.x2hg53', 'the engine version moved unexpectedly');
+  assert.notEqual(ENGINE_VERSION, 'e1.1plkiik', 'the collapse did not move the engine version');
+
+  const reschedule = copy();
+  reschedule[2][0].every = 11;
+  assert.notEqual(engineVersionFor(reschedule), ENGINE_VERSION,
+    'a change to the buffalo schedule did not invalidate');
+
   const retunedScore = copy();
-  retunedScore[2].buffaloRetire = 700;
+  retunedScore[3].buffaloRetire = 700;
   assert.notEqual(engineVersionFor(retunedScore), ENGINE_VERSION, 'a scoring change did not invalidate');
 
   const narrower = copy();
@@ -232,7 +245,7 @@ test('AC-1016 a retune of the bands, weights or scoring changes the engine versi
   assert.notEqual(engineVersionFor(narrower), ENGINE_VERSION, 'a board change did not invalidate');
 
   const biggerElk = copy();
-  biggerElk[3].elk.size = 4;
+  biggerElk[4].elk.size = 4;
   assert.notEqual(engineVersionFor(biggerElk), ENGINE_VERSION, 'a species change did not invalidate');
 });
 
@@ -280,15 +293,30 @@ test('AC-1017 the reconstructed board is checked against the stored digest', () 
 
 // ---- AC-1022 · what this build no longer supports -------------------------
 
-test('AC-1022 a resume for an unsupported difficulty is discarded cleanly', () => {
+test('AC-1022/320d a resume written by the SHIPPED build is discarded, and the save is not', () => {
+  // AC-1022's difficulty half is gone with the habitats (AC-320), and its
+  // board half is enforced by `engineVersion` rather than by a check of its
+  // own: BOARD is in TUNING_SURFACE. What AC-320d asks for is exactly this
+  // asymmetry — the resume goes, the save migrates — so both are checked here
+  // against a record the shipped build would have written, difficulty field
+  // and all.
   const live = playedRun('gone', 10);
-  const record = buildResume(live);
-  for (const difficulty of ['jungle', '', null, 42, 'SAVANNA', '__proto__']) {
-    const blob = JSON.stringify({ ...record, difficulty });
-    assert.equal(parseResume(blob), null, `difficulty ${String(difficulty)} was accepted`);
-    assert.equal(restoreResume(blob), null);
-  }
-  assert.ok(DIFFICULTIES[record.difficulty], 'the fixture uses a real difficulty');
+  const shipped = {
+    ...buildResume(live),
+    engineVersion: 'e1.1plkiik',      // the string the shipped build stamped
+    difficulty: 'savanna',
+  };
+  assert.equal(parseResume(JSON.stringify(shipped)), null,
+    'a resume written by the shipped build was accepted under the new rules');
+  assert.equal(restoreResume(JSON.stringify(shipped)), null);
+
+  // ...and it is rejected at the VERSION, before a single move is replayed —
+  // not by noticing afterwards that the board came out wrong (AC-1016).
+  const current = { ...buildResume(live), difficulty: 'savanna' };
+  assert.notEqual(parseResume(JSON.stringify(current)), null,
+    'a stray difficulty field is now simply ignored, not a reason to discard');
+  assert.equal(parseResume(JSON.stringify(current)).difficulty, undefined,
+    'the stray field was carried through into the parsed record');
 });
 
 test('AC-1022 an impossible start or an over-long move list is refused', () => {
@@ -359,7 +387,7 @@ test('AC-1015 however corrupt or tampered, the board that comes back is a legal 
       case 3: record.seed = `tampered-${i}`; break;
       case 4: record.start = { runIndex: Math.floor(next() * 5), nextAnimalId: Math.floor(next() * 50) }; break;
       case 5: record.digest = fnv1a(String(i)); break;
-      case 6: record.difficulty = pick(['meadow', 'savanna', 'tundra', 'swamp']); break;
+      case 6: record.engineVersion = pick([ENGINE_VERSION, 'e1.1plkiik', '', 'e2.x']); break;
       default: {
         const at = Math.floor(next() * record.moves.length);
         if (record.moves[at]) record.moves[at] = { t: 'P' };
@@ -392,7 +420,6 @@ test('AC-1015 a hand-written "save file" cannot inject a board at all', () => {
     schemaVersion: RESUME_SCHEMA_VERSION,
     engineVersion: ENGINE_VERSION,
     seed: 'forged',
-    difficulty: 'savanna',
     start: { runIndex: 1, nextAnimalId: 1, abilities: true },
     moves: [],
     digest: 'anything',
@@ -408,7 +435,7 @@ test('AC-1015 a hand-written "save file" cannot inject a board at all', () => {
   // With a digest that actually matches its (empty) replay, it still only gets
   // the board `createRun` produces from that seed — its injected fields are not
   // read at all.
-  const honest = openRun({ seed: 'forged', difficulty: 'savanna' });
+  const honest = openRun({ seed: 'forged' });
   const accepted = restoreResume(JSON.stringify({ ...forged, digest: boardDigest(honest) }));
   assert.ok(accepted);
   assert.deepEqual(accepted.animals, honest.animals, 'the injected board reached the player');
@@ -423,7 +450,7 @@ test('AC-1020 a replay that runs the game out is not a run to resume', () => {
   // A resume record is cleared when a run ends, so one whose moves finish the
   // run describes a file that should not exist. It is discarded rather than
   // handed back as a Game Over the player has already seen.
-  let state = openRun({ seed: 'to-the-end', difficulty: 'tundra' });
+  let state = openRun({ seed: 'to-the-end' });
   while (state.status === STATUS.READY) state = runReducer(state, { type: ACTIONS.PASS });
   assert.equal(state.status, STATUS.GAME_OVER);
 
@@ -431,7 +458,6 @@ test('AC-1020 a replay that runs the game out is not a run to resume', () => {
     schemaVersion: RESUME_SCHEMA_VERSION,
     engineVersion: ENGINE_VERSION,
     seed: 'to-the-end',
-    difficulty: 'tundra',
     start: { runIndex: 1, nextAnimalId: 1 },
     moves: state.moves,
     digest: boardDigest(state),

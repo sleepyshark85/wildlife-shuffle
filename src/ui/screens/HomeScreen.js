@@ -1,6 +1,12 @@
 // S1 · Home. v1's SettingsMenu — grid-width and grid-height steppers in front of
-// the game — is deleted. The board is fixed at 9 x 15 (gameplay.md §3) and
-// difficulty lives here, as one row of three habitats (ui.md §2, §12).
+// the game — is deleted. The board is fixed at 9 x 15 (gameplay.md §3).
+//
+// THE HABITAT PICKER IS DELETED TOO (AC-320b, ui.md §2). Its row of three
+// choices and its blurb asked the player to choose between three experiences at
+// the moment they knew least about any of them — and our own measurement could
+// not reliably tell the three apart. Play is now the only primary action on the
+// screen, and the vertical space the picker gave up is spent on the gap above
+// it rather than on a new element: Home earns its pixels by having fewer.
 //
 // AC-1018: with a saved run present, Home LEADS with Resume — showing that
 // run's score and turn — and offers New Run second. AC-1019: starting a new run
@@ -8,20 +14,17 @@
 // does not ask is a trap.
 
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DEFAULT_DIFFICULTY, DIFFICULTIES } from '../../engine/constants.js';
-import { RADIUS, SPACE, themed } from '../theme.js';
+import { SPACE, themed } from '../theme.js';
 import { formatScore } from '../format.js';
-import { Button, IconButton, useFocusRing } from '../components/Controls.js';
+import { Button, IconButton } from '../components/Controls.js';
 import { NaturalGround } from '../components/NaturalGround.js';
 import { useProgress, useTheme } from '../progressStore.js';
 import { useSettings } from '../settings.js';
 import { Sheet } from './Sheet.js';
 import { SettingsSheet } from './SettingsSheet.js';
-
-const HABITATS = ['meadow', 'savanna', 'tundra'];
 
 /**
  * ui.md §16.3 reaches Home as well as the board — the owner asked for the
@@ -33,36 +36,6 @@ const HABITATS = ['meadow', 'savanna', 'tundra'];
  */
 const HOME_GROUND = 'home';
 
-/** Habitats, not Easy/Normal/Hard: "Hard" judges the player, a habitat
- *  describes the place — and Tundra is where the big animals live. */
-const BLURB = {
-  meadow: 'Small herds. Room to think.',
-  savanna: 'The standard run.',
-  tundra: 'Big animals, fast.',
-};
-
-/** One habitat choice. Its own component so it can own its focus ring. */
-function Habitat({ id, selected, onSelect }) {
-  const theme = useTheme();
-  const styles = STYLES[theme.name];
-  const ring = useFocusRing();
-  return (
-    <Pressable
-      onPress={() => onSelect(id)}
-      onFocus={ring.onFocus}
-      onBlur={ring.onBlur}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      accessibilityLabel={`${DIFFICULTIES[id].label}. ${BLURB[id]}`}
-      style={[styles.choice, selected && styles.choiceSelected, ring.focused && styles.focusRing]}
-    >
-      <Text style={[theme.type.button, selected && styles.choiceInkSelected]}>
-        {DIFFICULTIES[id].label}
-      </Text>
-    </Pressable>
-  );
-}
-
 export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
   const theme = useTheme();
   const styles = STYLES[theme.name];
@@ -70,7 +43,6 @@ export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
   const { width, height } = useWindowDimensions();
   const progress = useProgress();
   const settings = useSettings();
-  const [difficulty, setDifficulty] = useState(DEFAULT_DIFFICULTY);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -79,7 +51,7 @@ export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
 
   const start = () => {
     if (resume) progress.discardResume();
-    onStart(difficulty);
+    onStart();
   };
 
   return (
@@ -103,21 +75,6 @@ export function HomeScreen({ onStart, onResume, onRecords, onCollection }) {
             {`\u{1F525} ${streak.count} day streak`}
           </Text>
         ) : null}
-      </View>
-
-      <View style={styles.choices}>
-        <Text style={theme.type.label}>HABITAT</Text>
-        <View style={styles.row}>
-          {HABITATS.map((id) => (
-            <Habitat
-              key={id}
-              id={id}
-              selected={id === difficulty}
-              onSelect={setDifficulty}
-            />
-          ))}
-        </View>
-        <Text style={theme.type.body}>{BLURB[difficulty]}</Text>
       </View>
 
       <View style={styles.actions}>
@@ -175,27 +132,8 @@ const STYLES = themed((T) => StyleSheet.create({
   header: { gap: SPACE.md },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   streak: { ...T.type.button, color: T.colors.accent },
-  focusRing: {
-    outlineWidth: 2,
-    outlineColor: T.colors.accent,
-    outlineStyle: 'solid',
-    outlineOffset: 2,
-  },
-  choices: { gap: SPACE.md },
   row: { flexDirection: 'row', gap: SPACE.sm },
   half: { flex: 1 },
   actions: { gap: SPACE.sm },
   confirmActions: { gap: SPACE.md, marginTop: SPACE.md },
-  choice: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: RADIUS.button,
-    borderWidth: 1,
-    borderColor: T.colors.hairline,
-    backgroundColor: T.colors.panel,
-  },
-  choiceSelected: { borderColor: T.colors.accent, backgroundColor: T.colors.accentWash },
-  choiceInkSelected: { color: T.colors.labelOnWash },
 }));

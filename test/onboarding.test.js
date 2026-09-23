@@ -24,7 +24,6 @@ import { ACTIONS, reduce } from '../src/engine/engine.js';
 import {
   BEAT,
   BEATS,
-  ONBOARDING_DIFFICULTY,
   beatIndex,
   beatRun,
   nextBeat,
@@ -125,7 +124,9 @@ test('AC-1206 every beat board is a board the rules could have produced', () => 
 test('AC-1206 an onboarding run is scripted but never persisted or scored', () => {
   for (const id of BEATS) {
     const state = beatRun(id, `fresh-${id}`);
-    assert.equal(state.difficulty, ONBOARDING_DIFFICULTY);
+    // AC-320: there is nothing left to choose a habitat with. The beat
+    // boards were always scripted, so the collapse moved nothing here.
+    assert.equal(state.difficulty, undefined);
     assert.equal(state.score, 0);
     assert.equal(state.turn, 1);
     assert.equal(state.lastTurn, null, `${id} opens replaying a turn`);

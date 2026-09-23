@@ -356,6 +356,19 @@ const TYPE_METRICS = Object.freeze({
   body:    { fontSize: 15, lineHeight: 20, fontWeight: '400', ink: 'inkMuted' },
   label:   { fontSize: 10, lineHeight: 12, fontWeight: '600', letterSpacing: 1.4, ink: 'inkDim',
              textTransform: 'uppercase' },
+  /**
+   * ui.md §7.1's buffalo countdown: 11/600, `ink-muted`, right-aligned, never
+   * wraps.
+   *
+   * §7.1 says "mono" and this is not a monospaced FAMILY: there is no mono
+   * family anywhere in the type scale and adding one would be a new design
+   * token rather than an implementation of an approved one. `tabular-nums` is
+   * what the score already uses for the same job — the digits do not jitter as
+   * the countdown ticks down — and it is the half of "mono" this element needs.
+   * Recorded as a deviation.
+   */
+  countdown: { fontSize: 11, lineHeight: 12, fontWeight: '600', ink: 'inkMuted',
+               fontVariant: ['tabular-nums'] },
 });
 
 function typeFor(colors) {
@@ -536,6 +549,17 @@ export const MOTION = Object.freeze({
   /** The collapse's opacity fade outlives the structural window (AC-813d). */
   fadePast: 140,
   buffaloCrack: 120,
+  /**
+   * ui.md §7.1 — the buffalo strip. A new chip fades in over 180 ms ease-out at
+   * the moment the animal lands and the row reflows on the same 180; a retired
+   * chip leaves over 200 and the row closes on the board's own settle.
+   *
+   * Nothing in that strip pulses or loops: the danger-band wash is the only
+   * ambient animation in the game (ui.md §7), and a second one competing with
+   * it would make neither mean anything.
+   */
+  chipIn: 180,
+  chipOut: 200,
   scoreCount: 400,
   float: 900,
   shake: 180,

@@ -18,8 +18,8 @@
 // every batch — and batches are two or three animals long, so most draws are
 // last-ish. Measured over 60,000 batches, Savanna drew 48.9% rats against a
 // weight of 25 and 6.6% elephants against 20: a realised mean size of 1.81
-// against 2.42, every difficulty running about 0.7 of a cell lighter than
-// written. The owner saying the game "felt easy" was a defect report.
+// against 2.42, running about 0.7 of a cell lighter than written. The owner
+// saying the game "felt easy" was a defect report.
 //
 // The designer's first diagnosis — fragmentation from interleaved placement —
 // was measured and refuted: removing fragmentation entirely moved the mean from
@@ -39,7 +39,8 @@
 import {
   BOARD,
   BUFFALO,
-  DIFFICULTIES,
+  BUFFALO_PHASES,
+  CURVE,
   DRAWABLE,
   RAMP_EVERY_TURNS,
   SPECIES,
@@ -48,17 +49,20 @@ import {
 import { nextFraction, nextInt, shuffle, weightedPick } from './rng.js';
 
 /**
- * The cells-per-turn band for a difficulty at a given turn.
- * gameplay.md §5.5: +1 to both ends every 12 turns, until the ceiling.
- * Savanna: t1 3-5, t13 4-6, t25 5-7, t37+ 6-8 (AC-306, AC-307).
+ * The cells-per-turn band at a given turn. One curve, one table (AC-306).
+ *
+ * gameplay.md §5.5: +1 to both ends every 12 turns, until the ceiling — which
+ * is 3-5 and is reached at turn 13, after which this function is constant for
+ * the rest of the run (AC-307d). That flatness is the design, not an
+ * oversight: what escalates past turn 13 is the buffalo cadence, and a band
+ * that kept climbing beside it would be a second escalating lever nobody could
+ * attribute a pacing shift to (§5.5b).
  */
-export function bandForTurn(difficultyId, turn) {
-  const difficulty = DIFFICULTIES[difficultyId];
-  if (!difficulty) throw new Error(`Unknown difficulty: ${difficultyId}`);
+export function bandForTurn(turn) {
   const ramps = Math.max(0, Math.floor((turn - 1) / RAMP_EVERY_TURNS));
   return [
-    Math.min(difficulty.startBand[0] + ramps, difficulty.ceilingBand[0]),
-    Math.min(difficulty.startBand[1] + ramps, difficulty.ceilingBand[1]),
+    Math.min(CURVE.startBand[0] + ramps, CURVE.ceilingBand[0]),
+    Math.min(CURVE.startBand[1] + ramps, CURVE.ceilingBand[1]),
   ];
 }
 
@@ -66,47 +70,74 @@ export function bandForTurn(difficultyId, turn) {
  * AC-306b — THE BAND FLOOR, as a check rather than as a sentence.
  *
  * §5.2 draws `k >= 1`, so the smallest arrival this generator can produce is
- * ONE ANIMAL: 2.10 cells on Meadow, 2.42 on Savanna, 2.75 on Tundra. A band
- * asking for less than that cannot be delivered — it measures high, because the
- * floor rounds it up. The designer found this by trying 1-3 on Meadow: mean
- * 2.0 on paper, 2.41 cells/turn measured. That is not a band, it is a rounding
- * artefact, and it is why Meadow's starting band stayed at 2-4 in the retune
- * while every other band moved.
+ * ONE ANIMAL: 2.10 cells on this curve's weights. A band asking for less than
+ * that cannot be delivered — it measures high, because the floor rounds it up.
+ * The designer found this by trying 1-3: mean 2.0 on paper, 2.41 cells/turn
+ * measured. That is not a band, it is a rounding artefact, and it is why the
+ * 2-4 starting band stayed put in the retune while every other band moved —
+ * which is also why it is the band the one curve inherited.
  *
  * Two rules, and the second is the one with teeth:
  *   - no band's LOW may be below 2;
- *   - no band's MEAN may sit below that difficulty's mean animal size.
+ *   - no band's MEAN may sit below the mean animal size.
  *
- * This walks every band each difficulty actually reaches, start through
- * ceiling, rather than checking the two endpoints — the ramp moves both ends
- * together, so an intermediate band cannot violate the floor if the start does
- * not, but that is an argument and this is a check.
+ * This walks every band the curve actually reaches, start through ceiling,
+ * rather than checking the two endpoints — the ramp moves both ends together,
+ * so an intermediate band cannot violate the floor if the start does not, but
+ * that is an argument and this is a check.
  *
  * @returns {string[]} one line per violation; empty means the table is legal.
  */
 export function bandFloorViolations() {
   const out = [];
-  for (const id of Object.keys(DIFFICULTIES)) {
-    const floor = meanDrawnSize(id);
-    const ceiling = DIFFICULTIES[id].ceilingBand;
-    for (let turn = 1; ; turn += RAMP_EVERY_TURNS) {
-      const [low, high] = bandForTurn(id, turn);
-      if (low < 2) out.push(`${id} band ${low}-${high}: low ${low} is below 2`);
-      const mean = (low + high) / 2;
-      if (mean < floor) {
-        out.push(`${id} band ${low}-${high}: mean ${mean} is below the ${floor.toFixed(2)} floor`);
-      }
-      if (low === ceiling[0] && high === ceiling[1]) break;
+  const floor = meanDrawnSize();
+  const ceiling = CURVE.ceilingBand;
+  for (let turn = 1; ; turn += RAMP_EVERY_TURNS) {
+    const [low, high] = bandForTurn(turn);
+    if (low < 2) out.push(`band ${low}-${high}: low ${low} is below 2`);
+    const mean = (low + high) / 2;
+    if (mean < floor) {
+      out.push(`band ${low}-${high}: mean ${mean} is below the ${floor.toFixed(2)} floor`);
     }
+    if (low === ceiling[0] && high === ceiling[1]) break;
   }
   return out;
 }
 
-/** gameplay.md §5.4: buffalo is scheduled on turn n x buffaloEvery, never turn 0. */
-export function isBuffaloTurn(difficultyId, turn) {
-  const difficulty = DIFFICULTIES[difficultyId];
-  if (!difficulty) throw new Error(`Unknown difficulty: ${difficultyId}`);
-  return turn > 0 && turn % difficulty.buffaloEvery === 0;
+/**
+ * gameplay.md §5.5b, AC-310/AC-310b — is a buffalo scheduled for this turn?
+ *
+ * A PURE FUNCTION OF THE TURN NUMBER. It reads no board state, no run state and
+ * no PRNG, and that is the property the HUD countdown (AC-509c) is built on: a
+ * schedule with an input the player cannot see would be a number that lies,
+ * which is exactly the defect v1 shipped in its tray.
+ *
+ * 12, 24, 36, then 46, 56, 66, then every 8 for ever.
+ */
+export function isBuffaloTurn(turn) {
+  if (!(turn > 0)) return false;
+  for (const phase of BUFFALO_PHASES) {
+    if (phase.until === null || turn <= phase.until) {
+      return (turn - phase.from) % phase.every === 0;
+    }
+  }
+  return false;
+}
+
+/**
+ * AC-509c — turns from `turn` until the next scheduled buffalo, 0 if one is
+ * scheduled for `turn` itself.
+ *
+ * Bounded by the longest cadence in the table, so the loop cannot run away even
+ * if the phases are edited into something strange.
+ */
+export function turnsUntilBuffalo(turn) {
+  const longest = BUFFALO_PHASES.reduce((m, p) => Math.max(m, p.every), 1);
+  const from = Math.max(0, turn);
+  for (let d = 0; d <= longest; d += 1) {
+    if (isBuffaloTurn(from + d)) return d;
+  }
+  return longest;
 }
 
 /** Total columns a batch occupies. */
@@ -142,23 +173,18 @@ function distributeGaps(rng, free, slots) {
  */
 export function generateBatch({
   turn,
-  difficulty,
   rng,
   nextId,
   idPrefix = '',
-  hasBuffaloOnBoard = false,
   allowBuffalo = true,
   width = BOARD.width,
 }) {
-  const config = DIFFICULTIES[difficulty];
-  if (!config) throw new Error(`Unknown difficulty: ${difficulty}`);
-
   let state = rng;
   let id = nextId;
   /** Invariant 1: a batch may never fill the row. Derived, never a literal. */
   const cap = width - 1;
 
-  const [low, high] = bandForTurn(difficulty, turn);
+  const [low, high] = bandForTurn(turn);
   const rolled = nextInt(state, low, high);
   state = rolled.rng;
   const target = Math.max(1, Math.min(cap, rolled.value));
@@ -166,22 +192,31 @@ export function generateBatch({
   const chosen = [];
   let filled = 0;
 
-  // The scheduled buffalo, at most one on the board at a time (AC-310, AC-311).
-  // It sits outside the k draws because it is scheduled rather than drawn — it
-  // must not appear in the realised mix AC-308b measures.
-  if (
-    allowBuffalo
-    && !hasBuffaloOnBoard
-    && isBuffaloTurn(difficulty, turn)
-    && SPECIES.buffalo.size <= cap
-  ) {
+  // The scheduled buffalo (AC-310, AC-310c). It sits outside the k draws
+  // because it is scheduled rather than drawn — it must not appear in the
+  // realised mix AC-308b measures.
+  //
+  // ONE CONDITION, AND IT IS `allowBuffalo`, WHICH IS NOT A GAME RULE: it is
+  // AC-313c's seeding switch, off for the two batches that build the opening
+  // board and on for every turn thereafter.
+  //
+  // The two conditions that used to stand here are both gone and neither may
+  // come back (AC-310c, AC-311). `!hasBuffaloOnBoard` was the one-at-a-time
+  // gate, which the owner overruled having played it: measured over 150 bot
+  // runs it suppressed the schedule 3.63 times per run and delivered 1.13
+  // buffalo against a cadence that should have delivered five.
+  // `SPECIES.buffalo.size <= cap` was `5 <= 8`, a constant true that has never
+  // once been false. A THIRD condition is not a safety valve either — a
+  // population cap is an owner decision (open-questions.md Q3), never a defect
+  // fix, and the caps of 2 and 3 were measured and rejected on design grounds.
+  if (allowBuffalo && isBuffaloTurn(turn)) {
     chosen.push(BUFFALO);
     filled += SPECIES.buffalo.size;
   }
 
   // HOW MANY. Stochastic rounding, so the expected cell count is the target
   // exactly rather than the target rounded down.
-  const raw = target / meanDrawnSize(difficulty);
+  const raw = target / meanDrawnSize();
   const whole = Math.floor(raw);
   const carry = nextFraction(state);
   state = carry.rng;
@@ -192,7 +227,7 @@ export function generateBatch({
   for (let i = 0; i < k; i += 1) {
     const pool = DRAWABLE.filter((key) => SPECIES[key].size <= cap - filled);
     if (pool.length === 0) break;
-    const drawn = weightedPick(state, pool, pool.map((key) => config.weights[key]));
+    const drawn = weightedPick(state, pool, pool.map((key) => CURVE.weights[key]));
     state = drawn.rng;
     chosen.push(drawn.value);
     filled += SPECIES[drawn.value].size;

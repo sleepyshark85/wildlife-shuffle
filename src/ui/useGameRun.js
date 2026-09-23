@@ -24,13 +24,14 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import {
   ACTIONS,
   chargeState,
-  currentBuffalo,
+  currentBuffaloes,
   queueCells,
   reduce,
   runRecord,
   streakPill,
 } from '../engine/engine.js';
 import { ABILITIES } from '../engine/abilities.js';
+import { turnsUntilBuffalo } from '../engine/spawn.js';
 import { abilityButton, abilityRows } from './abilities.js';
 import { STATUS } from '../engine/constants.js';
 import { inspectChainGuard } from './chainGuard.js';
@@ -125,11 +126,11 @@ export function newSeed() {
  * replace — and AC-1021 falls out of it: from this line down there is no
  * difference at all between a resumed run and a fresh one.
  */
-export function useGameRun({ seed, difficulty, resumed = null }) {
+export function useGameRun({ seed, resumed = null }) {
   const [state, dispatch] = useReducer(
     runReducer,
-    { seed, difficulty, resumed },
-    (init) => init.resumed || openRun({ seed: init.seed, difficulty: init.difficulty }),
+    { seed, resumed },
+    (init) => init.resumed || openRun({ seed: init.seed }),
   );
 
   const [resolving, setResolving] = useState(false);
@@ -191,7 +192,6 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
         turn: turn.turn,
         action: turn.action,
         seed: state.seed,
-        difficulty: state.difficulty,
         score: stateRef.current.score,
         gained: turn.score,
         lockMs: wait,
@@ -205,7 +205,7 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
       }
     }, wait);
     return () => clearTimeout(timer);
-  }, [state.lastTurn, state.seed, state.difficulty, state.plan]);
+  }, [state.lastTurn, state.seed, state.plan]);
 
   const isOpen = () => !lockedRef.current && stateRef.current.status === STATUS.READY;
 
@@ -256,12 +256,12 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
     dispatch({ type: ACTIONS.PASS, reservedMs: gapRef.current });
   }, []);
 
-  const restart = useCallback((nextDifficulty) => {
+  const restart = useCallback(() => {
     bufferedRef.current = null;
     lockedRef.current = false;
     fingerUpRef.current = null;
     setGuardRecord(null);
-    dispatch({ type: ACTIONS.RESTART, seed: newSeed(), difficulty: nextDifficulty });
+    dispatch({ type: ACTIONS.RESTART, seed: newSeed() });
   }, []);
 
   // ---- derived, all straight off the engine's own selectors --------------
@@ -273,7 +273,11 @@ export function useGameRun({ seed, difficulty, resumed = null }) {
       queueCells: queueCells(state),
       score: state.score,
       streak: streakPill(state),
-      buffalo: currentBuffalo(state),
+      // AC-509/509c: the whole herd, bottom row first, and the countdown
+      // beside it. Both come off the engine's own selectors — the HUD counts
+      // nothing and schedules nothing of its own.
+      buffaloes: currentBuffaloes(state),
+      buffaloIn: turnsUntilBuffalo(state.turn),
       turn: state.turn,
       gameOver: state.status === STATUS.GAME_OVER,
       record: runRecord(state),

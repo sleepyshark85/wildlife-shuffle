@@ -20,7 +20,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { DEFAULT_THEME, THEME } from './src/ui/theme.js';
-import { BEATS, ONBOARDING_DIFFICULTY, beatRun, nextBeat } from './src/ui/onboarding.js';
+import { BEATS, beatRun, nextBeat } from './src/ui/onboarding.js';
 import { hasPlayed } from './src/ui/progress.js';
 import { ProgressProvider, useProgress, useTheme } from './src/ui/progressStore.js';
 import { SettingsProvider } from './src/ui/settings.js';
@@ -106,7 +106,6 @@ function Shell() {
         // through the lazy initialiser, exactly as a resumed run does.
         key={`${tutorial.beat}:${tutorial.seed}`}
         seed={tutorial.seed}
-        difficulty={ONBOARDING_DIFFICULTY}
         resumed={beatRun(tutorial.beat, tutorial.seed)}
         onboarding={{
           beat: tutorial.beat,
@@ -124,7 +123,6 @@ function Shell() {
       <GameScreen
         key={run.id}
         seed={run.seed}
-        difficulty={run.difficulty}
         resumed={run.resumed}
         onHowToPlay={() => {
           setRun(null);
@@ -138,12 +136,11 @@ function Shell() {
   if (screen === 'collection') return <CollectionScreen onBack={() => setScreen('home')} />;
   return (
     <HomeScreen
-      onStart={(difficulty) => setRun({ id: newSeed(), seed: newSeed(), difficulty, resumed: null })}
+      onStart={() => setRun({ id: newSeed(), seed: newSeed(), resumed: null })}
       // AC-1012: the state handed over here was reconstructed by REPLAYING the
       // stored moves through the engine, so it is a board the rules produced.
       // A snapshot could hand over one they could not reach (src/ui/session.js).
-      onResume={(state) =>
-        setRun({ id: newSeed(), seed: state.seed, difficulty: state.difficulty, resumed: state })}
+      onResume={(state) => setRun({ id: newSeed(), seed: state.seed, resumed: state })}
       onRecords={() => setScreen('records')}
       onCollection={() => setScreen('collection')}
     />

@@ -26,12 +26,12 @@ Submission checklist is at the bottom.
 `[DRAFT]`
 
 > Animals arrive at the bottom and push the board up. Drag one sideways each turn to pack a
-> full row and clear it. Five abilities, three habitats, no ads, no timers.
+> full row and clear it. Five abilities, a rising herd, no ads, no timers.
 
-*(198 — needs trimming. Alternative at 164:)*
+*(197 — needs trimming. Alternative at 163:)*
 
 > Animals arrive and push the board up. Drag one sideways each turn to pack a row and clear
-> it. Five abilities, three habitats. No ads, no timers, no network.
+> it. Five abilities, one rising curve. No ads, no timers, no network.
 
 ---
 
@@ -69,9 +69,11 @@ Line stops arrivals for three turns.
 And if animals reach the danger band, you're given a charge outright — once per run, regardless
 of score. The help arrives when you need it, not when you've earned it.
 
-THREE HABITATS
+ONE CURVE, AND IT TIGHTENS
 
-Meadow is roughly five minutes. Savanna is three. Tundra is two, and unforgiving.
+There are no difficulty levels to pick between. One run, about four minutes, and the buffalo
+arrive faster the longer you last — every twelve turns, then every ten, then every eight for
+as long as you survive. They do not leave when a row clears. They stand there and shrink.
 
 WHAT IT DOESN'T DO
 

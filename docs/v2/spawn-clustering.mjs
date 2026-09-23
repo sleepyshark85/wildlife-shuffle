@@ -21,17 +21,15 @@
 // REAL weight tables in src/engine/constants.js; "current" calls the REAL generateBatch.
 // Only the species-draw rule differs between the two columns.
 
-import { DIFFICULTIES, DRAWABLE, SPECIES, meanDrawnSize } from '../../src/engine/constants.js';
+import { CURVE, DRAWABLE, SPECIES, meanDrawnSize } from '../../src/engine/constants.js';
 import { makeRng, nextFraction, nextInt } from '../../src/engine/rng.js';
 import { bandForTurn, generateBatch } from '../../src/engine/spawn.js';
 
 // gameplay.md §5.5b: ONE curve, and its tuning row is the one previously labelled
-// 'meadow'. The label is gone; the numbers are kept because they are the only ones
-// that were ever measured, and they are the set whose run length lands inside §0's
-// 3-5 minute window (gameplay.md §5.9). `--all` still sweeps the other two rows so
-// the choice can be re-checked rather than taken on trust.
-const CURVE = 'meadow';
-const DIFFS = process.argv.includes('--all') ? ['meadow', 'savanna', 'tundra'] : [CURVE];
+// 'meadow'. The label is gone and so, as of this pass, are the other two rows:
+// `CURVE` is now imported from the engine rather than named here, and `--all` has
+// nothing left to sweep. The numbers are unchanged, which is why every figure this
+// script printed before the collapse it still prints.
 const WINDOW = 12;            // draws per window == the proposed bag size (§5.8)
 const TURNS = 200;            // turns per seed
 const SEEDS = 200;
@@ -50,8 +48,8 @@ const SEEDS = 200;
 export const BAG_SIZE = 12;
 
 /** Allot BAG_SIZE tickets by weight, carrying the remainder. Pure integer maths. */
-export function refillBag(rng, difficultyId, carry) {
-  const weights = DIFFICULTIES[difficultyId].weights;
+export function refillBag(rng, carry) {
+  const weights = CURVE.weights;
   const total = DRAWABLE.reduce((sum, key) => sum + weights[key], 0);
   const counts = {};
   const nextCarry = {};
@@ -93,18 +91,18 @@ export function refillBag(rng, difficultyId, carry) {
  * limit delays a species by a draw instead of spending its entitlement. That is
  * what keeps AC-308b's ceiling-band drift out of the bag.
  */
-export function generateBatchBag({ turn, difficulty, rng, bag, carry, width = 9 }) {
+export function generateBatchBag({ turn, rng, bag, carry, width = 9 }) {
   const cap = width - 1;
   let state = rng;
   let pool = bag;
   let credit = carry;
 
-  const [low, high] = bandForTurn(difficulty, turn);
+  const [low, high] = bandForTurn(turn);
   const rolled = nextInt(state, low, high);
   state = rolled.rng;
   const target = Math.max(1, Math.min(cap, rolled.value));
 
-  const raw = target / meanDrawnSize(difficulty);
+  const raw = target / meanDrawnSize();
   const whole = Math.floor(raw);
   const frac = nextFraction(state);
   state = frac.rng;
@@ -118,7 +116,7 @@ export function generateBatchBag({ turn, difficulty, rng, bag, carry, width = 9 
     let taken = null;
     for (;;) {
       if (pool.length === 0) {
-        const refilled = refillBag(state, difficulty, credit);
+        const refilled = refillBag(state, credit);
         state = refilled.rng; pool = refilled.bag; credit = refilled.carry;
       }
       const next = pool[pool.length - 1];
@@ -140,7 +138,7 @@ const pct = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s[Math
 const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
 
 /** Collect one long draw sequence per seed, at the turn numbers a real run visits. */
-function drawSequences(difficulty, variant) {
+function drawSequences(variant) {
   const runs = [];
   for (let seed = 1; seed <= SEEDS; seed += 1) {
     let rng = makeRng(seed * 7919 + 13);
@@ -148,11 +146,11 @@ function drawSequences(difficulty, variant) {
     const draws = [];
     for (let turn = 1; turn <= TURNS; turn += 1) {
       if (variant === 'bag') {
-        const out = generateBatchBag({ turn, difficulty, rng, bag, carry });
+        const out = generateBatchBag({ turn, rng, bag, carry });
         rng = out.rng; bag = out.bag; carry = out.carry;
         draws.push(...out.batch);
       } else {
-        const out = generateBatch({ turn, difficulty, rng, nextId: 1, allowBuffalo: false });
+        const out = generateBatch({ turn, rng, nextId: 1, allowBuffalo: false });
         rng = out.rng;
         draws.push(...out.batch.map((a) => a.type));
       }
@@ -162,8 +160,8 @@ function drawSequences(difficulty, variant) {
   return runs;
 }
 
-function analyse(runs, difficulty) {
-  const weights = DIFFICULTIES[difficulty].weights;
+function analyse(runs) {
+  const weights = CURVE.weights;
   const total = DRAWABLE.reduce((s, k) => s + weights[k], 0);
   const intended = Object.fromEntries(DRAWABLE.map((k) => [k, weights[k] / total]));
 
@@ -215,9 +213,9 @@ function analyse(runs, difficulty) {
   };
 }
 
-function report(difficulty, variant, r) {
-  console.log(`\n--- ${difficulty} / ${variant} --- ${r.n.toLocaleString()} draws`);
-  console.log(`  mean drawn size      ${r.meanSize.toFixed(3)}  (intent ${meanDrawnSize(difficulty).toFixed(2)})`);
+function report(variant, r) {
+  console.log(`\n--- the curve / ${variant} --- ${r.n.toLocaleString()} draws`);
+  console.log(`  mean drawn size      ${r.meanSize.toFixed(3)}  (intent ${meanDrawnSize().toFixed(2)})`);
   console.log(`  realised share       ${DRAWABLE.map((k) => `${k} ${(r.share[k] * 100).toFixed(1)}%`).join('  ')}`);
   console.log(`  longest same-species run  ${r.longestRun}   (p99 of runs ${r.runP99})`);
   console.log(`  gap between appearances (draws)  ${DRAWABLE.map((k) => `${k} p50 ${r.gapP50[k]} p99 ${r.gapP99[k]} max ${r.gapMax[k]}`).join(' | ')}`);
@@ -239,15 +237,15 @@ export const LIMITS = {
   windowAbsent: 0.20,     // bag measures 13.5%; the current generator measures 33.4%
 };
 
-function check(difficulty, r, failures) {
-  const push = (m) => failures.push(`${difficulty}: ${m}`);
+function check(r, failures) {
+  const push = (m) => failures.push(`curve: ${m}`);
   if (r.longestRun > LIMITS.longestRun) push(`longest same-species run ${r.longestRun} > ${LIMITS.longestRun}`);
   for (const k of DRAWABLE) {
     if (r.gapMax[k] > LIMITS.gapMax) push(`${k} worst gap ${r.gapMax[k]} draws > ${LIMITS.gapMax}`);
   }
   if (r.windowWorst > LIMITS.windowWorst) push(`p99 window deviation ${(r.windowWorst * 100).toFixed(1)}pp > ${(LIMITS.windowWorst * 100).toFixed(0)}pp`);
   if (r.windowAbsentPct > LIMITS.windowAbsent) push(`windows missing a species ${(r.windowAbsentPct * 100).toFixed(1)}% > ${(LIMITS.windowAbsent * 100).toFixed(0)}%`);
-  if (Math.abs(r.meanSize - meanDrawnSize(difficulty)) > 0.10) push(`mean drawn size ${r.meanSize.toFixed(3)} off intent by more than 0.10`);
+  if (Math.abs(r.meanSize - meanDrawnSize()) > 0.10) push(`mean drawn size ${r.meanSize.toFixed(3)} off intent by more than 0.10`);
   for (const k of DRAWABLE) {
     if (Math.abs(r.share[k] - r.intended[k]) > 0.02) push(`${k} share ${(r.share[k] * 100).toFixed(1)}% off intent by more than 2pp`);
   }
@@ -265,7 +263,7 @@ if (selftest) {
   console.log('It must FAIL on clustering while PASSING the aggregate mix, or the new');
   console.log('criteria are measuring nothing species-mix.mjs did not already measure.\n');
   const failures = [];
-  for (const d of DIFFS) check(d, analyse(drawSequences(d, 'current'), d), failures);
+  check(analyse(drawSequences('current')), failures);
   failures.forEach((f) => console.log('  CAUGHT  ' + f));
   const aggregate = failures.filter((f) => /share|mean drawn size/.test(f));
   console.log(`\n${failures.length} threshold(s) exceeded by the current generator.`);
@@ -277,14 +275,12 @@ if (selftest) {
 }
 
 const failures = [];
-for (const d of DIFFS) {
-  console.log(`\n================ ${d.toUpperCase()} ================`);
-  report(d, 'current', analyse(drawSequences(d, 'current'), d));
-  if (compare) {
-    const r = analyse(drawSequences(d, 'bag'), d);
-    report(d, `bag(${BAG_SIZE})`, r);
-    check(d, r, failures);
-  }
+console.log('\n================ THE CURVE ================');
+report('current', analyse(drawSequences('current')));
+if (compare) {
+  const r = analyse(drawSequences('bag'));
+  report(`bag(${BAG_SIZE})`, r);
+  check(r, failures);
 }
 if (compare) {
   console.log(`\n--- AC-308d/AC-308e against the proposed bag ---`);

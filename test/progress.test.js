@@ -14,7 +14,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DIFFICULTIES } from '../src/engine/constants.js';
 import { ACTIONS, createRun, reduce, runRecord } from '../src/engine/engine.js';
 import { STATUS } from '../src/engine/constants.js';
 import { DEFAULT_THEME, THEME, contrast } from '../src/ui/theme.js';
@@ -56,7 +55,6 @@ import { formatDay } from '../src/ui/format.js';
 function record(over = {}) {
   return {
     seed: 'seed-1',
-    difficulty: 'savanna',
     score: 1000,
     turns: 30,
     rowsCleared: 8,
@@ -95,7 +93,13 @@ test('AC-1005 every corrupt blob parses to nothing, and none of them throws', ()
     '[]', 'null', '"a string"', '{}',
     '{"schemaVersion":1}',
     JSON.stringify({ ...JSON.parse(good), best: null }),
-    JSON.stringify({ ...JSON.parse(good), best: { savanna: { score: 1 } } }),
+    JSON.stringify({ ...JSON.parse(good), best: { score: 1 } }),
+    // A version-5 blob still wearing the three-habitat shape: `migrate` does
+    // not run at the current version, so this is a `best` with no numbers in it.
+    JSON.stringify({
+      ...JSON.parse(good),
+      best: { meadow: { score: 1, chain: 0, turns: 0, rows: 0 } },
+    }),
     JSON.stringify({ ...JSON.parse(good), lifetime: { games: -1 } }),
     JSON.stringify({ ...JSON.parse(good), recent: 'nope' }),
     JSON.stringify({ ...JSON.parse(good), streak: { count: 3, lastDay: 'yesterday' } }),
@@ -103,10 +107,7 @@ test('AC-1005 every corrupt blob parses to nothing, and none of them throws', ()
     JSON.stringify({ ...JSON.parse(good), settings: { sizeNumerals: 'yes' } }),
     JSON.stringify({ ...JSON.parse(good), unlocks: { announced: [7], applied: {} } }),
     // A score that is not a number, which is what a tampered file looks like.
-    JSON.stringify({
-      ...JSON.parse(good),
-      best: { ...JSON.parse(good).best, tundra: { score: 'Infinity', chain: 0, turns: 0, rows: 0 } },
-    }),
+    JSON.stringify({ ...JSON.parse(good), best: { ...JSON.parse(good).best, score: 'Infinity' } }),
   ];
   for (const blob of bad) {
     assert.equal(parseSave(blob), null, `parsed something out of ${String(blob).slice(0, 40)}`);
@@ -133,7 +134,7 @@ test('AC-1006 an older schemaVersion is discarded whole, never partially applied
   // defaults, and NOTHING from the stale blob reaches them.
   const opened = parseSave(JSON.stringify({ ...current, schemaVersion: 0 })) || defaultSave();
   assert.deepEqual(opened, defaultSave());
-  assert.equal(opened.best.savanna.score, 0);
+  assert.equal(opened.best.score, 0);
 });
 
 /**
@@ -160,7 +161,7 @@ test('AC-1006 a version-1 save is migrated, keeping every record the player had'
   assert.notEqual(opened, null, 'a version-1 save was discarded instead of migrated');
   assert.equal(opened.schemaVersion, SAVE_SCHEMA_VERSION);
   // The records survived...
-  assert.equal(opened.best.savanna.score, 9999);
+  assert.equal(opened.best.score, 9999);
   assert.equal(opened.lifetime.games, 1);
   assert.deepEqual(opened.recent, v2.recent);
   assert.deepEqual(opened.streak, v2.streak);
@@ -194,33 +195,81 @@ test('AC-1006 a version-1 save is migrated, keeping every record the player had'
 test('AC-1005 a run record folded into defaults is what a fresh install shows', () => {
   const save = defaultSave();
   assert.equal(save.schemaVersion, SAVE_SCHEMA_VERSION);
-  assert.deepEqual(Object.keys(save.best).sort(), Object.keys(DIFFICULTIES).sort());
-  for (const id of Object.keys(DIFFICULTIES)) {
-    assert.deepEqual(save.best[id], { score: 0, chain: 0, turns: 0, rows: 0 });
-  }
+  assert.deepEqual(save.best, { score: 0, chain: 0, turns: 0, rows: 0 });
   assert.deepEqual(save.recent, []);
   assert.equal(save.streak.count, 0);
 });
 
 // ---- AC-1004 / AC-1008 / AC-1011b · what a finished run writes ------------
 
-test('AC-1004 best scores are tracked separately per difficulty', () => {
+test('AC-320d there is ONE record set, and a worse run never lowers it', () => {
   let save = defaultSave();
-  save = applyRunRecord(save, record({ difficulty: 'meadow', score: 500 }), { day: '2026-09-21', at: 1 });
-  save = applyRunRecord(save, record({ difficulty: 'tundra', score: 12000 }), { day: '2026-09-21', at: 2 });
+  save = applyRunRecord(save, record({ score: 500 }), { day: '2026-09-21', at: 1 });
+  save = applyRunRecord(save, record({ score: 12000 }), { day: '2026-09-21', at: 2 });
 
-  assert.equal(save.best.meadow.score, 500);
-  assert.equal(save.best.tundra.score, 12000);
-  assert.equal(save.best.savanna.score, 0, 'a habitat nobody played has no best');
+  assert.equal(save.best.score, 12000);
+  assert.ok(!('meadow' in save.best), 'the record set is still keyed by habitat');
 
-  // A worse run in the same habitat does not lower the record.
-  save = applyRunRecord(save, record({ difficulty: 'tundra', score: 10 }), { day: '2026-09-21', at: 3 });
-  assert.equal(save.best.tundra.score, 12000);
-  assert.equal(isNewBest(save, 'tundra', 12001), true);
-  assert.equal(isNewBest(save, 'tundra', 12000), false, 'equalling a best is not beating it');
+  save = applyRunRecord(save, record({ score: 10 }), { day: '2026-09-21', at: 3 });
+  assert.equal(save.best.score, 12000);
+  assert.equal(isNewBest(save, 12001), true);
+  assert.equal(isNewBest(save, 12000), false, 'equalling a best is not beating it');
 });
 
-test('AC-1008 all four per-habitat records and the lifetime totals accumulate', () => {
+test('AC-320d step 4 -> 5 merges three record sets by taking the MAXIMUM', () => {
+  // A save written by the SHIPPED build, by hand, at its own schema version
+  // and in its own shape — the blob an existing player is carrying.
+  const v4 = JSON.stringify({
+    schemaVersion: 4,
+    onboarded: true,
+    best: {
+      meadow: { score: 12000, chain: 3, turns: 91, rows: 40 },
+      savanna: { score: 4000, chain: 7, turns: 50, rows: 44 },
+      tundra: { score: 900, chain: 2, turns: 30, rows: 11 },
+    },
+    lifetime: { games: 12, turns: 700, rows: 95, buffaloRetired: 4, perfectClears: 1, mostRowsInStep: 3 },
+    recent: [
+      { difficulty: 'meadow', day: '2026-09-20', at: 2, score: 12000, turns: 91 },
+      { difficulty: 'tundra', day: '2026-09-19', at: 1, score: 900, turns: 30 },
+    ],
+    streak: { count: 3, lastDay: '2026-09-20' },
+    unlocks: { announced: ['ratKing'], applied: { theme: 'nightSavanna' } },
+    settings: { sizeNumerals: true, highContrast: false, reduceMotion: false, sound: true, haptics: false, theme: 'dark' },
+  });
+
+  const opened = parseSave(v4);
+  assert.notEqual(opened, null, 'a save written by the shipped build was discarded');
+  assert.equal(opened.schemaVersion, SAVE_SCHEMA_VERSION);
+
+  // The maximum of each stat, not one habitat's row and not a reset. Every
+  // field comes from a DIFFERENT habitat here on purpose, so a migration that
+  // picked a row instead of a maximum cannot pass by luck.
+  assert.deepEqual(opened.best, { score: 12000, chain: 7, turns: 91, rows: 44 });
+
+  // AC-1008b: the habitat chip is gone from every recent entry, and nothing
+  // else about them is.
+  assert.equal(opened.recent.length, 2);
+  for (const entry of opened.recent) {
+    assert.deepEqual(Object.keys(entry).sort(), ['at', 'day', 'score', 'turns']);
+  }
+  assert.equal(opened.recent[0].score, 12000);
+
+  // Lifetime totals, unlocks, the daily streak and settings are untouched.
+  assert.deepEqual(opened.lifetime, JSON.parse(v4).lifetime);
+  assert.deepEqual(opened.unlocks, JSON.parse(v4).unlocks);
+  assert.deepEqual(opened.streak, JSON.parse(v4).streak);
+  assert.deepEqual(opened.settings, JSON.parse(v4).settings);
+
+  // AC-320e: the Tundra palette's progress counter is a NUMBER off the merged
+  // save. Against a habitat map it was `Math.max(...[NaN,NaN,NaN], 0)` = NaN,
+  // so the palette would silently never have unlocked.
+  const tundra = UNLOCKS.find((u) => u.id === 'tundraPalette');
+  assert.equal(Number.isFinite(tundra.progress(opened)), true,
+    'the Tundra palette progress counter is not a number');
+  assert.equal(tundra.progress(opened), 12000);
+});
+
+test('AC-1008 all four records and the lifetime totals accumulate', () => {
   let save = defaultSave();
   save = applyRunRecord(save, record({
     score: 100, turns: 40, rowsCleared: 12, longestChain: 5, buffaloRetired: 2, perfectClears: 1,
@@ -229,7 +278,7 @@ test('AC-1008 all four per-habitat records and the lifetime totals accumulate', 
     score: 90, turns: 70, rowsCleared: 6, longestChain: 2, buffaloRetired: 1, perfectClears: 0,
   }), { day: '2026-09-21', at: 2 });
 
-  assert.deepEqual(save.best.savanna, { score: 100, chain: 5, turns: 70, rows: 12 });
+  assert.deepEqual(save.best, { score: 100, chain: 5, turns: 70, rows: 12 });
   assert.deepEqual(save.lifetime, {
     games: 2, turns: 110, rows: 18, buffaloRetired: 3, perfectClears: 1, mostRowsInStep: 1,
   });
@@ -246,7 +295,7 @@ test('AC-1011b the recent list is newest first and exactly ten deep', () => {
   // The aggregates do NOT replace the list: games counted every run, the list
   // kept the last ten. Both facts, from one fold.
   assert.equal(save.lifetime.games, RECENT_RUNS + 4);
-  assert.deepEqual(Object.keys(save.recent[0]).sort(), ['at', 'day', 'difficulty', 'score', 'turns']);
+  assert.deepEqual(Object.keys(save.recent[0]).sort(), ['at', 'day', 'score', 'turns']);
 });
 
 test('AC-504e a run whose chain guard tripped writes no record of any kind', () => {
@@ -348,11 +397,14 @@ test('AC-1009 each of the four conditions is exactly the one gameplay.md §9 sta
   assert.deepEqual(unlockedIds(at({ lifetime: { buffaloRetired: 9 } })), []);
   assert.deepEqual(unlockedIds(at({ lifetime: { buffaloRetired: 10 } })), ['nightSavanna']);
 
-  assert.deepEqual(unlockedIds(at({ best: { meadow: { score: 24999, chain: 0, turns: 0, rows: 0 } } })), []);
+  assert.deepEqual(unlockedIds(at({ best: { score: 24999 } })), []);
   assert.deepEqual(
-    unlockedIds(at({ best: { meadow: { score: 25000, chain: 0, turns: 0, rows: 0 } } })),
+    unlockedIds(at({ best: { score: 25000 } })),
     ['tundraPalette'],
-    'scored in ANY habitat, because it is a score in a single run',
+    // AC-320e: this read `Math.max(...Object.values(save.best).map((b) =>
+    // b.score), 0)` against the one record set, which is NaN — and `NaN >=
+    // 25000` is false, so the palette would never have unlocked at all.
+    'the best score is read off the one record set, as a number',
   );
 
   assert.deepEqual(unlockedIds(at({ lifetime: { rows: 499 } })), []);
@@ -408,7 +460,7 @@ test('AC-1011 applying a cosmetic changes appearance and never writes a token', 
   save.lifetime.buffaloRetired = 10;
   save.lifetime.rows = 500;
   save.lifetime.mostRowsInStep = 4;
-  save.best.tundra = { score: 25000, chain: 0, turns: 0, rows: 0 };
+  save.best = { score: 25000, chain: 0, turns: 0, rows: 0 };
   const everything = {
     ...save,
     unlocks: { announced: [], applied: { theme: 'nightSavanna', palette: 'tundraPalette', animals: 'goldenHerd' } },
@@ -517,7 +569,7 @@ test('AC-706b what the save records is what the engine counted, over a real run'
   // Play a real run to Game Over and fold its OWN record in. Nothing in the
   // persistence layer recounts anything: if the fold drifted from the engine,
   // these four numbers would disagree.
-  let state = createRun({ seed: 'persisted-run', difficulty: 'savanna' });
+  let state = createRun({ seed: 'persisted-run' });
   let turns = 0;
   while (state.status === STATUS.READY && turns < 400) {
     state = reduce(state, { type: ACTIONS.PASS });
@@ -528,10 +580,10 @@ test('AC-706b what the save records is what the engine counted, over a real run'
   const finished = runRecord(state);
   const save = applyRunRecord(defaultSave(), finished, { day: '2026-09-21', at: 99 });
 
-  assert.equal(save.best.savanna.score, state.score);
-  assert.equal(save.best.savanna.rows, state.stats.rowsCleared);
-  assert.equal(save.best.savanna.chain, state.stats.longestChain);
-  assert.equal(save.best.savanna.turns, state.turn);
+  assert.equal(save.best.score, state.score);
+  assert.equal(save.best.rows, state.stats.rowsCleared);
+  assert.equal(save.best.chain, state.stats.longestChain);
+  assert.equal(save.best.turns, state.turn);
   assert.equal(save.lifetime.mostRowsInStep, state.stats.mostRowsInStep);
   assert.equal(save.recent[0].score, state.score);
 });

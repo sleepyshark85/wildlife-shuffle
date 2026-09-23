@@ -27,7 +27,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ACTIONS, createRun } from '../src/engine/engine.js';
-import { BOARD, DIFFICULTIES, STATUS } from '../src/engine/constants.js';
+import { BOARD, STATUS } from '../src/engine/constants.js';
 import {
   AUDIO_MODE,
   CHAIN_SEMITONE,
@@ -715,9 +715,9 @@ test('AC-1101 the cursor stays in range on every schedule a real turn produces',
   // bot over three habitats and twelve seeds, plus the hand-built shapes whose
   // schedules the fixtures above already exercise.
   const schedules = [];
-  for (const difficulty of Object.keys(DIFFICULTIES)) {
+  {
     for (let s = 0; s < 12; s += 1) {
-      let state = createRun({ seed: `cursor-${s}`, difficulty });
+      let state = createRun({ seed: `cursor-${s}` });
       for (let turn = 0; turn < 40 && state.status === STATUS.READY; turn += 1) {
         state = runReducer(state, { type: ACTIONS.PASS });
         if (state.plan) schedules.push(state.plan.cues);

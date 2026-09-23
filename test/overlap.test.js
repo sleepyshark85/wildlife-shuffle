@@ -93,11 +93,11 @@ function chooseAction(state) {
   return { type: ACTIONS.PASS };
 }
 
-function sweep({ seeds, turns, difficulty, cap = 0 }) {
+function sweep({ seeds, turns, label = 'curve', cap = 0 }) {
   let checked = 0;
   let worst = { gap: Infinity };
   for (let s = 0; s < seeds; s += 1) {
-    let state = createRun({ seed: `overlap-${difficulty}-${s}`, difficulty });
+    let state = createRun({ seed: `overlap-${label}-${s}` });
     for (let t = 0; t < turns && state.status === 'READY'; t += 1) {
       const before = state.animals;
       const next = runReducer(state, chooseAction(state));
@@ -126,23 +126,26 @@ test('AC-808 two animals never come within a row of each other, mid-animation', 
   // 40 seeds, not 30: at 9 columns a Savanna run ends sooner, so 30 seeds x 40
   // turns stopped short of the floor this assertion uses to catch a sweep that
   // quietly checked nothing.
-  const { checked, worst } = sweep({ seeds: 40, turns: 40, difficulty: 'savanna' });
+  const { checked, worst } = sweep({ seeds: 40, turns: 40 });
   assert.ok(checked > 500, `only ${checked} turns swept`);
   assert.ok(worst.gap >= 0.999, `animals overlapped on screen: ${describe(worst)}`);
 });
 
 test('AC-808 it holds on the other two habitats too', () => {
-  for (const difficulty of ['meadow', 'tundra']) {
-    const { checked, worst } = sweep({ seeds: 8, turns: 30, difficulty });
-    assert.ok(checked > 100, `${difficulty}: only ${checked} turns swept`);
-    assert.ok(worst.gap >= 0.999, `${difficulty}: ${describe(worst)}`);
+  // The three habitats are gone (gameplay.md §5.5b), so the second and third
+  // sweeps are two more BLOCKS OF SEEDS on the one curve rather than two more
+  // tables. Same number of turns, same claim, against what ships.
+  for (const label of ['block-b', 'block-c']) {
+    const { checked, worst } = sweep({ seeds: 8, turns: 30, label });
+    assert.ok(checked > 100, `${label}: only ${checked} turns swept`);
+    assert.ok(worst.gap >= 0.999, `${label}: ${describe(worst)}`);
   }
 });
 
 test('AC-907 it holds under Reduce Motion, where every duration is clamped', () => {
   // Clamping shortens each key without moving its start, so animals that fall
   // together still land together — but only because they read one clock.
-  const { checked, worst } = sweep({ seeds: 8, turns: 30, difficulty: 'savanna', cap: 120 });
+  const { checked, worst } = sweep({ seeds: 8, turns: 30, cap: 120 });
   assert.ok(checked > 100, `only ${checked} turns swept`);
   assert.ok(worst.gap >= 0.999, `under Reduce Motion: ${describe(worst)}`);
 });
