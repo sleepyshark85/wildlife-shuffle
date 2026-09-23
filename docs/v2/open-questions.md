@@ -203,6 +203,13 @@ returning player sees first and the one that currently carries the least charact
 
 ## Q11 · Buffalo have no population cap. Confirm that is what you meant.
 
+> **ANSWERED (owner, 23 Sep 2026): no cap.** They chose it over a cap of 3 with the
+> measured worst case in front of them — 10 buffalo on the board, 25 of 135 cells locked.
+> The ratchet is the point. Revisit only if a device round says the late game is *hopeless*
+> rather than *hard*; those are different complaints and only the owner can tell them apart
+> by playing it.
+
+
 **The decision as built:** buffalo arrive on a fixed schedule (turns 12, 24, 36, 46, 56, 66,
 74, 82, 90 …) and **nothing ever suppresses one**. If the player does not clear them, they
 pile up.
@@ -230,6 +237,11 @@ is "hard, and I keep starting another run", the cap stays off.
 
 ## Q12 · The merged records — one line of explanation, or none?
 
+> **ANSWERED (owner, 23 Sep 2026): merge by best score.** The highest of the three per
+> stat survives; which habitat produced it is lost. Not "keep as history" and not "reset" —
+> the owner's best score stays their best score.
+
+
 Your three sets of per-habitat bests merge into one by taking the maximum (`gameplay.md` §9a).
 That is a decision I made and I am not asking you to remake it. What I am asking is whether
 the app **says so**.
@@ -245,6 +257,11 @@ off. I recommend against it because the number that changed is the one people re
 ---
 
 ## Q13 · Does "the game gets harder over time" want a visible sense of progress?
+
+> **ANSWERED (owner, 23 Sep 2026): yes, show the countdown.** The schedule is a pure
+> function of the turn number now, so the HUD can say when the next buffalo lands without
+> lying. That is the visible sense of progress, rather than a level number.
+
 
 The curve now escalates without saying so: the band stops growing at turn 13 and everything
 after that is buffalo arriving faster (every 12, then 10, then 8) and buffalo the player did
