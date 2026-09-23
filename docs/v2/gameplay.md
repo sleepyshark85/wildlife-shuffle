@@ -362,11 +362,21 @@ run 1, 2, 3, 4 contiguously, so §4.3's size→lightness mapping covers an unbro
 buffalo alone off it at 5. Under the old sizes elephant (5) was larger than buffalo (4) yet
 lighter, which quietly worked against the "lightness is weight" reading.
 
-**Buffalo is scheduled, never random.** It arrives on turn `n × buffaloEvery` (never turn 0),
-and **only one buffalo may be on the board at a time**. If the schedule fires while a buffalo
-is still alive, that cycle is skipped and the next scheduled turn is used. Rationale: two
-buffalo simultaneously is an unrecoverable board, and the buffalo is meant to be an event,
-not attrition.
+**Buffalo is scheduled, never random.** It arrives on a fixed schedule of turn numbers,
+listed in §5.5b. It is never drawn from the weight table and never appears off schedule.
+
+> **SUPERSEDED — "only one buffalo may be on the board at a time".** The approved rule
+> skipped a scheduled buffalo whenever one was still alive, and called two buffalo "an
+> unrecoverable board". **The owner overruled it**, having played it: *"we can have multiple
+> buffalo, the player need to try to clear it as soon as possible."* The gate is gone. See
+> §6.4a for what that changes and AC-311 for the do-not-restore clause.
+
+**Why this was the right call, in numbers.** The gate was not a rare safety valve, it was the
+normal case. Over 150 bot runs on the approved build a buffalo was on the board **77% of all
+turns**, the schedule was suppressed **3.63 times per run**, and the player saw **1.13
+buffalo in a whole run** against a cadence that should have delivered five. The mechanic
+§6.4 is built around was firing about once per run. The owner asking for it "more regularly"
+was a defect report about a gate, not a request for a smaller number.
 
 ### 5.5 Difficulty — what it actually varies
 
@@ -406,6 +416,125 @@ can sustain almost indefinitely; Tundra tops out at a pace nobody can.
 **Pacing arithmetic.** A row clear removes 10 cells. On Savanna at 4 cells/turn, a player who
 clears a row every 5 turns nets +2 cells/turn. Top-out needs roughly 90 cells of ragged
 skyline, so ≈45 turns at ~4 s/turn ≈ **3 minutes**.
+
+### 5.5b ONE CURVE — the habitats are removed
+
+**The owner's decision:** *"I think we probably don't need to provide 'levels' concept.
+Buffalo appears each 12 turns for 2-3 times then reduced to 10, to 8 … and probably stop at
+that. The game gets harder overtime instead of having a fix level concept."*
+
+Meadow, Savanna and Tundra stop being a choice. There is **one game, one curve**.
+
+**Why this is right and not merely accepted.** `tools/play.mjs --pacing` prints its own
+caveat: across ten independent 30-seed blocks the Meadow/Savanna run-length ratio ranged
+**1.15–1.62**. A separation that wanders that far is not reliably perceptible — two of those
+blocks would tell a player that Meadow and Savanna are the same game. Three labels promising
+three experiences that our own measurement cannot distinguish is worse than one curve that is
+honest about what it is. And a difficulty picker asks the player to answer a question at the
+exact moment they have the least information with which to answer it.
+
+**The tuning is not invented — it is repurposed.** 12 / 10 / 8 were already the three
+habitats' `buffaloEvery` values. They become three *phases of one run*.
+
+#### The buffalo schedule
+
+```
+buffalo  1   2   3      4   5   6      7   8   9  10  …
+turn    12  24  36     46  56  66     74  82  90  98  …
+         └── every 12 ──┘   └ every 10 ┘   └─ every 8, for ever ─┘
+```
+
+Three buffalo at a 12-turn cadence, three at 10, then 8 for the rest of the run. Expressed as
+a pure function of the turn number:
+
+```
+isBuffaloTurn(turn):
+  turn <= 36  ->  turn % 12 == 0
+  turn <= 66  ->  (turn - 36) % 10 == 0
+  otherwise   ->  (turn - 66) %  8 == 0
+```
+
+**This schedule is exact, and that is the whole point of it.** With the one-at-a-time gate
+removed there is *nothing left that can suppress a scheduled buffalo* — the only other
+condition in the approved generator, `SPECIES.buffalo.size <= cap`, is `5 <= 8`, which is a
+constant true and has never once blocked anything. So the skip-versus-defer question the
+owner's first request raised **dissolves**: there is no skip to defer, the list above is the
+list, and turn 46 is turn 46 in every run that reaches it.
+
+That makes the owner's "fixed turns" request literally true for the first time, and it makes
+a **countdown in the HUD honest** — `ui.md` §7 specifies it. A preview the player can rely on
+is the same contract §5.1 makes for the tray, applied to the one arrival that matters most.
+
+**No `buffaloDue` state, no deferral memory, no per-run buffalo counter.** The schedule is a
+function of `turn`, which is already in state.
+
+#### The band ramp, and why it does *not* share the buffalo's schedule
+
+One curve needs one band progression. It is the row previously labelled **Meadow**:
+
+| | value |
+|---|---|
+| Starting band | **2–4** |
+| Ramp | **+1 to both ends every 12 turns** |
+| Ceiling band | **3–5**, reached at turn 13 |
+| Species weights | rat 35, fox 30, elk 25, elephant 10 — mean drawn size **2.10** |
+
+**The two ramps are deliberately separated in time rather than run together.**
+
+```
+turn   1 ──────── 13 ─────────────── 37 ──────── 67 ─────────►
+band   2-4        3-5 (ceiling, flat for the rest of the run)
+buff             12    12    12      10  10  10   8  8  8  8 …
+       │ band owns │        buffalo owns the mid and late game │
+```
+
+The band ramp finishes at turn 13. The buffalo cadence does not tighten until turn 37. Between
+them sits turns 13–36, where nothing escalates except the board the player has built. So at
+every point in a run there is **one dominant cause of the difficulty changing**, which is the
+whole of §5.7's ordering rule applied to the design itself instead of to the changelog. Had
+the band ramp traced Meadow → Savanna → Tundra alongside the buffalo cadence, a pacing
+measurement could not attribute a shift to either.
+
+**Why this table and not one of the other two.** It is the only one of the three whose
+measured run length lands inside §0's stated 3–5 minute window once buffalo accumulate — see
+§5.9. It is a *selection among already-measured tables*, not a new tuning: no band value in
+this document is a number nobody has run.
+
+**The ceiling is flat from turn 13, and that is the design, not an oversight.** §5.5 argued
+that without a ramp "the difficulty of turn 5 equals the difficulty of turn 90". That is still
+true and it is still answered — but the answer is now the buffalo, not the band. Arrivals
+plateau at ~4 cells a turn; what escalates is the number of five-cell blocks standing on the
+board because the player did not clear them. **The escalation is responsive to how well they
+are playing rather than imposed on a timer**, which is what the owner asked for and is a
+better curve than a band that grows whatever you do.
+
+#### One weight table
+
+**The species mix does not shift as the run progresses.** One table, fixed for the whole run:
+the Meadow row, rat 35 / fox 30 / elk 25 / elephant 10, mean drawn size **2.10**.
+
+A mix that drifted from rat-heavy to elephant-heavy would be a second escalating lever
+layered on the buffalo's, and §5.7 exists so an effect can be attributed to a cause. It is
+also unnecessary: the large-piece pressure in this design comes from the buffalo, which is
+size 5 and arrives on a schedule. **The drawn mix is the packing puzzle; the buffalo is the
+weight.** Splitting those two jobs between two objects is clearer than having the drawn mix do
+both badly.
+
+The cost is that elephant is only 10% of draws, which is the *worst* table for the clustering
+problem §5.8 fixes — at these weights the current generator can go **88 consecutive draws**
+without an elephant. That is an argument for §5.8, not against this table.
+
+#### What the removal costs
+
+| Was | Becomes |
+|---|---|
+| `DIFFICULTIES` — three rows | one tuning row; `DEFAULT_DIFFICULTY` and `knownDifficulty` go with it |
+| Home's habitat picker, three blurbs | a single Play button (`ui.md` §2) |
+| `save.best[difficulty]` — three record sets | **one** record set (§9a) |
+| `recent[].difficulty` per entry | dropped on migration (§9a) |
+| `runRecord.difficulty`, diagnostics `difficulty` line | dropped; the seed alone reproduces a run |
+| `ONBOARDING_DIFFICULTY = 'meadow'` | the curve; onboarding's boards are scripted, so nothing else moves |
+| "Night Savanna", "Tundra" cosmetics | **names survive unchanged.** They were always names of *looks*, never of places you could play, and no unlock is gated on a habitat (`src/ui/cosmetics.js:36-76` — the four conditions are buffalo retired, best score, rows cleared, and rows in one step) |
 
 ### 5.6 Deriving the bands for a 9-wide row
 
@@ -539,6 +668,129 @@ minutes, which requires measuring real per-turn duration rather than assuming 4 
 my fourth consecutive attempt to predict pacing from reasoning; the first three were wrong,
 and the fourth would have been chasing a target that contradicts the goal above it.
 
+### 5.8 The species draw gets a memory — a carried-remainder bag
+
+**The owner's second report:** *"Sometimes, an animal appears much more than the others. How
+about having a balancing algorithm?"*
+
+#### 5.8.1 They are right, and the existing check could never have told us
+
+`docs/v2/species-mix.mjs` verifies the realised share lands within ~2 pp of the weight table
+and the mean drawn size within 0.10, over tens of thousands of batches. It passes. It was
+always going to pass, because the draws are independent weighted picks (`src/engine/rng.js`
+`weightedPick`, called at `src/engine/spawn.js:190`) and the law of large numbers is not a
+design property. **The owner is describing a window of ten turns; an aggregate over 60,000
+batches is structurally blind to one.**
+
+So I built the check that is not blind to it: `docs/v2/spawn-clustering.mjs`, run against the
+**real** `generateBatch` and the **real** mulberry32, 200 seeds × 200 turns ≈ 75,000 draws.
+On the curve's weight table:
+
+| measured over 75,109 draws | current generator |
+|---|---:|
+| realised share (rat/fox/elk/elephant) | 35.6 / 30.1 / 24.6 / 9.8 % — **on target** |
+| mean drawn size | 2.085 vs 2.10 — **on target** |
+| longest run of one species | **10 in a row** |
+| worst gap between elephants | **88 draws** — about 60 turns, a whole run |
+| worst gap between elk / fox | 41 / 34 draws |
+| 12-draw window, p99 worst share deviation | **40.0 pp** |
+| 12-draw window, some species absent entirely | **33.4% of windows** |
+
+One window in three contains only three of the four species, and the p99 window is 40
+percentage points off the table — on a 12-draw window that is eight rats where the table asks
+for four. **The two rows the existing check measures are green and the four rows underneath
+them are the game the owner played.** That is the whole finding: this was never a tuning
+disagreement, it was an unmeasured property.
+
+I considered leaving it alone on the grounds that a run of rats is an easy patch and a run of
+elephants is a crisis, and that removing both flattens the game's texture. I am not
+recommending that, for one reason: **an 88-draw elephant drought is not texture, it is a
+different game.** A player who never sees the piece the board was built to need cannot plan,
+and §5.1 already commits this design to the position that the information needed to plan must
+be visible and must be true. A generator that can withhold a whole species for a whole run
+breaks that contract from the other side.
+
+#### 5.8.2 The mechanism
+
+A **carried-remainder bag** — the Tetris 7-bag shape, adapted to non-uniform weights.
+
+```
+BAG_SIZE = 12
+
+refill(carry):
+  for each drawable species s:
+      credit[s] = carry[s] + BAG_SIZE * weight[s]      # integer, in units of 1/100
+      tickets[s] = floor(credit[s] / totalWeight)
+      carry[s]   = credit[s] - tickets[s] * totalWeight
+  while sum(tickets) < BAG_SIZE:                        # largest remainder, deterministic
+      give one ticket to the species with the largest carry (DRAWABLE order breaks ties)
+  bag = shuffle(the multiset of tickets)                # Fisher-Yates on the run's PRNG
+
+draw(room):
+  take tickets off the bag until one fits (size <= room); refill if the bag empties
+  PUT THE UNFITTABLE TICKETS BACK and return the one that fit
+```
+
+Three properties, and each one answers something:
+
+1. **The long-run share is exactly the weight table**, because the fractional remainder is
+   carried rather than rounded away. A plain 12-ticket bag would ship the *rounded* share and
+   drift fox by 2 pp for ever; this does not. AC-308b is preserved by construction rather
+   than by measurement.
+2. **Every species is allotted at least one ticket in every bag** at the curve's weights — the
+   rarest, elephant at 10%, gets 1.2 — so no species can be absent across two consecutive
+   bags, and the worst possible gap is bounded by **2 × BAG_SIZE**. The 88-draw drought
+   becomes structurally impossible, not merely unlikely.
+3. **The skip rule spends nothing.** A ticket whose species cannot fit the remaining capacity
+   is *put back*, not discarded, so the hard board limit delays a species by a draw instead of
+   costing it its entitlement. Without this the bag would reintroduce AC-308b's ceiling-band
+   drift, which is the exact defect §5.2 was written to remove.
+
+**Why 12.** It is the largest bag at which every species still clears one ticket at the
+curve's weights (elephant 12 × 0.10 = 1.2; at BAG_SIZE 8 it is 0.8 and the guarantee in
+property 2 collapses). It is also ≈ 8 turns of draws, so a "hand" is about the length of one
+buffalo cycle — the player experiences roughly one bag between buffalo.
+
+**Why not a pity/deficit weighting.** A deficit-weighted pick is mean-reverting but unbounded:
+it makes a drought *less likely* without making it impossible, so property 2 would become a
+percentile rather than a guarantee and AC-308e could only ever be a soft assertion. The bag
+gives a bound, and a bound is testable.
+
+#### 5.8.3 Where the memory lives — determinism
+
+> **The bag is state, and it is seeded state.** `{ bag: string[], carry: {species: int} }`
+> lives on the run state beside `rng`, is threaded in and out of `generateBatch` exactly as
+> `rng` is, and is initialised empty by `createRun`. The shuffle draws from the run's own
+> PRNG. **No module-scope variable, no lazy singleton.**
+
+That is what keeps session resume working. Resume is a *replay* of `{seed, difficulty, start,
+moves[], digest}` (`src/ui/session.js:163`), not a snapshot: it re-runs `createRun` and every
+stored move, so the bag is rebuilt from the seed along with everything else. The replay record
+does **not** need a new field, and `boardDigest` does not need to include the bag — a
+divergent bag produces a divergent board within two turns and AC-1017 already catches that.
+
+A module-level bag would break replay silently and only on the second run of an app session,
+which is the worst class of bug this project has shipped (see `docs/development-process.md`
+§6.9). The AC is written so the hygiene grep can find it: **AC-319d**.
+
+#### 5.8.4 What it measures, after
+
+| 75,000 draws, the curve's weights | current | bag(12) | limit |
+|---|---:|---:|---:|
+| mean drawn size (intent 2.10) | 2.085 | **2.101** | ±0.10 |
+| realised share, worst species error | 0.6 pp | **0.1 pp** | ±2 pp |
+| longest run of one species | 10 | **7** | ≤ 8 |
+| worst gap, elephant | 88 | **23** | ≤ 24 |
+| worst gap, elk / fox / rat | 41 / 34 / 19 | **17 / 16 / 16** | ≤ 24 |
+| 12-draw window, p99 share deviation | 40.0 pp | **25.0 pp** | ≤ 26 pp |
+| 12-draw window, a species absent | 33.4% | **13.5%** | ≤ 20% |
+
+**The bag is a texture change, not a difficulty change, and that is measured rather than
+asserted:** 300 bot runs on the full proposed curve give a median of **57 turns with the bag
+and 58 without** (§5.9). It costs 1 turn in 58. What the owner gives up is genuine and small:
+the lucky run of four rats and the unlucky run of three elephants both get rarer. What they
+gain is that no species can vanish for a run.
+
 ### 5.7 What the developer should measure
 
 Run the existing bot harness (AC-318) **after all three changes are in, not between them**:
@@ -561,6 +813,114 @@ Run the existing bot harness (AC-318) **after all three changes are in, not betw
 **Tune in this order if the ranges are missed:** bands first, ramp interval second, species
 weights last. The weights now do exactly what they say, so changing them changes the game's
 character rather than just its pace.
+
+> **§5.5 through §5.7 describe three habitats. There are no longer three habitats.** §5.5b
+> replaces the difficulty table with a single curve; §5.8 replaces the species draw; §5.9
+> re-measures the pacing; §5.10 is the order the two changes must land in. Everything above
+> this line stands as the reasoning that produced the numbers §5.5b keeps — it is history,
+> not instruction.
+
+---
+
+### 5.9 Run length, measured
+
+One curve gives one run length, so the number has to be right rather than bracketed by three.
+300 seeds, the greedy bot in `tools/bot.mjs`, abilities off, the 12/10/8 buffalo schedule with
+the gate removed.
+
+| band table | p10 | **median** | mean | p90 | max | median @ 4 s/turn |
+|---|---:|---:|---:|---:|---:|---:|
+| **Meadow row — the curve** | 37 | **58** | 62.4 | 91 | 161 | **3.9 min** |
+| Savanna row | 33 | 44 | 46.9 | 65 | 120 | 2.9 min |
+| Tundra row | 23 | 32 | 32.6 | 44 | 66 | 2.1 min |
+| *the curve, with §5.8's bag* | 38 | *57* | *61.8* | *95* | *183* | *3.8 min* |
+
+§0 asks for a **3–5 minute** session. Only the Meadow row's median lands inside it, and its
+p10–p90 spread of 2.5–6.1 minutes brackets the window about as well as a single distribution
+can. The Savanna row's 2.9-minute median is *under* the floor before a human ever touches it —
+and these are optimistic numbers, because the bot sees the whole board and never misdrags.
+
+**This is a selection, not a tuning.** AC-318h forbids inventing new band, ramp or weight
+values until a real per-turn duration has been measured on a device, and nothing here invents
+one: all three rows above are values that already shipped and were already measured. AC-318h
+is amended to say exactly that, so it keeps its teeth where they belong.
+
+**The pacing lever, if the device measurement moves the target.** It is **not** the band any
+more — it is the buffalo phase lengths. "2–3 times then reduced to 10" is the owner's own
+dial, and lengthening or shortening the 12-turn phase moves run length without touching a
+single band value. Use it first.
+
+#### What removing the one-at-a-time gate actually did
+
+| 150 bot runs | gate on (shipped) | gate off, 12/10/8 curve |
+|---|---:|---:|
+| buffalo arrivals per run | 1.13 – 1.26 | **5.45** |
+| buffalo shrinks per run | 2.0 – 2.6 | **9.3** |
+| buffalo **retired** per run | 0.13 – 0.26 | **0.58** |
+| most buffalo on the board at once | 1 | mean **4.7**, worst **10** |
+| buffalo cells still standing at game over | 3.7 of 135 | **17.9**, p90 25 |
+| median run length | 70 (Meadow row) | **58** |
+
+**The difficulty this hits is the long run, not the short one.** On the shipped build the
+gate's cost scaled with run length — a Tundra run ended before buffalo could accumulate, a
+Meadow run lost whole cycles to one immortal buffalo. Removing it therefore takes 12 turns off
+a Meadow-length run and about 1 off a Tundra-length one. **The curve does not become
+unsurvivable; it becomes steeper the longer you last**, which is precisely the escalation the
+owner described.
+
+**The servicing gap is real and it is the mechanic now.** A buffalo costs five row completions
+through its own row to retire. At the 12/10/8 schedule about 27 segments of work arrive per
+run and the bot delivers about 9 — a **34% servicing rate**. Buffalo are therefore a ratchet:
+~18 cells (13% of the board) are still standing when the run ends. **I am not proposing a
+population cap.** I measured caps of 2 and 3 and they work (median 62/62 turns, worst case
+bounded), but a cap would blunt exactly the thing the owner asked for — *"the player need to
+try to clear it as soon as possible"* only means something if not trying has a cost that
+keeps growing. The cap is recorded in `open-questions.md` Q3 as the lever to reach for if the
+device round says the late game is hopeless rather than hard.
+
+#### The ability ladder must be re-derived
+
+`ABILITY_THRESHOLDS` is three ladders because the three medians differed by 1.68× and 1.84×.
+One curve, one ladder. `ABILITY_PERCENTILES` already states that each rung is a percentile of
+the measured final-score distribution, so this is a re-derivation and not a retune. Measured
+on the full proposed configuration (curve + multiple buffalo + bag), 300 seeds:
+
+| rung | p35 | p50 | p75 | p90 | p90×1.6 | p90×2.4 |
+|---|---:|---:|---:|---:|---:|---:|
+| measured | 1,695 | 2,120 | 3,650 | 6,515 | — | — |
+| **ladder** | **1,700** | **2,150** | **3,650** | **6,500** | **10,400** | **15,600** |
+
+Re-measure after the build and move these to whatever that run says; the percentiles are the
+specification, the integers are only their current value.
+
+### 5.10 These changes must not land in one pass
+
+Three things are changing at once and §5.7's ordering rule exists so a measurement can
+attribute an effect to a cause. **Land them in this order, re-measuring between each.**
+
+| pass | change | expected effect on the median | why it is separable |
+|---|---|---|---|
+| **1** | Remove the one-at-a-time gate; replace `buffaloEvery` with the 12/10/8 schedule; collapse the three habitats to the one curve | **70 → 58 turns** (−17%) | This is the big one and it is the owner's headline decision. Everything downstream (records, ladder, Home, save migration) is in this pass because a half-collapsed difficulty model is worse than either end. |
+| **2** | The §5.8 bag | **58 → 57 turns** (−2%) | Predicted to be inside the noise. If pass 2's measurement moves the median by more than ~3 turns, the bag is doing something it was not designed to do and that is the finding. |
+
+Pass 1 changes the *amount* of difficulty; pass 2 changes its *distribution*. Landing them
+together would leave a −18% median with no way to say which lever produced it — and the
+predicted split, 17 points to one and 1 to the other, is precisely the kind of claim that is
+only worth making if it can be falsified.
+
+**`engineVersion` moves in both passes, and it should.** It is an FNV-1a fingerprint over
+`TUNING_SURFACE` (`src/ui/session.js:104`), which already contains `DIFFICULTIES`, `SPECIES`
+and `ABILITY_THRESHOLDS` — so pass 1 invalidates every stored resume automatically. Pass 2
+does **not** change any constant in that list, so it must bump `ENGINE_REVISION` (currently 1)
+and add `BAG_SIZE` to the surface. That is what `ENGINE_REVISION`'s comment already describes:
+*"a rule changes in a way the constants below cannot see"*.
+
+**The cost is one interrupted run per player per pass, and there is no migration that could be
+correct.** A resume replays `{seed, moves[]}` under the rules that produced it; replaying an
+old run under the new spawn rebuilds a *different board* from the same inputs. AC-1016
+discards it deliberately and silently resumes nothing. The alternative — replaying it anyway —
+is the failure AC-1016 was written to prevent. **No migration. The save (records, unlocks,
+settings) is a separate blob and is migrated normally: see §9a.**
 
 ---
 
@@ -632,6 +992,52 @@ game that punishes a completed row, and it is the only thing that rewards persis
 - On retirement: a full-board celebration — gold burst, `+500`, heavy haptic.
 - A persistent **buffalo chip** sits in the HUD whenever one is on the board, showing its
   remaining segments, so the player is never surprised by which row will refuse to clear.
+
+---
+
+### 6.4a Buffalo become a herd — what multiple buffalo change
+
+The owner overruled the one-at-a-time rule: *"we can have multiple buffalo, the player need to
+try to clear it as soon as possible."* §5.4 and §5.5b carry the schedule. This section is what
+else moves, and it is deliberately a list of things that **do not** move, because the shrink
+mechanic turns out to survive intact.
+
+#### The invariant that saves the mechanic: at most one buffalo per row
+
+`2 × 5 > 9`. Two buffalo cannot share a row on a 9-wide board — there is no arrangement that
+fits. So **every rule in §6.4 is unchanged**: a completed row still contains exactly one
+buffalo or none, it still shrinks by exactly one segment, it still refuses to clear, and it is
+still worth +50 to shrink and +650 to retire. Nothing about a single buffalo's behaviour is
+different; there are simply more of them, in different rows.
+
+This also rescues `resolveClears`' termination argument, which currently reads *"ten occupied
+cells, of which at most four can belong to the single permitted buffalo"*
+(`src/engine/resolve.js:28-31`). That premise is now false, but the conclusion holds for a
+better reason: a completed row is 9 cells and at most 5 of them are buffalo, so **every step
+still removes at least 4 cells** and board mass still strictly decreases. The comment must be
+re-argued from the width, not deleted. AC-504 is amended.
+
+#### What actually breaks
+
+| Thing | State | What it needs |
+|---|---|---|
+| `resolveClears` (`resolve.js:74-101`) | **correct already** — it iterates every animal in every filled row and shrinks each buffalo it finds | nothing but the comment above |
+| `buffaloOnBoard` (`board.js:88-90`) | `.find` — returns *a* buffalo. Its comment says *"At most one exists (D10)"* | becomes `buffaloesOnBoard` returning all of them; the spawn-gate caller disappears entirely |
+| `currentBuffalo` (`engine.js:667-669`) | singular, drives the HUD chip | becomes plural; `ui.md` §7 specifies the chip |
+| HUD buffalo chip (AC-509/510) | shows one buffalo's remaining segments | **a design question, and the answer is: one chip per buffalo, ordered by row, plus the countdown.** A single chip showing one of four buffalo would be the tray's broken-preview defect in miniature — information on screen that is true of something other than what the player is looking at |
+| tray silhouette (AC-315c) | a batch can contain at most one buffalo, since it is scheduled once per turn | unchanged |
+| `SEAM_BUFFALO` / segment seams (`ui.md` §5.3) | per-animal, driven by `animal.size` | unchanged |
+| Hold the Line (`abilities.js:56`, `species: 'buffalo'`) | freezes arrivals for 5 turns; the ability's *species* is a label on the card | unchanged, and now more valuable — a frozen turn generates no batch (`engine.js:407`), so it skips a scheduled buffalo outright |
+| Migrate / Burrow (`abilities.js:234-250`, AC-1412/1412b) | buffalo is not a Migrate target and no ability removes a buffalo | **unchanged, and now load-bearing.** With one buffalo the rule was flavour; with a herd, a Burrow that removed a buffalo would delete five clears of work for one charge and would be the dominant play every time |
+| `CHAIN_GUARD_STEPS = 32` | crash guard | unchanged; the mass argument above still bounds the cascade |
+
+#### The pressure is now legible or it is not fair
+
+With one buffalo the player could simply look at it. With up to ten, three things must be on
+screen and true (`ui.md` §7): **how many buffalo, how much is left of each, and how many turns
+until the next one.** The third is only possible because §5.5b's schedule has nothing left
+that can suppress it — which is the same contract §5.1 makes for the tray, applied to the one
+arrival the player most needs to plan around.
 
 ---
 
@@ -1029,6 +1435,49 @@ falls back to defaults silently; it must never block launch.
 
 ---
 
+### 9a. Records, once the habitats are gone
+
+`src/ui/progress.js:133` keys bests per difficulty and AC-1008 *"names exactly these four"*
+(`score`, `chain`, `turns`, `rows`). An existing player has three sets of four. One curve
+needs one set.
+
+**Decision: merge by taking the maximum, and say so once.** `best = { score: max over the
+three, chain: max, turns: max, rows: max }`, as save-schema step 4 → 5.
+
+- **Not reset.** Deleting somebody's high score because we changed our minds about difficulty
+  is the app punishing the player for our decision.
+- **Not kept as three sets of history.** A Records screen with a "Tundra (retired)" row is a
+  museum label for a concept the player is being told no longer exists, and it would make
+  every future record ambiguous — is this a new best, or only a new best on the curve?
+- **Maximum, not the default habitat's.** Taking Savanna's alone would silently destroy a
+  Meadow best that is almost certainly the player's largest number, and score is the one
+  record people remember.
+
+**It is honest to take the maximum because the curve is easier than two of the three rows it
+replaces.** The curve's band table *is* the Meadow row, which produced the highest scores of
+the three; a merged best is therefore a best the player can beat again on the same terms. It
+would not be honest the other way round, and that asymmetry is why this is a decision rather
+than a coin toss.
+
+**`recent[]` keeps its entries and loses its `difficulty` field** (`progress.js:170`). The
+last ten runs are there to show whether you are improving today, and a label naming a mode
+that no longer exists makes the older entries unreadable rather than informative.
+`progressStore.js:147`'s dedupe key `${seed}:${difficulty}:${turns}:${score}` drops the
+difficulty segment; seed plus turns plus score is already unique in practice and the key only
+has to be stable, not meaningful.
+
+**Lifetime totals, unlocks, the daily streak and settings are untouched.** None of them was
+ever per-habitat: the four unlock conditions are buffalo retired, best score, rows cleared and
+most rows in one step (`src/ui/cosmetics.js:36-76`). One of them reads `save.best` as a map —
+`Math.max(...Object.values(save.best).map((b) => b.score), 0)` at `cosmetics.js:55` — and must
+become `save.best.score` in the same pass, or Tundra's palette unlocks at `NaN`.
+
+**One unlock gets materially easier, and it should.** Night Savanna needs 10 buffalo retired.
+At the shipped 0.26 retirements per run that was about 38 runs; on the curve it is 0.69, about
+15. The goal was priced against a mechanic that was firing once per run — see §5.4.
+
+---
+
 ## 10. Layer B — Polish
 
 Full motion spec in `ui.md` §8, **sound in §15**, haptics in §15.5 and AC-1102. *(This pointer
@@ -1136,6 +1585,14 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D19 | Meadow ceiling raised 4–6 → 5–7 | Measured 240 bot-turns against a 100–150 target; at a 4–6 ceiling the board was indefinitely holdable (§5.5). |
 | D14 | All animation is a UI-thread Reanimated worklet; the drag is a gesture-handler pan | v1 drove animation through `setState` on `setTimeout`, which cannot hold 60 fps and is why its drag chases the thumb — `ui.md` §8.3. |
 | D13 | Seeded PRNG per run, seed recorded | Reproducible bug reports now; Daily Challenge becomes a config change later. |
+| D22 | **The three habitats are removed. One game, one curve.** | Our own measurement could not reliably distinguish them — the Meadow/Savanna ratio ranged 1.15–1.62 across ten blocks — and a picker asks the player a question when they have least information (§5.5b). Owner's decision. |
+| D23 | **The buffalo cadence is the difficulty curve**: 12 × 3, then 10 × 3, then 8 for ever | Repurposes the three habitats' own `buffaloEvery` values from a choice into a progression; no new tuning (§5.5b). Owner's decision. |
+| D24 | **D10 is overruled: multiple buffalo may share the board**, and none is ever suppressed | The one-at-a-time gate was the normal case, not a safety valve — 77% board occupancy suppressed 3.6 schedule firings a run and delivered 1.13 buffalo per run against a cadence of five (§5.4). Owner's decision. |
+| D25 | The band ramp finishes at turn 13; the buffalo cadence starts tightening at turn 37 | Two escalating levers on one schedule make a pacing measurement unattributable (§5.7). Separated in time, each phase of a run has one dominant cause (§5.5b). |
+| D26 | One weight table, fixed for the run — no drifting mix | The buffalo is the large-piece pressure; the drawn mix is the packing puzzle. A drifting mix would be a second lever doing the first one's job badly (§5.5b). |
+| D27 | The species draw gets a carried-remainder bag of 12 | Independent draws let a species vanish for 88 consecutive draws while every aggregate check stayed green; a generator that can withhold a whole species for a whole run breaks §5.1's contract from the other side (§5.8). |
+| D28 | Per-habitat records merge by taking the maximum | Resetting punishes the player for our decision; keeping three sets is a museum label for a concept we just deleted (§9a). |
+| D29 | No population cap on buffalo | "Clear it as soon as possible" only means something if not trying has a cost that keeps growing. Caps of 2 and 3 are measured and recorded as the lever if the device round says hopeless rather than hard (§5.9, `open-questions.md` Q3). |
 
 ---
 

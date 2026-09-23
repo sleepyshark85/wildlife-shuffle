@@ -256,12 +256,13 @@ columns — 8 of 9. Expressed against the constant, never as a literal.
 **AC-305** Given a batch is generated, Then every animal is fully within bounds:
 `0 ≤ x` and `x + size ≤ BOARD.width`.
 
-**AC-306** *(amended — the band is a control on the MEAN, no longer a per-batch equality; see
-`gameplay.md` §5.2)* Given difficulty Savanna, Then the rolled target lies in **3–5** at turn
-1, **4–6** from turn 13 and **5–7** from turn 25, which is its ceiling; and over 3,000+ turns
-the **mean cells per turn is within ±0.15 of the band mean**, except at a difficulty's two
-highest bands where the `W − 1` cap legitimately pulls it low — record those rather than
-tuning them away.
+**AC-306** *(amended twice — the band became a control on the MEAN rather than a per-batch
+equality (`gameplay.md` §5.2), and the three habitats became one curve (§5.5b). The band
+figures below were ALSO stale against the shipped retune: they named the first band set, not
+the second.)* Given the game, Then the rolled target lies in **2–4** at turn 1 and **3–5**
+from turn 13, which is its ceiling and holds for the rest of the run; and over 3,000+ turns
+the **mean cells per turn is within ±0.15 of the band mean**, except at the ceiling band where
+the `W − 1` cap legitimately pulls it low — record that rather than tuning it away.
 
 **AC-306b — THE BAND FLOOR.** Given any difficulty, Then **no band's low may be below 2**, and
 no band's mean may sit below that difficulty's **mean animal size** (2.10 / 2.42 / 2.75).
@@ -270,9 +271,15 @@ cannot be delivered and measures high. *(A 1–3 band on Meadow has a mean of 2.
 2.41 cells/turn. It is not a band, it is a rounding artefact — which is why Meadow's starting
 band stayed at 2–4 in the retune while every other band moved.)*
 
-**AC-307** *(amended for the 9-wide board)* Given difficulty Meadow, Then the target lies in
-**2–4** at turn 1, **3–5** from turn 13 and **4–6** from turn 25, its ceiling. Given Tundra,
-**4–6** at turn 1, **5–7** from turn 13 and **6–8** from turn 25, its ceiling.
+**AC-307 — WITHDRAWN.** It asserted the per-habitat band tables for Meadow and Tundra. There
+are no habitats (`gameplay.md` §5.5b) and there is one band table, which AC-306 now states in
+full. *(It was also stale: it named the pre-retune bands, which no build has ever run.)*
+
+**AC-307d — THE RAMP REACHES ITS CEILING AND STOPS.** Given turn 13 and every turn after it,
+Then `bandForTurn` returns **3–5**, and no turn number produces a band wider or higher than
+that. *(The curve's escalation past turn 13 is the buffalo, not the band — `gameplay.md`
+§5.5b. A band that kept climbing would be a second escalating lever and would make the pacing
+measurement unattributable.)*
 
 **AC-307b** *(amended — exact equality no longer holds and this is deliberate)* Given any
 batch, Then its cell total scatters around the rolled target rather than matching it, because
@@ -306,6 +313,130 @@ the game "felt easy" was a defect report, not a tuning preference.**)*
 reasons** — the only permitted exclusion is the hard board limit `size ≤ CAP − filled`. A
 candidate pool filtered by largest-free-run is the specific mistake AC-308b exists to catch.
 
+**AC-308c2** *(the bag's form of AC-308c; `gameplay.md` §5.8.2)* Given a ticket is drawn whose
+species cannot fit the remaining capacity, Then it is **put back in the bag** and the next
+ticket is taken. It is never discarded. *(A discarded ticket spends that species' entitlement
+on a draw it never got, which reintroduces exactly the ceiling-band drift AC-308b exists to
+catch — see its measured worst case.)*
+
+---
+
+### Clustering — the property `species-mix.mjs` is structurally blind to
+
+*The owner: "Sometimes, an animal appears much more than the others." They are right. The
+existing check verifies the LONG-RUN mix over tens of thousands of batches and passes; the
+player experiences a window of ten turns. These four criteria measure the window.
+`docs/v2/spawn-clustering.mjs` is their executable form; every threshold below is a measured
+figure, and `--selftest` proves the thresholds catch the current generator.*
+
+**AC-308d — SHORT-WINDOW MIX.** Given 75,000+ generated draws, Then across every sliding
+window of **12 draws**:
+
+- the **99th-percentile worst share deviation** from the weight table is **≤ 26 pp**; and
+- **at most 20%** of windows are missing a drawable species entirely.
+
+*(Baseline on the shipped generator: **40.0 pp** and **33.4%** — one window in three holds
+only three of the four species. The proposed bag measures 25.0 pp and 13.5%.)*
+
+**AC-308e — NO SPECIES MAY VANISH.** Given 75,000+ generated draws, Then for **every**
+drawable species the **largest observed gap** between two appearances is **≤ 24 draws**, which
+is `2 × BAG_SIZE`.
+
+*(This is a structural bound, not a percentile: at the curve's weights every species is
+allotted at least one ticket per bag — the rarest, elephant at 10%, gets 1.2 — so no species
+can be absent across two consecutive bags. Baseline on the shipped generator: **88 draws**
+without an elephant, about sixty turns, a whole run. The proposed bag measures 23.)*
+
+**AC-308f — RUN LENGTH.** Given 75,000+ generated draws, Then the **longest run of the same
+species back to back** is **≤ 8**. *(Baseline 10; the bag measures 7.)*
+
+**AC-308g — THE BAG DOES NOT MOVE THE LONG-RUN MIX.** Given the same 75,000+ draws, Then
+AC-308b still holds in full: every realised share within ±2 pp of the weight table and the
+mean drawn size within ±0.10 of 2.10. *(This is what the carried remainder buys. A plain
+12-ticket bag would ship the ROUNDED share and drift a species by 2 pp for ever. Measured:
+worst share error 0.1 pp, mean drawn size 2.101.)*
+
+**AC-308h — THE CLUSTERING CHECK MUST BE ABLE TO FAIL.** Given `node
+docs/v2/spawn-clustering.mjs --selftest`, Then it measures the **current** generator against
+AC-308d/e/f's thresholds and **exits non-zero**, reporting at least one clustering violation
+and **zero** aggregate-mix violations. *(`docs/development-process.md` §6.2 — a check that
+cannot fail is not a check. The zero-aggregate half is what proves these criteria measure
+something `species-mix.mjs` did not already measure; without it they could be passing for the
+same reason it does.)*
+
+---
+
+### The bag's state — determinism
+
+**AC-319 — THE BAG LIVES IN SEEDED RUN STATE.** Given the run state, Then it carries
+`{ bag: string[], carry: {species: int} }`, threaded in and out of `generateBatch` exactly as
+`rng` is, initialised empty by `createRun`, and shuffled from the run's own PRNG.
+
+**AC-319b — REPLAY REBUILDS THE BAG.** Given a run is resumed, When the stored `moves[]` are
+replayed from the seed, Then the reconstructed board matches `digest` (AC-1017) and the next
+batch generated after the resume is **identical** to the one the original run would have
+produced. *(A bag held anywhere other than seeded state breaks this silently, and only on the
+second run of an app session — the worst class of bug this project has shipped;
+`docs/development-process.md` §6.9.)*
+
+**AC-319c** Given the resume record, Then it gains **no new field** for the bag. *(Replay
+rebuilds it. A stored bag would be a second source for one truth — §6.3.)*
+
+**AC-319d — NO MODULE-SCOPE BAG.** Given `src/engine/spawn.js`, Then it declares **no
+module-level mutable binding** — no `let`, no `var`, no mutated object outside a function
+body. *(Greppable on purpose. v1's central defect was mutable module globals written during
+render, `docs/v1-review.md` A3; a module-level bag is that defect with a new name.)*
+
+**AC-319e** Given `BAG_SIZE`, Then it is **12**, it is a named constant in
+`src/engine/constants.js`, and it is a member of `TUNING_SURFACE`. *(`gameplay.md` §5.10: the
+bag changes no constant already in the fingerprint, so without this the engine version would
+not move and stale replays would be silently accepted.)*
+
+---
+
+### The single curve
+
+**AC-320 — THERE IS NO DIFFICULTY.** Given the source tree, Then `DIFFICULTIES`,
+`DEFAULT_DIFFICULTY`, `knownDifficulty`, `ONBOARDING_DIFFICULTY` and every `difficulty`
+parameter are gone from the engine, the state layer and the screens. `createRun({ seed })`
+takes no difficulty. *(`gameplay.md` §5.5b. A retained-but-unused difficulty field is dead
+code — AC-1303.)*
+
+**AC-320b** Given Home, Then it shows **no habitat picker and no blurb**, and starting a run
+is a single action. *(`ui.md` §2.)*
+
+**AC-320c** Given a run record, a recent-runs entry or a diagnostics dump, Then none of them
+carries a `difficulty` field. *(The seed alone reproduces a run — `gameplay.md` §5.5b.)*
+
+**AC-320d — THE SAVE MIGRATES, THE RESUME DOES NOT.** Given a save written by the previous
+build, When it is loaded, Then schema step 4 → 5 collapses `best` to a **single** record set
+whose every field is the **maximum** across the three stored habitats, drops `difficulty` from
+each `recent[]` entry, and leaves lifetime totals, unlocks, the daily streak and settings
+untouched. Given a stored resume written by the previous build, Then it is **discarded**
+without replay, because `engineVersion` no longer matches (AC-1016). *(`gameplay.md` §9a and
+§5.10 — there is no migration for a replay that could be correct.)*
+
+**AC-320e** Given the migrated save, When the Collection screen computes the Tundra palette's
+progress, Then it reads `save.best.score` and returns a number. *(`src/ui/cosmetics.js:55`
+currently reads `save.best` as a map of habitats —
+`Math.max(...Object.values(save.best).map((b) => b.score), 0)` — and against a single record
+set that is `NaN`. It must move in the same pass.)*
+
+**AC-320f** Given the unlock conditions, Then all four are unchanged and none references a
+habitat. Given the cosmetics, Then "Night Savanna" and "Tundra" keep their names. *(They were
+always names of looks, never of places you could play.)*
+
+**AC-320g — ONE ABILITY LADDER.** Given `ABILITY_THRESHOLDS`, Then it is a **single** array of
+six values, and each is the percentile of the measured final-score distribution that
+`ABILITY_PERCENTILES` names. *(`gameplay.md` §5.9. Three ladders existed only because three
+medians differed by 1.68×.)*
+
+**AC-320h — RUN LENGTH.** Given 300 bot seeds on the shipped curve, Then the **median run is
+50–70 turns** and the 10th-to-90th percentile spread is reported alongside it. *(Measured
+58 turns, p10 37, p90 91 — `gameplay.md` §5.9. The range is wide on purpose: it is a gate
+against the curve having moved, not a target to tune toward, and AC-318g's minutes gate still
+supersedes it once a device measurement exists.)*
+
 **AC-308** Given Meadow, Savanna and Tundra are each played for 50 turns, Then the three runs
 produce measurably different mean cells-per-turn. *(v1 C1: Normal and Hard were identical
 because `Math.ceil(1.5) === Math.ceil(2)`.)*
@@ -322,12 +453,49 @@ at any difficulty and turn, Then **no batch ever occupies `BOARD.width` columns*
 distribution of occupied-column counts tracks the rolled targets in the mean (AC-306) — the
 general proof that the 1-column buffer is gone.
 
-**AC-310** Given difficulty Savanna, Then a buffalo is queued on turns 10, 20, 30 … and on no
-other turn.
+**AC-310** *(amended — one curve, one schedule; `gameplay.md` §5.5b)* Given any run, Then a
+buffalo is queued on turns **12, 24, 36, 46, 56, 66, 74, 82, 90, 98 …** — every 12 turns for
+the first three, every 10 for the next three, every 8 thereafter — and on **no other turn**.
 
-**AC-311** Given a buffalo is already on the board when its scheduled turn arrives, Then no
-second buffalo is queued, and the schedule fires again at the next scheduled turn after the
-board is clear of buffalo.
+**AC-310b — THE SCHEDULE IS A PURE FUNCTION OF THE TURN NUMBER.** Given the same turn number,
+Then `isBuffaloTurn(turn)` returns the same answer in every run, at every seed, at every board
+state. It reads **no board state, no run state and no PRNG**. *(This is what makes AC-310c's
+countdown honest. A schedule with an input the player cannot see is the tray's broken-preview
+defect wearing a different hat — AC-301.)*
+
+**AC-310c** Given a scheduled buffalo turn, Then a buffalo **is** in that turn's batch — with
+no exception, no condition and no fallback. *(The approved generator carried two conditions.
+One is overruled by AC-311; the other, `SPECIES.buffalo.size <= cap`, is `5 <= 8` and has
+never once been false. Both go, and the developer should not replace them with a third.)*
+
+**AC-311 — MULTIPLE BUFFALO ARE PERMITTED. DO NOT FIX THIS BACK.** *(This AC previously
+required the opposite. It now records an owner overrule, and it is written the way AC-407 is
+written, because "only one buffalo at a time" reads as an obvious safety property and somebody
+will restore it.)*
+
+Given a buffalo is already on the board when a scheduled turn arrives, Then **the scheduled
+buffalo is queued anyway**, and the number of buffalo on the board is bounded by nothing but
+the player's clearing.
+
+> **The owner's words, having played it:** *"we can have multiple buffalo, the player need to
+> try to clear it as soon as possible."*
+
+The gate was not a rare safety valve. Measured over 150 bot runs on the shipped build, a
+buffalo was on the board **77% of all turns**, the schedule was suppressed **3.63 times per
+run**, and a whole run delivered **1.13 buffalo** against a cadence that should have delivered
+five. `gameplay.md` §5.4, §5.5b, §6.4a.
+
+**A reviewer who wants this back must first read `gameplay.md` §5.9's measured alternative:**
+population caps of 2 and 3 were measured, they work, and they were rejected on design grounds,
+not overlooked. Reintroducing a cap is an owner decision (`open-questions.md` Q3), never a
+defect fix.
+
+**AC-311b — AT MOST ONE BUFFALO PER ROW, AND IT IS ARITHMETIC.** Given any board state
+reachable by play, Then no row contains two buffalo, because `2 × SPECIES.buffalo.size >
+BOARD.width` (10 > 9). *(This is what leaves every rule in `gameplay.md` §6.4 untouched: a
+completed row still holds exactly one buffalo or none. The test asserts the arithmetic against
+the constants, so narrowing the board or shrinking the buffalo fails it rather than silently
+breaking the shrink mechanic.)*
 
 **AC-312** Given the turn advances, Then the next batch is generated **exactly once**.
 *(v1 C6: `generateAnimalsForTurn(turn + 1, …)` was called from two places for the same turn.)*
@@ -450,9 +618,20 @@ never checked against §0. At ~4 s/turn they mean 7.3 / 4.0 / 2.5 minutes, so th
 overshoots the design goal it was meant to serve, while the shipped build's 69 / 47 / 31 turns
 — 4.6 / 3.1 / 2.1 minutes — already sits inside it.)*
 
-**AC-318h** Given no measured per-turn duration exists, Then **no further band, ramp or weight
-change is made**. Three successive attempts to predict pacing from reasoning were wrong; a
-fourth against an unvalidated target is not a tuning step.
+**AC-318h** *(amended — narrowed, not relaxed; `gameplay.md` §5.9)* Given no measured
+per-turn duration exists, Then **no NEW band, ramp or weight value is invented**. Three
+successive attempts to predict pacing from reasoning were wrong; a fourth against an
+unvalidated target is not a tuning step.
+
+**Selecting among already-measured values is not inventing one.** Collapsing the three
+habitats to one curve necessarily deletes two band tables, and the surviving table is chosen
+on measured run length from a set of three that already shipped (§5.9). No band, ramp or
+weight figure in the v2 documents is now a number nobody has run.
+
+**AC-318i — THE PACING LEVER IS THE BUFFALO PHASES, NOT THE BANDS.** Given the measured run
+length misses its target, Then the first lever is the **length of the 12-turn buffalo phase**
+(the owner's own "2-3 times"), not a band value. *(`gameplay.md` §5.9. It moves run length
+without touching a band, so AC-318h stays satisfied while the game is still tunable.)*
 
 **AC-318c** Given the pacing ranges are missed, Then tuning proceeds **bands first, ramp
 interval second, species weights last**. The weights now do exactly what they say
@@ -768,10 +947,17 @@ settles to its lowest non-colliding position.
 **AC-503** Given clearing one row causes another row to become complete, Then that row also
 clears in a subsequent chain step, and the process repeats until no row is complete.
 
-**AC-504** *(amended — the 8-step rail is removed as a scoring cutoff)* Given a resolution,
-Then the chain loop runs until no row is complete, however many steps that takes, and
-**terminates by construction**: every step removes at least one completed row, so board mass
-strictly decreases by at least one cell per step from a maximum of 150.
+**AC-504** *(amended twice — the 8-step rail is removed as a scoring cutoff, and the
+termination argument is re-derived now that multiple buffalo are permitted)* Given a
+resolution, Then the chain loop runs until no row is complete, however many steps that takes,
+and **terminates by construction**: a completed row is `BOARD.width` = 9 cells, of which at
+most `SPECIES.buffalo.size` = 5 can belong to a buffalo (AC-311b), so every step removes at
+least **4** cells and board mass strictly decreases from a maximum of 135.
+
+*(`src/engine/resolve.js:28-31` currently argues this from "the single permitted buffalo",
+which AC-311 has overruled. The conclusion survives; the premise must be replaced with the
+arithmetic above rather than deleted, or the next reader has a loop with no termination
+argument at all.)*
 
 **AC-504b** *(amended — the engine cannot log; AC-201 forbids it and a test enforces it)*
 Given a resolution, Then `assert step <= 32` holds. This is a **crash guard against an engine
@@ -821,15 +1007,32 @@ Then the buffalo is removed from the board and marked retired.
 **AC-508** Given a buffalo shrinks, Then its rendered body loses exactly one panel and the
 panel count equals the new size.
 
-**AC-509** Given a buffalo is on the board, Then the HUD buffalo chip is visible with **five**
-segments, showing its remaining segments filled and its spent segments dimmed.
+**AC-509** *(amended — multiple buffalo, AC-311)* Given **n** buffalo are on the board, Then
+the HUD shows **n chips**, each with **five** segments showing that buffalo's remaining
+segments filled and its spent segments dimmed, ordered **bottom row first**.
+
+*(A single chip showing one of four buffalo is AC-301's broken-preview defect in miniature:
+information on screen that is true of something other than what the player is looking at. The
+order is the board's own, so chip *k* and buffalo *k* can be matched by eye — `ui.md` §7.)*
+
+**AC-509c — THE COUNTDOWN.** Given any turn, Then the HUD shows the number of turns until the
+next scheduled buffalo, and that number is **always correct**, because AC-310b's schedule has
+no input the player cannot see. *(This is AC-301's contract applied to the one arrival the
+player most needs to plan around. It was impossible to show under the superseded rule, whose
+"next" depended on when a buffalo the player could not predict happened to die.)*
+
+**AC-509d** Given more chips than fit the HUD's width, Then the chips **shrink to fit and do
+not wrap, scroll or elide**; the count is never hidden behind a "+3". *(`ui.md` §7 sizes them
+for the measured worst case of 10.)*
 
 **AC-509b** Given a buffalo shrinks, Then the chip's segment fades on the **same 260 ms
 timeline as the body's shrink**, not on the React commit. *(Slice 3 measured the chip reading
 "1 of 4" beside a two-cell-wide body for a quarter second — the HUD contradicting the board
 about the one fact the chip exists to report.)*
 
-**AC-510** Given a buffalo is retired, Then the HUD chip disappears.
+**AC-510** *(amended)* Given a buffalo is retired, Then **its** chip disappears and the
+remaining chips close the gap on the same timeline as the board's settle. Given the last
+buffalo is retired, Then the chip row disappears and the countdown remains.
 
 **AC-511** Given a clear step occurs, Then its flash-and-collapse animation plays exactly
 once. *(v1 C7: the turn path flashed at 500 ms then `executeChainClear` re-flashed for
@@ -1532,15 +1735,14 @@ to has not been tested, only written.)*
 **AC-1007** Given a run is completed on a new calendar day following a day with a completed
 run, Then the daily streak increments by 1. Given a day is skipped, it resets to 1.
 
-**AC-1008** *(amended — layout and hierarchy now specified in `ui.md` §14.1)* Given the Records
-screen, Then it shows, in this order: the daily streak, a difficulty selector, the **bests**
-for the selected difficulty (score, chain, turns, rows), the **recent runs** list, and the
-lifetime totals last.
+**AC-1008** *(amended twice — layout and hierarchy in `ui.md` §14.1; the difficulty selector
+is gone with the habitats, `gameplay.md` §5.5b)* Given the Records screen, Then it shows, in
+this order: the daily streak, the **bests** (score, chain, turns, rows), the **recent runs**
+list, and the lifetime totals last. There is **no difficulty selector**.
 
-**AC-1008b** Given the difficulty selector, Then it governs the **bests block only** — the
-recent-runs list shows all difficulties with a chip on each row. *(Bests are per-difficulty
-because that is what makes them comparable; the run diary is chronological, and filtering a
-mixed session into invisibility makes it a worse answer to "am I getting better?")*
+**AC-1008b** *(amended)* Given a recent-runs row, Then it shows date, score and turns, and
+**no habitat chip**. *(`gameplay.md` §9a: a label naming a mode that no longer exists makes
+the older entries unreadable rather than informative.)*
 
 **AC-1008c** Given any statistic not yet achieved, Then it renders **`—`, never `0`**, on
 Records and on Collection. *(Zero is a score you got.)*
