@@ -20,7 +20,7 @@ import { ABILITIES } from '../engine/abilities.js';
 import { BOARD } from '../engine/constants.js';
 import { CUE, chainRate, coalesceCues } from './cues.js';
 import { COPY, MOTION } from './theme.js';
-import { stampedeBeats, turnTimeline } from './timeline.js';
+import { playoutEnd, stampedeBeats, turnTimeline } from './timeline.js';
 
 /**
  * Turn the keys into an absolute schedule: when each one actually starts.
@@ -599,11 +599,45 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   for (const dep of departures) spanOf(dep.keys);
   for (const shard of shards) spanOf(shard.keys);
 
+  /**
+   * When the turn's last STRUCTURAL frame has played, measured from the commit.
+   *
+   * `lockMs` is when INPUT reopens and it is deliberately not the same instant:
+   * AC-824f measures the budget from finger-up, so `lockDelay` takes the commit
+   * gap back out and the lock can end up to `MAX_LEARNED_GAP_MS` before the
+   * board has finished moving (`src/ui/useGameRun.js`). `clockMs` is when the
+   * BOARD stops, which misses a flight that is still in the air over it. This
+   * is the max of all three, and it is the only number in the plan that answers
+   * "has the player seen the end of this turn yet".
+   *
+   * It exists because the Game Over sheet was mounted on `status`, which the
+   * engine sets on the commit — so the sheet arrived while the arrival was
+   * still climbing and the flight then landed behind it. The owner, on build 5:
+   * "the `Run over` popup shown, but the arrival row still emerge, overlapping
+   * the `Run over` popup and then disappear."
+   *
+   * MEASURED, because the max() looks redundant and nearly is: across 21,225
+   * real turns over 120 seeds at three commit gaps, `lockMs` dominated on
+   * 21,189 of them and the other 36 differed by 1.1e-13 ms — `clockMs`'s
+   * un-rounded tail against `lockMs`'s `Math.round`. No arrival flight ever
+   * outlasted the lock. So this is a DEFINITION and a guard, not a correction:
+   * the three terms agree today, and the point of naming the quantity is that
+   * "when input reopens" and "when the board stops" are different questions
+   * and the next person to shorten one must not silently shorten the other.
+   */
+  const flightEnds = [];
+  for (const id of Object.keys(moves)) {
+    const flight = moves[id].arrival;
+    if (flight) flightEnds.push(flight.at + flight.dur);
+  }
+  const playoutMs = playoutEnd(timeline.lockMs, clockMs, flightEnds);
+
   return {
     /** Identity for the announcement layer: a new turn is a new layer. */
     key: planKey,
     /** AC-808: one clock for the whole board, so nothing can drift (motion.js). */
     clockMs,
+    playoutMs,
     lockMs: timeline.lockMs,
     reservedMs: Math.max(0, reservedMs),
     scale,

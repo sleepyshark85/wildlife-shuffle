@@ -248,3 +248,33 @@ export function turnTimeline(events, action, reservedMs = 0) {
     units,
   };
 }
+
+/**
+ * When the turn's last STRUCTURAL frame has played, measured from the commit.
+ *
+ * A function rather than three lines inside `buildReplay` for `handoverWindow`'s
+ * reason exactly: the claim it encodes is arithmetic, so it should be checkable
+ * without a board. The claim is that THREE different numbers each describe a
+ * different ending and the screen needs the last of them —
+ *
+ *   - `lockMs`  when INPUT reopens. Spent through `lockDelay`, which takes the
+ *               unreserved commit gap back out (AC-824f), so it is not even
+ *               measured from the same instant as the other two.
+ *   - `clockMs` when the BOARD stops. Blind to a flier still in the air over it.
+ *   - a flight  when an ARRIVAL lands. AC-809's 260 ms, which is the thing the
+ *               owner watched climb up behind the Game Over sheet on build 5.
+ *
+ * They agree today — measured across 21,225 bot turns, `lockMs` dominated all
+ * but 36, and those 36 by 1.1e-13 ms of rounding. The point is that nothing
+ * makes them agree, and a sheet mounted on the wrong one is a defect nobody can
+ * see in a test that only ever looks at the number that currently wins.
+ *
+ * @param {number} lockMs
+ * @param {number} clockMs
+ * @param {number[]} flightEnds  `at + dur` for every arrival in the batch
+ */
+export function playoutEnd(lockMs, clockMs, flightEnds) {
+  let end = Math.max(lockMs, clockMs);
+  for (const at of flightEnds) end = Math.max(end, at);
+  return end;
+}

@@ -7,12 +7,20 @@
 // setAnimals() updater with setTimeouts fired from inside it
 // (docs/v1-review.md A1-A4).
 //
-// There are exactly two timers in the app and both live here:
-//   1. the input lock, which ends the turn's structural timeline (AC-413)
-//   2. the BLOCKED announcement, which clears the action bar's label (AC-406)
+// There are exactly two timers in the app and both live here, in one effect,
+// under one cleanup:
+//   1. the input lock, which reopens input at `lockDelay(...)` — measured from
+//      FINGER-UP, so the commit gap comes out of it (AC-413, AC-824f)
+//   2. the replay flag, which ends at `plan.playoutMs` — the turn's last
+//      structural frame, measured from the COMMIT
+// They answer different questions and are only accidentally equal. (2) exists
+// because the Game Over sheet was mounted on engine status and therefore
+// arrived while the arrival flight was still climbing; gating it on (1) would
+// have left a window as wide as the unreserved part of the commit gap.
 // Neither drives an animation frame — every transform is a worklet (AC-828) —
 // and both are cleared by their effect's own cleanup, on unmount and on
-// restart alike (AC-211, AC-212).
+// restart alike (AC-211, AC-212). The BLOCKED announcement's timer went with
+// AC-406: a release can no longer be illegal, so nothing could start it.
 //
 // `lockedRef` rather than the `resolving` state is the authority on whether
 // input is open, because it is written synchronously. Reading a state variable
@@ -134,6 +142,23 @@ export function useGameRun({ seed, resumed = null }) {
   );
 
   const [resolving, setResolving] = useState(false);
+  /**
+   * Is the turn's replay still on screen?
+   *
+   * NOT the same flag as `resolving`, and the difference is the whole of the
+   * defect it was added for. `resolving` is about INPUT and ends at
+   * `lockDelay(...)`, which AC-824f pulls forward by however much of the commit
+   * gap the plan did not already reserve — up to `MAX_LEARNED_GAP_MS`. This one
+   * is about the BOARD and ends at `plan.playoutMs`, the last structural frame.
+   * On a device with a steady commit gap the two coincide; the moment a turn
+   * commits more slowly than the last one did, they do not, and a surface that
+   * must not be drawn over a moving board needs the second one.
+   *
+   * Only the Game Over sheet reads it. Nothing gates input on it — an input
+   * lock that waited for the last frame would give AC-824f's reserved time
+   * straight back.
+   */
+  const [replaying, setReplaying] = useState(false);
   const [guardRecord, setGuardRecord] = useState(null);
 
   const lockedRef = useRef(false);
@@ -162,6 +187,7 @@ export function useGameRun({ seed, resumed = null }) {
       // releases the previous run's lock on the way in (AC-212).
       lockedRef.current = false;
       setResolving(false);
+      setReplaying(false);
       return undefined;
     }
 
@@ -172,6 +198,7 @@ export function useGameRun({ seed, resumed = null }) {
 
     lockedRef.current = true;
     setResolving(true);
+    setReplaying(true);
 
     // AC-824f: the budget is measured from finger-up, so the time the engine
     // and React have already spent comes out of the lock. `reservedMs` was
@@ -204,7 +231,19 @@ export function useGameRun({ seed, resumed = null }) {
         dispatch({ ...buffered, reservedMs: gapRef.current });
       }
     }, wait);
-    return () => clearTimeout(timer);
+
+    // The second timer, and the reason it is a second one rather than a
+    // longer first: `wait` is a promise to the player's finger (AC-824f) and
+    // `playoutMs` is a fact about the screen. Folding them together would mean
+    // choosing which promise to break. Both are owned here, both are cleared
+    // by the one cleanup below, and neither fires from a state updater —
+    // docs/v1-review.md A1 is the rule this whole layer exists to keep.
+    const playout = setTimeout(() => setReplaying(false), state.plan.playoutMs);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(playout);
+    };
   }, [state.lastTurn, state.seed, state.plan]);
 
   const isOpen = () => !lockedRef.current && stateRef.current.status === STATUS.READY;
@@ -295,6 +334,7 @@ export function useGameRun({ seed, resumed = null }) {
     state,
     view,
     resolving,
+    replaying,
     guardRecord,
     commitMove,
     pass,

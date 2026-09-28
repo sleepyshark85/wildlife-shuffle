@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { BOARD } from '../src/engine/constants.js';
 import { MOVE_OK, checkMove } from '../src/engine/board.js';
 import { ACTIONS, createRun, reduce } from '../src/engine/engine.js';
+import { STATUS } from '../src/engine/constants.js';
+import { buildReplay } from '../src/ui/replay.js';
 import { slideRange, slideRanges } from '../src/ui/occupancy.js';
 import { CONTACT_ENGAGE, CONTACT_RELEASE, clampDrag } from '../src/ui/dragClamp.js';
 import {
@@ -19,6 +21,7 @@ import {
   allocateUnits,
   handoverWindow,
   lockDelay,
+  playoutEnd,
   stepInterval,
   turnTimeline,
 } from '../src/ui/timeline.js';
@@ -737,4 +740,124 @@ test('AC-902 a count and its noun agree at one, and above it', () => {
   // labels pass both forms — `MOVE` + `s` is `MOVEs`, and the suite caught it.
   assert.equal(plural(1, 'MOVE', 'MOVES'), '1 MOVE');
   assert.equal(plural(3, 'MOVE', 'MOVES'), '3 MOVES');
+});
+
+// ---- AC-816 · when the sheet may mount ------------------------------------
+//
+// The owner, on build 5: "Right before game over, the `Run over` popup shown,
+// but the arrival row still emerge, overlapping the `Run over` popup and then
+// disappear."
+//
+// `run.view.gameOver` is `status === GAME_OVER`, which the engine sets on the
+// COMMIT that resolved the turn. The turn's animation is a replay of that
+// already-resolved state, played afterwards — so the sheet mounted first and
+// the arrival flew up behind it. The two tests below are the two halves of the
+// fix: the plan has to KNOW when its last frame plays, and the screen has to
+// READ it. Neither is visible to a renderer-free suite by looking at pixels, so
+// one is arithmetic and one is structure.
+
+test('AC-816/AC-824f the input lock is NOT a gate on the board having stopped', () => {
+  // The number that makes the second timer necessary rather than tidy.
+  //
+  // `lockDelay` takes the unreserved part of the commit gap back out, because
+  // AC-824f measures the budget from finger-up. So on any turn that committed
+  // more slowly than the one before it, `resolving` goes false with the board
+  // still moving — and the amount is exactly the slip.
+  const lockMs = 400;
+  const reservedMs = 40;
+  assert.equal(lockDelay(lockMs, reservedMs, reservedMs), lockMs,
+    'a steady commit gap: the two instants coincide, which is why this hid');
+  for (const slip of [1, 16, 80, 260]) {
+    assert.equal(lockDelay(lockMs, reservedMs, reservedMs + slip), lockMs - slip,
+      `input reopens ${slip} ms before the board stops, and the sheet would too`);
+  }
+});
+
+test('AC-816/AC-809 playoutEnd takes the LAST of the turn\'s three endings', () => {
+  // The unit, with a case the real data does not produce. `lockMs` dominates
+  // every turn a bot has ever played here, so a sweep alone cannot tell a
+  // correct `playoutEnd` from one that has quietly dropped a term — which is
+  // how the flight came to be missing from the sheet's gate in the first place.
+  assert.equal(playoutEnd(400, 400, [400]), 400, 'the three agree, as they do today');
+  assert.equal(playoutEnd(400, 390, []), 400, 'the lock is later than the board');
+  assert.equal(playoutEnd(390, 400, []), 400, 'the board is later than the lock');
+  assert.equal(playoutEnd(400, 400, [460]), 460, 'a flight outlasts both');
+  assert.equal(playoutEnd(400, 400, [380, 520, 410]), 520, 'the LAST flight, not the first');
+  assert.equal(playoutEnd(0, 0, []), 0, 'a turn that moves nothing ends at once');
+});
+
+test('AC-816/AC-809 the plan says when its last structural frame has played', () => {
+  // Every turn of thirty real runs, at three different commit gaps — because
+  // `reservedMs` is what scales the timeline, and a quantity that is only
+  // correct at one gap is correct by accident.
+  let turns = 0;
+  let withFlight = 0;
+  let dominatedByLock = 0;
+  let excess = 0;
+  for (let seed = 0; seed < 30; seed += 1) {
+    for (const reservedMs of [0, 45, 90]) {
+      let state = createRun({ seed: `playout.${seed}`, abilities: true });
+      for (let step = 0; step < 400 && state.status === STATUS.READY; step += 1) {
+        const before = state;
+        const next = reduce(state, { type: ACTIONS.PASS, reservedMs });
+        if (next === state) break;
+        state = next;
+        if (!state.lastTurn || state.lastTurn === before.lastTurn) continue;
+        const plan = buildReplay(before.animals, state.lastTurn, reservedMs);
+        turns += 1;
+        if (plan.playoutMs === plan.lockMs) dominatedByLock += 1;
+        else excess = Math.max(excess, plan.playoutMs - plan.lockMs);
+
+        assert.ok(plan.playoutMs >= plan.lockMs,
+          `turn ${state.lastTurn.turn}: playout ${plan.playoutMs} ends before the lock `
+          + `${plan.lockMs}, so input would reopen onto a sheet`);
+        assert.ok(plan.playoutMs >= plan.clockMs,
+          `turn ${state.lastTurn.turn}: the board is still moving at ${plan.clockMs}`);
+
+        // AC-809: the flight is the thing the owner watched arrive behind the
+        // sheet, so it is named rather than left to the clock to cover.
+        for (const id of Object.keys(plan.moves)) {
+          const flight = plan.moves[id].arrival;
+          if (!flight) continue;
+          withFlight += 1;
+          assert.ok(plan.playoutMs >= flight.at + flight.dur,
+            `turn ${state.lastTurn.turn}: animal ${id} lands at `
+            + `${flight.at + flight.dur}, after the playout ends at ${plan.playoutMs}`);
+        }
+      }
+    }
+  }
+  assert.ok(turns > 1000, `only ${turns} turns swept`);
+  assert.ok(withFlight > 1000, `only ${withFlight} arrivals swept`);
+  // Held from BOTH sides, so the max() is neither dead nor load-bearing by
+  // accident. `lockMs` is `Math.round(rawMs * scale)` and `clockMs` is not
+  // rounded at all, so a handful of turns end a fraction of a millisecond after
+  // their own lock — which is the max() doing its job and nothing more. If that
+  // number ever grows past a frame, the three terms have genuinely come apart
+  // and the gate has stopped being a name for an instant.
+  assert.ok(dominatedByLock < turns,
+    'no turn exceeded its lock at all: the max() has become dead arithmetic');
+  assert.ok(excess < 1,
+    `a turn outlived its lock by ${excess.toFixed(3)} ms — that is no longer rounding`);
+});
+
+test('AC-816 the Game Over sheet waits for the board, and waits on the right flag', () => {
+  // Structural, and it has to be: whether one view is mounted over another is
+  // exactly the class of claim `src/ui/stacking.js` exists because nothing in
+  // this suite could evaluate. The condition is text, so the text is read.
+  const screen = stripComments(readSrc('src/ui/screens/GameScreen.js'));
+  const at = screen.indexOf('<GameOverSheet');
+  assert.notEqual(at, -1, 'the Game Over sheet is not mounted from GameScreen');
+  const guard = screen.slice(screen.lastIndexOf('{', at), at);
+  assert.match(guard, /!run\.replaying/,
+    'the sheet mounts on engine status alone, which is build 5 exactly');
+  assert.ok(!/run\.resolving/.test(guard),
+    'the sheet is gated on the INPUT lock, which AC-824f ends early (see above)');
+
+  // ...and the flag it waits on is driven by the plan's own number, from the
+  // commit, not by `lockDelay`'s finger-up correction.
+  const layer = stripComments(readSrc('src/ui/useGameRun.js'));
+  assert.match(layer, /setTimeout\(\s*\(\)\s*=>\s*setReplaying\(false\),\s*state\.plan\.playoutMs\s*\)/,
+    'the replay flag is not scheduled off plan.playoutMs');
+  assert.match(layer, /\breplaying,/, 'useGameRun does not hand the flag out');
 });

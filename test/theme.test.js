@@ -36,7 +36,9 @@ import {
   texturedRow,
   translucent,
 } from '../src/ui/texture.js';
-import { DEFAULT_THEME, THEME, brighten, contrast, edgeLit } from '../src/ui/theme.js';
+import {
+  DEFAULT_THEME, THEME, brighten, contrast, edgeLit, separation,
+} from '../src/ui/theme.js';
 import { cosmeticsFor } from '../src/ui/cosmetics.js';
 import { defaultSave, withSettings } from '../src/ui/progress.js';
 
@@ -659,5 +661,123 @@ test('AC-1011 a dark board theme brings the ramp that can be seen on it', () => 
     );
     assert.ok(best >= SHAPE_FLOOR,
       `nightSavanna/${species} reads at ${best.toFixed(2)}:1 on its own board`);
+  }
+});
+
+// ---- AC-315 / AC-315c / AC-315e · the silhouette, on both of its grounds ---
+//
+// The owner, on build 5: "The arrival has buffalo, other arriving animal got
+// blur a little bit, that make it hard to see if there is animal arriving with
+// the buffalo at all."
+//
+// The cause was that `ui.md` §6.2 specifies the silhouette against the TRAY
+// STRIP and §6.3 flies it across the BOARD, and nothing had ever evaluated it
+// on the second ground. See `src/ui/theme.js`'s SILHOUETTE block for the
+// measurement; this is that measurement as a gate.
+//
+// It has to be CIEDE2000 and not `contrast`. WCAG is a luminance ratio, so it
+// scores the buffalo silhouette on bone at 1.03:1 and the ordinary one at
+// 1.13:1 — the visible shape BELOW the invisible one. A check built on the
+// metric that cannot see the defect is the "check that can only pass" this
+// project keeps rediscovering, so the metric is part of the fix.
+
+/** The light buffalo's own body separation (7.20), rounded down. */
+const SILHOUETTE_FLOOR = 7;
+
+/**
+ * Every ground a silhouette can be painted on.
+ *
+ * TWO components paint them and they read their ground from DIFFERENT places,
+ * which is the whole reason this is a product rather than a list:
+ *
+ *   - `Tray` draws the strip on `useTheme().colors.panelSunken` — the theme's,
+ *     never a cosmetic's.
+ *   - `ArrivalFlight` flies the same views across the board, whose cell comes
+ *     from `useCosmetics().colors.cell` — which a board unlock replaces.
+ */
+function silhouetteGrounds() {
+  const save = defaultSave();
+  save.lifetime.buffaloRetired = 10;
+  const out = [];
+  for (const name of Object.keys(THEME)) {
+    const theme = THEME[name];
+    out.push({ label: `${name} tray strip`, silhouette: theme.silhouette, ramp: name,
+      ground: theme.colors.panelSunken });
+    for (const board of [null, 'nightSavanna']) {
+      const skin = cosmeticsFor({
+        ...save,
+        settings: { ...save.settings, theme: name },
+        unlocks: { announced: [], applied: board ? { theme: board } : {} },
+      });
+      out.push({
+        label: `${name} board cell${board ? ` + ${board}` : ''}`,
+        cosmetic: Boolean(board),
+        // The flight takes its silhouette from the THEME and its ground from
+        // the COSMETIC. That asymmetry is the thing under test.
+        silhouette: skin.theme.silhouette,
+        ramp: board ? 'dark' : name,
+        species: skin.species,
+        ground: skin.colors.cell,
+      });
+    }
+  }
+  return out;
+}
+
+test('AC-315/AC-315c an ordinary silhouette is as visible as the buffalo, on every ground it is flown over', () => {
+  const grounds = silhouetteGrounds();
+  assert.equal(grounds.length, 6, `the sweep covers ${grounds.length} grounds`);
+
+  const weak = [];
+  for (const { label, silhouette, ground } of grounds) {
+    const ordinary = separation(silhouette.fill, ground);
+    const buffalo = separation(silhouette.buffaloFill, ground);
+    if (ordinary < SILHOUETTE_FLOOR) {
+      weak.push(`${label}: ordinary body ${ordinary.toFixed(2)} (buffalo ${buffalo.toFixed(2)})`);
+    }
+    // Stated for the buffalo too, so the floor is a property of the silhouette
+    // rather than a handicap applied to one of them.
+    if (buffalo < SILHOUETTE_FLOOR) {
+      weak.push(`${label}: buffalo body ${buffalo.toFixed(2)}`);
+    }
+  }
+  assert.deepEqual(weak, [],
+    `below the ${SILHOUETTE_FLOOR} dE floor — an arrival nobody can see:\n  ${weak.join('\n  ')}`);
+
+  // The specific pair the owner reported, named so a regression says WHY.
+  const bone = THEME.light;
+  assert.ok(separation(bone.silhouette.fill, bone.colors.cell) >= SILHOUETTE_FLOOR,
+    'the light ordinary silhouette is back under the buffalo, which is build 5');
+  // ...and the grid itself is the scale it has to beat. An empty cell differs
+  // from the board ground by 2.42 on bone; the old fill managed 3.27.
+  assert.ok(separation(bone.colors.cell, bone.colors.board) < 3,
+    'the empty cell got loud enough to change what the floor means');
+});
+
+test('AC-315 a silhouette stays the FAINTEST thing on the board it crosses', () => {
+  // The other end of the same clamp, and the one that stops the fix from
+  // becoming its own defect: a shadow that reads as strongly as a resolved
+  // animal has stopped being a forecast. Held on the two native grounds, where
+  // the ramp and the silhouette were chosen against each other.
+  //
+  // The two grounds a board UNLOCK supplies are deliberately not here, and the
+  // reason is a defect rather than an exemption: `ArrivalFlight` takes its
+  // silhouette from `useTheme()` and its ground from `useCosmetics()`, so a
+  // player in the light theme wearing Night Savanna flies a bone-coloured
+  // shadow over a `#1B1533` board at dE 63.80 — brighter than every animal on
+  // it (faintest 28.82). That is `ui.md` §16.4's rule unapplied to the
+  // silhouette, it predates this change, and fixing it is a design decision
+  // about whether a board cosmetic brings a shadow of its own. Recorded here
+  // with its number so it is owed rather than forgotten.
+  const native = silhouetteGrounds().filter((g) => g.species && !g.cosmetic);
+  assert.equal(native.length, 2, `the clamp is held on ${native.length} grounds, not 2`);
+  for (const { label, silhouette, species, ground } of native) {
+    const faintest = Math.min(...Object.values(species).map((s) => separation(s.fill, ground)));
+    for (const key of ['fill', 'edge']) {
+      const shade = separation(silhouette[key], ground);
+      assert.ok(shade < faintest,
+        `${label}: the silhouette ${key} reads at ${shade.toFixed(2)} and the faintest `
+        + `animal body at ${faintest.toFixed(2)} — the shadow is no longer a shadow`);
+    }
   }
 });
