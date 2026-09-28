@@ -38,7 +38,6 @@ import { SPECIES } from '../../engine/constants.js';
 import { plural, trayLabel } from '../format.js';
 import { traySilhouettes, trayMetrics } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
-import { frozenLabel, trayStripOpacity } from '../abilities.js';
 import { COPY, MOTION, RADIUS, themed } from '../theme.js';
 import { useTheme } from '../progressStore.js';
 
@@ -81,21 +80,16 @@ function HazardRule({ width, height }) {
   return <View style={{ width, height, overflow: 'hidden' }}>{bars}</View>;
 }
 
-function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, frozen = 0 }) {
+function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced }) {
   const theme = useTheme();
   const styles = STYLES[theme.name];
   const { labelH, stripH, ruleH, bodyH } = trayMetrics(cell, compact);
-  // AC-1410, and it is load-bearing rather than decoration. The tray's whole
-  // contract is that it shows what is coming (§6); while Hold the Line is up,
-  // nothing is coming, and a strip still showing a batch would be promising an
-  // arrival that will not happen — which is v1's defect exactly, in reverse.
-  // So the strip greys out and SAYS SO for as long as the freeze lasts.
-  const frozenText = frozenLabel(frozen);
-  // AC-1410b. MULTIPLIED into the animated opacity rather than layered after
-  // it: a static `opacity: 0.45` in the same style array as `revealStyle` is
-  // whichever of the two is written last, and it shipped losing — the label
-  // said FROZEN and the strip rendered at full opacity.
-  const stripAlpha = trayStripOpacity(frozen);
+  // AC-1410b: THE TRAY HAS ONE STATE AGAIN. Hold the Line is withdrawn, so
+  // nothing in the game can suppress an arrival and there is no second state in
+  // which the strip has to say that nothing is coming. What used to live here —
+  // a `FROZEN · n` label and a greyed strip multiplied into the reveal opacity —
+  // is gone rather than kept unreachable: a tray state that cannot occur is not
+  // history, it is a trap for a reader (AC-1303).
 
   // The batch on screen while an arrival is in flight is the NEXT one: the
   // engine advanced the queue in the same reducer call that emptied it. So the
@@ -112,12 +106,12 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
     reveal.value = 0;
     reveal.value = delay(revealAt, withTiming(1, timing(MOTION.reduced, EASE.out, reduced)));
   }, [queue, revealAt, reduced, reveal]);
-  const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value * stripAlpha }));
+  const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
 
   return (
     <View
       style={{ width: boardW }}
-      accessibilityLabel={trayLabel(queue, cells, frozen)}
+      accessibilityLabel={trayLabel(queue, cells)}
       accessible
     >
       <View style={[styles.labelRow, { height: labelH }]}>
@@ -125,15 +119,15 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
         <Text
           testID="tray-right"
           maxFontSizeMultiplier={TRAY_FONT_CAP}
-          style={[theme.type.label, frozenText ? styles.frozenLabel : null]}
+          style={theme.type.label}
         >
-          {frozenText || plural(cells, 'CELL', 'CELLS')}
+          {plural(cells, 'CELL', 'CELLS')}
         </Text>
       </View>
       <Animated.View
         style={[styles.strip, { width: boardW, height: stripH }, revealStyle]}
       >
-        {(frozenText ? [] : traySilhouettes(queue, cell, theme.silhouette.gap)).map((shape) => {
+        {traySilhouettes(queue, cell, theme.silhouette.gap).map((shape) => {
           const buffalo = shape.type === SPECIES.buffalo.type;
           return (
             <View
@@ -162,7 +156,6 @@ function TrayImpl({ queue, cells, cell, boardW, compact, revealAt, reduced, froz
 
 const STYLES = themed((T) => StyleSheet.create({
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  frozenLabel: { color: T.colors.inkMuted },
   strip: {
     backgroundColor: T.colors.panelSunken,
     borderWidth: 1,

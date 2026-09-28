@@ -218,20 +218,32 @@ export function meanDrawnSize() {
  * row that was nothing but buffalo. 257 of 6,595 clear steps shrank more than
  * one buffalo; the most in one step was three.
  *
- * THE CONSEQUENCE FOR THIS CONSTANT, STATED PLAINLY. Two cells a step against a
- * board holding at most `width x height` = 135 bounds the cascade at 67 steps,
- * which is ABOVE this guard rather than below it. The bound is very loose — a
- * two-cell step needs a row that is exactly two buffalo, after which that row is
- * no longer complete — and the deepest cascade ever measured is 4 steps against
- * a committed 7-step fixture. But "32 is far above the bound" was a proof and is
- * now an empirical claim, and whether 32 is still the right number is a design
- * decision (it is in TUNING_SURFACE), not a thing to change here.
+ * THE CONSEQUENCE, AND THE GUARD HAS NOW MOVED FOR IT (gameplay.md §6.4b).
+ * Two cells a step against a board holding at most `width x height` = 135 bounds
+ * the cascade at 67 steps, which was ABOVE the shipped guard of 32 rather than
+ * below it. So "32 is more than twice the mass bound" (AC-504b) was false, and
+ * there existed a legal resolution the guard would have aborted — which matters
+ * because a tripped guard may leave a completed row standing and discards the
+ * run's score entirely (AC-504e). A crash guard that can fire on legal play is
+ * not a crash guard.
+ *
+ * DERIVED, NOT WRITTEN, which is the other half of the fix: the literal 32 is
+ * what let the bound and the guard drift apart across two re-derivations of the
+ * same argument. Narrowing the board or changing the buffalo's size now moves
+ * the guard automatically — the AC-126 rule applied to the one constant that
+ * had escaped it.
+ *
+ * Raising it costs nothing: a broken engine loops 68 times instead of 32 and is
+ * still bounded, and the deepest cascade ever measured is 4 steps against a
+ * committed 7-step fixture. The cost is one bumped `ENGINE_VERSION`, since this
+ * is in TUNING_SURFACE — and this pass discards resumes anyway (§13.4a), so it
+ * is free to take now and would not be later.
  *
  * Tripping it still means the engine is broken: gravity is not settling, or a
  * clear is not removing. It must be loud, and it must never silently change the
  * score.
  */
-export const CHAIN_GUARD_STEPS = 32;
+export const CHAIN_GUARD_STEPS = Math.floor((BOARD.width * BOARD.height) / 2) + 1;
 
 /** gameplay.md §8: the board is seeded with two arrival batches before turn 1. */
 export const SEED_BATCHES = 2;

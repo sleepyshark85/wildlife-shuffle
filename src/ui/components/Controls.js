@@ -9,8 +9,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { METER, METER_MARGIN } from '../layout.js';
 import { EASE, delay, timing } from '../motion.js';
-import { RADIUS, SPACE, themed } from '../theme.js';
+import { MOTION, RADIUS, SPACE, themed } from '../theme.js';
 import { useTheme } from '../progressStore.js';
 
 /**
@@ -207,6 +208,87 @@ export const BuffaloChip = memo(function BuffaloChip({ size, bars, rule, shrink,
   );
 });
 
+/**
+ * ui.md §7.1 — one tick of the Stand Down meter.
+ *
+ * SQUARE, where the charge pip is round, and that is not decoration: the meter
+ * and the pips count different currencies, and a player who could not tell them
+ * apart would try to save charges for Stand Down — the confusion
+ * gameplay.md §13.2f-vi exists to prevent. Same reason the filled tick is the
+ * buffalo's body colour: it counts the same substance the chips do.
+ *
+ * `fillAt` is when this tick fills, on the BOARD's clock — the moment the segment
+ * it counts cracks (AC-509b). `drainAt` is when the whole meter empties, on the
+ * spring's clock, so the player sees the cost paid in the same breath as the
+ * effect (ui.md §13.4a). An unfilled tick is a PLACE, not a shadow, so it draws
+ * `cell-line` at full opacity rather than the fill at a low one.
+ */
+const MeterTick = memo(function MeterTick({ filled, gold, fillAt, drainAt, reduced }) {
+  const styles = STYLES[useTheme().name];
+  const on = useSharedValue(filled && fillAt === null && drainAt === null ? 1 : 0);
+  useEffect(() => {
+    if (drainAt !== null) {
+      // It was full when the turn began — every tick was — and it empties.
+      on.value = 1;
+      on.value = delay(drainAt, withTiming(filled ? 1 : 0, timing(MOTION.meterDrain, EASE.out, reduced)));
+      return;
+    }
+    if (fillAt !== null) {
+      on.value = 0;
+      on.value = delay(fillAt, withTiming(1, timing(MOTION.meterTick, EASE.out, reduced)));
+      return;
+    }
+    on.value = filled ? 1 : 0;
+  }, [filled, fillAt, drainAt, reduced, on]);
+  const style = useAnimatedStyle(() => ({ opacity: on.value }));
+  return (
+    <View style={[styles.tickSlot, { width: METER.tick, height: METER.tickH }]}>
+      <View style={[styles.tickEmpty, { width: METER.tick, height: METER.tickH }]} />
+      <Animated.View
+        style={[
+          gold ? styles.tickGold : styles.tickFull,
+          { width: METER.tick, height: METER.tickH },
+          style,
+        ]}
+      />
+    </View>
+  );
+});
+
+/**
+ * ui.md §7.1 — the Stand Down meter: ten ticks, and the numeral only for
+ * VoiceOver, because a screen reader cannot count ticks.
+ *
+ * It is on the buffalo strip and nowhere else. The strip is the only part of the
+ * screen that is about the herd, and the meter is the herd's own ledger.
+ */
+export const StandDownMeter = memo(function StandDownMeter({
+  ticks, gold, plan, label, reduced, clear = METER_MARGIN,
+}) {
+  const styles = STYLES[useTheme().name];
+  const fillAt = new Map((plan ? plan.fills : []).map((f) => [f.index, f.at]));
+  const drainAt = plan && plan.drainAt !== null && plan.drainAt !== undefined ? plan.drainAt : null;
+  return (
+    <View
+      style={[styles.meter, { gap: METER.gap, marginHorizontal: clear }]}
+      accessible
+      accessibilityLabel={label}
+      testID="stand-down-meter"
+    >
+      {ticks.map((tick) => (
+        <MeterTick
+          key={tick.index}
+          filled={tick.filled}
+          gold={gold}
+          fillAt={fillAt.has(tick.index) ? fillAt.get(tick.index) : null}
+          drainAt={drainAt}
+          reduced={reduced}
+        />
+      ))}
+    </View>
+  );
+});
+
 /** ui.md §10: one row per toggle, label and caption on the left. */
 export const Toggle = memo(function Toggle({ label, caption, value, onChange }) {
   const theme = useTheme();
@@ -306,5 +388,34 @@ const STYLES = themed((T) => StyleSheet.create({
     borderRadius: 1,
     backgroundColor: T.species.buffalo.fill,
     borderColor: T.species.buffalo.edge,
+  },
+  /**
+   * ui.md §7.1's meter. The filled tick is `buffalo-body` because it counts the
+   * same substance the chips do; the empty one is `cell-line`, the board's own
+   * faintest structural ink, at full opacity — "an unfilled tick is a place, not
+   * a shadow". At FULL every tick goes `last-stand` gold, which is the same ink
+   * the abilities button takes for a Last Stand grant: both say *you have been
+   * handed something*.
+   *
+   * The fill is drawn OVER the empty rather than swapped for it, so the
+   * animation is one opacity on the UI thread and the place a tick occupies
+   * never changes (AC-828, AC-413's principle).
+   */
+  meter: { flexDirection: 'row', alignItems: 'center' },
+  tickSlot: { position: 'relative' },
+  tickEmpty: { borderRadius: 1, backgroundColor: T.colors.cellLine },
+  tickFull: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    borderRadius: 1,
+    backgroundColor: T.species.buffalo.fill,
+  },
+  tickGold: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    borderRadius: 1,
+    backgroundColor: T.colors.lastStand,
   },
 }));

@@ -36,7 +36,7 @@ import {
   SPECIES,
   STATUS,
 } from '../engine/constants.js';
-import { ABILITIES, DART_MOVES, HOLD_TURNS } from '../engine/abilities.js';
+import { ABILITIES, DART_MOVES, STAND_DOWN_SEGMENTS } from '../engine/abilities.js';
 import { ACTIONS, createRun, reduce } from '../engine/engine.js';
 
 export const RESUME_SCHEMA_VERSION = 1;
@@ -93,12 +93,23 @@ export const TUNING_SURFACE = Object.freeze([
   // Layer D belongs in the fingerprint, and the reason is sharper than "it is
   // tuning". A replay reconstructs charges by re-running the score against the
   // ladder, so a REPRICED ladder replays the same moves into a different charge
-  // count — and an ability whose EFFECT changed (Hold the Line at four turns,
+  // count — and an ability whose EFFECT changed (Burrow gaining its left-pack,
   // say) replays every stored move successfully into a completely different
   // board. That is the AC-1016 failure exactly: same seed, same moves, a
   // different run, and nothing to tell the player. A retune of §13.2c now
   // discards every resume written before it, automatically.
-  ABILITIES, ABILITY_THRESHOLDS, ABILITY_CHARGE_CAP, DART_MOVES, HOLD_TURNS,
+  //
+  // `ABILITIES` is a DEEP member of this hash, which is what makes AC-1430b
+  // work: Burrow's cost did not move in the roster revision, so the only thing
+  // that told the fingerprint its effect had changed was the `packs: true`
+  // field. A behaviour change the surface cannot see is the one shape of
+  // AC-1016's bug the surface cannot catch, so the behaviour is data.
+  //
+  // `HOLD_TURNS` left this list with Hold the Line (AC-1427) and
+  // `STAND_DOWN_SEGMENTS` joined it (AC-1433). Both moves change the hash on
+  // their own; together with `ABILITIES` and `CHAIN_GUARD_STEPS` this pass
+  // discards every resume written before it, unreplayed (AC-1430).
+  ABILITIES, ABILITY_THRESHOLDS, ABILITY_CHARGE_CAP, DART_MOVES, STAND_DOWN_SEGMENTS,
 ]);
 
 /**
@@ -128,10 +139,12 @@ export function boardDigest(state) {
     [
       state.turn, state.score, state.streak,
       sort(state.animals), sort(state.queue),
-      // Layer D is board state the player can see — the pips, the frozen tray,
-      // the moves left in a Dart — so AC-1017 checks it. Charges reconstructed
-      // wrongly would otherwise resume a run that looks right and is not.
-      state.charges, state.ladder, state.lastStand ? 1 : 0, state.frozen, state.dart,
+      // Layer D is board state the player can see — the pips, the Stand Down
+      // meter's ticks, the moves left in a Dart — so AC-1017 checks it. A meter
+      // or a charge count reconstructed wrongly would otherwise resume a run
+      // that looks right and is not.
+      state.charges, state.ladder, state.lastStand ? 1 : 0,
+      state.standDownMeter, state.dart,
     ].join('#'),
   );
 }

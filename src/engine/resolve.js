@@ -41,9 +41,13 @@ function isDevelopment() {
  *   leave. `B - n` is the sum of `size - 1` over that row's buffalo, at most 7
  *   at `size <= 5` and `B <= width`, so at least TWO cells leave every step
  *
- * and board mass strictly decreases from a maximum of width x height.
+ * and board mass strictly decreases from a maximum of width x height, so the
+ * cascade is bounded at `floor(width x height / 2)` = 67 steps.
  * `CHAIN_GUARD_STEPS` is a crash guard against an engine bug and nothing else
- * (AC-504b) — see its comment for what that floor costs its headroom.
+ * (AC-504b), and it is now DERIVED from that bound — 68 — rather than written.
+ * At the literal 32 it sat BELOW the bound it claimed to be twice above, so
+ * there existed a legal resolution it would have aborted, discarding the run's
+ * score (AC-504e); see its comment in `constants.js`.
  *
  * NOTHING IN THE LOOP BELOW CHANGES FOR A SHARED ROW, and that is why the defect
  * is in the argument rather than in the code: it iterates every animal in every

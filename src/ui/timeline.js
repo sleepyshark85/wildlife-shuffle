@@ -150,13 +150,31 @@ export function stampedeBeats(moved, beats = STAMPEDE_BEATS) {
 }
 
 /**
+ * AC-1431 / ui.md §13.4a — the whole of Stand Down's beat, before gravity.
+ *
+ * Derived from the two numbers that ship rather than written as 640, so the
+ * schedule and the budget cannot disagree about when gravity may start: the
+ * spring begins at 380 and is §5.3's own 260 ms shrink.
+ */
+export const STAND_DOWN_BEAT = MOTION.standDownSpringAt + MOTION.buffaloShrink;
+
+/**
  * What the ACTION phase costs before gravity may run.
  *
- * A move costs the 110 ms snap. An ability costs whatever its own beat is: the
- * burrow/migrate dissolve has to finish before the board falls into the hole it
- * left, and the Stampede slide has to finish before anything drops through the
- * columns it vacated. Dart and Hold the Line move nothing, so they cost
- * nothing.
+ * A move costs the 110 ms snap. An ability costs whatever its own beat is, and
+ * the reason each one is here is the same in every case — the board may not fall
+ * through something that is still in the middle of leaving:
+ *
+ *   burrow      the dissolve, AND THEN the row's own close-up (AC-1428). The
+ *               pack is the second half of the ability, so it is inside the
+ *               lead: gravity falling into the hole before the row had closed
+ *               would settle the board twice from one action.
+ *   migrate     the dissolve. Nothing packs.
+ *   stampede    the slide, so nothing drops through a column still being vacated.
+ *   standDown   the crack and the spring (AC-1431), because up to 44 cells are
+ *               freed and gravity must not claim one before its buffalo has
+ *               finished narrowing out of it.
+ *   dart        nothing. It moves no animal; its moves are ordinary moves.
  *
  * It is inside `turnTimeline`'s `rawMs`, which is what AC-1417 needs: the whole
  * turn is still scaled to min(1500, rawMs), so an ability cannot push the
@@ -167,7 +185,13 @@ export function actionLead(events, action) {
   if (action !== 'ABILITY') return 0;
   const act = events.find((e) => e.type === 'ACTION');
   if (!act) return 0;
-  if (act.removedIds && act.removedIds.length > 0) return MOTION.burrow;
+  if (act.shrunk && act.shrunk.length > 0) return STAND_DOWN_BEAT;
+  if (act.removedIds && act.removedIds.length > 0) {
+    // Burrow's pack is one beat and not a stagger: a staggered one-row slide is
+    // a stagger nobody can perceive as one (ui.md §13.4).
+    const packs = act.moved && act.moved.length > 0 ? MOTION.burrowPack : 0;
+    return MOTION.burrow + packs;
+  }
   if (act.moved && act.moved.length > 0) {
     const beats = stampedeBeats(act.moved);
     return Math.max(...beats.values(), 0) + MOTION.snap;

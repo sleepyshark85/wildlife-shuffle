@@ -134,27 +134,32 @@ test('AC-504c no depth past which clearing stops paying', () => {
 
 test('AC-504b the crash guard sits above anything board mass permits', () => {
   // The guard is unreachable with a correct engine, so what is testable is the
-  // arithmetic that makes it unreachable. A complete row is `width` occupied
-  // columns of which at most five can be the one permitted buffalo, so every
-  // step removes at least width - 5 cells from a board holding width x height.
+  // arithmetic that makes it unreachable — and that arithmetic has now been
+  // wrong twice, both times by assuming ONE buffalo per completed row.
   //
-  // Nine columns and a size-5 buffalo tighten this considerably: 9 x 15 = 135
-  // cells at 4 per step is 33, which is ABOVE the guard's 32. So the bound is
-  // no longer the slack it was, and the assertion below now says so.
+  // The true floor (gameplay.md §6.4b): a completed row is `width` cells, every
+  // non-buffalo cell leaves and every buffalo spends exactly one segment, so
+  // `(width − B) + n` cells leave, where `B − n` is Σ(size − 1) over that row's
+  // buffalo. That is maximised by the 5 + 4 pair at 7 — a pair that FITS a
+  // 9-wide row exactly — so the floor is `width − 7` = 2 cells a step, not 4.
   const maxCells = BOARD.width * BOARD.height;
-  const minCellsPerStep = BOARD.width - SPECIES.buffalo.size;
+  const worstPair = SPECIES.buffalo.size + (SPECIES.buffalo.size - 1);
+  assert.equal(worstPair, BOARD.width, 'the 5+4 pair no longer fits a row exactly');
+  const minCellsPerStep = BOARD.width - (worstPair - 2);
+  assert.equal(minCellsPerStep, 2, 'the mass floor per step is not two cells');
   const massBound = Math.floor(maxCells / minCellsPerStep);
+  assert.equal(massBound, 67);
 
-  assert.equal(massBound, 33);
-  // Reported rather than tuned away: at nine columns the crude mass bound
-  // (33) now EXCEEDS the 32-step guard. The bound is crude — it assumes every
-  // step clears a single row containing the buffalo, which cannot happen,
-  // since a buffalo row does not clear at all. The deepest cascade anyone has
-  // constructed is 10, and a 9-wide board reaches 5. The guard is still far
-  // above anything reachable, but the one-line arithmetic that used to prove
-  // it no longer does, and that is the designer's number to re-derive.
-  assert.ok(massBound > CHAIN_GUARD_STEPS, 'the crude bound has crossed the guard');
-  assert.ok(CHAIN_GUARD_STEPS >= 32);
+  // AT 32 THE GUARD WAS BELOW ITS OWN BOUND, which is the defect §6.4b fixes:
+  // a tripped guard may leave a completed row standing and discards the run's
+  // score (AC-504e), so a guard reachable by legal play is not a crash guard.
+  assert.ok(CHAIN_GUARD_STEPS > massBound,
+    `the guard (${CHAIN_GUARD_STEPS}) is at or below the mass bound (${massBound})`);
+  // DERIVED, not written. The literal 32 is what let the bound and the guard
+  // drift apart across two re-derivations; this is the AC-126 rule applied to
+  // the one constant that had escaped it, so narrowing the board moves it.
+  assert.equal(CHAIN_GUARD_STEPS, Math.floor((BOARD.width * BOARD.height) / 2) + 1);
+  assert.equal(CHAIN_GUARD_STEPS, 68);
 
   // And it is never approached: the deepest cascade anyone has built is 10.
   const deep = resolve(deepChainBoard(), { phase: 'SETTLE', width: FIXTURE_WIDTH });

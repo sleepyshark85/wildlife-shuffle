@@ -22,7 +22,7 @@ import {
 import {
   ABILITIES,
   DART_MOVES,
-  HOLD_TURNS,
+  STAND_DOWN_SEGMENTS,
   abilityCost,
   abilityFault,
   applyAbility,
@@ -176,8 +176,17 @@ export function createRun({
     ladder: 0,
     /** AC-1408b: once per run, and reconstructed by replay, never stored. */
     lastStand: false,
-    /** Turns of suppressed arrival remaining (AC-1410). */
-    frozen: 0,
+    /**
+     * The Stand Down meter: buffalo segments broken BY PLAY, capped at
+     * STAND_DOWN_SEGMENTS (AC-1433).
+     *
+     * The second currency, and it does not touch the first. It is folded off
+     * the same event stream as everything else — `buffaloShrinks`, which only
+     * CLEAR_STEP emits — so Stand Down's own shrinks fill nothing and the
+     * ability cannot refill itself. Reconstructed by replay like the charges;
+     * nothing new is stored (AC-1430).
+     */
+    standDownMeter: 0,
     /** Moves left in a Dart turn; 0 means no Dart is in progress (AC-1407). */
     dart: 0,
     /** Whether any segment of the turn in progress has cleared (Dart only). */
@@ -266,7 +275,6 @@ function resolveTurn(state, action, complete = true) {
   const height = BOARD.height;
 
   let animals = state.animals;
-  let frozen = state.frozen;
 
   // ---- PHASE 1 · ACTION -------------------------------------------------
   if (action.type === ACTIONS.ABILITY) {
@@ -275,11 +283,6 @@ function resolveTurn(state, action, complete = true) {
     // commits, so exploring the system costs nothing.
     const applied = applyAbility(animals, action.ability, action.target);
     animals = applied.animals;
-    // AC-1410. The freeze starts NOW rather than next turn: the ability is the
-    // rescue you press when the batch in the tray is the one that kills you,
-    // and a freeze that lets that batch land has not rescued anything. Three
-    // turns arrive with nothing — this one and the two after it.
-    if (action.ability === ABILITIES.hold.id) frozen = HOLD_TURNS;
     events.push({
       type: 'ACTION',
       phase: PHASE.ACTION,
@@ -288,7 +291,8 @@ function resolveTurn(state, action, complete = true) {
       target: action.target === undefined ? null : action.target,
       removedIds: applied.removedIds,
       moved: applied.moved,
-      frozen,
+      /** Stand Down's, and nobody else's. It pays nothing and counts nothing. */
+      shrunk: applied.shrunk,
     });
   } else if (action.type === ACTIONS.MOVE) {
     const before = animals.find((a) => a.id === action.id);
@@ -329,33 +333,20 @@ function resolveTurn(state, action, complete = true) {
   // A Dart's first two moves stop here: one turn, one arrival, one JUDGE.
   if (!complete) return partialTurn(state, action, events, animals, clearingTurns);
 
-  // AC-1410: a frozen turn has no ARRIVAL phase at all — the board does not
-  // rise and the tray's batch is HELD rather than discarded, so the preview
-  // contract (AC-301) still holds when the freeze lifts: the batch the tray
-  // promised is the batch that eventually lands.
-  const arrivalSkipped = frozen > 0;
+  // AC-1410/AC-1427: THE ARRIVAL ALWAYS LANDS. Hold the Line was the only thing
+  // in the game that could suppress one, and it is withdrawn — so this phase has
+  // no branch, and §13.3's self-limiting argument (charges come from score, score
+  // from clearing, clearing from arrivals) is a structural fact rather than a
+  // defence against a counterexample. Every turn, however spent, delivers its
+  // batch: a Stand Down turn included (AC-1423).
   const beforeArrival = animals;
-  if (arrivalSkipped) {
-    frozen -= 1;
-    events.push({
-      type: 'ARRIVAL',
-      phase: PHASE.ARRIVAL,
-      frozen: true,
-      remaining: frozen,
-      risenIds: [],
-      placed: [],
-    });
-  } else {
-    animals = arrive(animals, state.queue);
-    events.push({
-      type: 'ARRIVAL',
-      phase: PHASE.ARRIVAL,
-      frozen: false,
-      remaining: 0,
-      risenIds: beforeArrival.map((a) => a.id),
-      placed: state.queue.map((a) => ({ ...a })),
-    });
-  }
+  animals = arrive(animals, state.queue);
+  events.push({
+    type: 'ARRIVAL',
+    phase: PHASE.ARRIVAL,
+    risenIds: beforeArrival.map((a) => a.id),
+    placed: state.queue.map((a) => ({ ...a })),
+  });
   settle(PHASE.ARRIVAL);
 
   // ---- PHASE 4 · JUDGE --------------------------------------------------
@@ -392,18 +383,12 @@ function resolveTurn(state, action, complete = true) {
     else streak = 0;
 
     const turn = state.turn + 1;
-    // A frozen turn consumed no batch, so it generates none: the queue, the
-    // PRNG and the id counter all stand still. Drawing a replacement would
-    // burn the batch the tray is still promising and advance the spawner
-    // through turns the board never saw (AC-301, AC-312).
-    const queued = arrivalSkipped
-      ? { batch: state.queue, rng: state.rng, nextId: state.nextAnimalId }
-      : generateBatch({
-        turn,
-        rng: state.rng,
-        nextId: state.nextAnimalId,
-        idPrefix: state.idPrefix,
-      });
+    const queued = generateBatch({
+      turn,
+      rng: state.rng,
+      nextId: state.nextAnimalId,
+      idPrefix: state.idPrefix,
+    });
 
     events.push({
       type: 'ADVANCE',
@@ -411,7 +396,6 @@ function resolveTurn(state, action, complete = true) {
       turn,
       streak,
       queue: queued.batch,
-      frozen,
     });
 
     advance = {
@@ -438,7 +422,7 @@ function resolveTurn(state, action, complete = true) {
 
   return commit({
     state, action, events, animals, clearingTurns, cleared, perfectClear,
-    gameOver, advance, frozen, dart: 0, granted,
+    gameOver, advance, dart: 0, granted,
   });
 }
 
@@ -454,7 +438,7 @@ function partialTurn(state, action, events, animals, clearingTurns) {
   const granted = grantCharges(state, state.score + outcome.score, animals, events);
   return commit({
     state, action, events, animals, clearingTurns, cleared, perfectClear,
-    gameOver: false, advance: null, frozen: state.frozen, dart: state.dart - 1,
+    gameOver: false, advance: null, dart: state.dart - 1,
     granted, partial: true,
   });
 }
@@ -465,7 +449,7 @@ function partialTurn(state, action, events, animals, clearingTurns) {
  */
 function commit({
   state, action, events, animals, clearingTurns, cleared, perfectClear,
-  gameOver, advance, frozen, dart, granted, partial = false,
+  gameOver, advance, dart, granted, partial = false,
 }) {
   const turnSummary = summariseEvents(events);
 
@@ -482,6 +466,26 @@ function commit({
     abilitiesUsed: state.stats.abilitiesUsed + turnSummary.abilitiesUsed,
     chargesEarned: state.stats.chargesEarned + turnSummary.chargesEarned,
   };
+
+  /**
+   * The Stand Down meter, AC-1433, and every clause of it is on this one line
+   * pair rather than spread over the reducer:
+   *
+   *   filled by play      `turnSummary.buffaloShrinks` folds CLEAR_STEP only, so
+   *                       Stand Down's own shrinks fill nothing
+   *   spending empties    a turn that spent it starts from 0, with no remainder
+   *                       carried; the segments this turn's own rows then broke
+   *                       still count, because they were broken by play
+   *   it stops at 10      `Math.min`, so a full meter never banks a second use
+   *   a retirement        size 1 -> retired is ONE shrink in the stream and so
+   *                       fills ONE notch. It is the last segment, not a bonus
+   *   no buffalo up       it still fills and still holds: nothing here consults
+   *                       the board, and a rejected use never reaches this line
+   */
+  const standDownMeter = Math.min(
+    STAND_DOWN_SEGMENTS,
+    (turnSummary.standDowns > 0 ? 0 : state.standDownMeter) + turnSummary.buffaloShrinks,
+  );
 
   const base = {
     ...state,
@@ -522,7 +526,7 @@ function commit({
     charges: granted.charges,
     ladder: granted.ladder,
     lastStand: granted.lastStand,
-    frozen,
+    standDownMeter,
     dart,
     // The accumulators only mean anything inside a Dart; a finished turn
     // clears them so nothing can leak into the next one.
@@ -534,7 +538,7 @@ function commit({
   if (gameOver) {
     // The queue was consumed by the Arrival phase; clearing it stops the tray
     // from re-rendering animals that are already on the board.
-    return { ...base, status: STATUS.GAME_OVER, queue: [], dart: 0, frozen: 0 };
+    return { ...base, status: STATUS.GAME_OVER, queue: [], dart: 0 };
   }
 
   return { ...base, ...advance };
@@ -585,7 +589,7 @@ export function reduce(state, action) {
           target: null,
           removedIds: [],
           moved: [],
-          frozen: state.frozen,
+          shrunk: [],
         }];
         const armed = summariseEvents(armEvents);
         return {
@@ -637,8 +641,15 @@ export function chargeState(state) {
     cap: ABILITY_CHARGE_CAP,
     /** AC-1408b/c: the fourth pip, which only ever fills from Last Stand. */
     lastStand: state.lastStand,
-    /** Turns of suppressed arrival still to come; 0 when the tray is live. */
-    frozen: state.frozen,
+    /**
+     * The second currency (AC-1433): notches filled, the cap, and whether it is
+     * spendable. Beside the charges rather than folded into them, because the
+     * two are different things and a UI that read one number would say they
+     * were the same one — the confusion §13.2f-vi exists to prevent.
+     */
+    meter: state.standDownMeter,
+    meterCap: STAND_DOWN_SEGMENTS,
+    meterFull: state.standDownMeter >= STAND_DOWN_SEGMENTS,
     /** Moves left in an open Dart turn; 0 when no Dart is in progress. */
     dart: state.dart,
     /** The next rung, or null at the top of the ladder. */

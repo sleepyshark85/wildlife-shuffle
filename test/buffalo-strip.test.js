@@ -18,9 +18,10 @@ import { BOARD, SPECIES } from '../src/engine/constants.js';
 import { createRun, currentBuffaloes } from '../src/engine/engine.js';
 import { isBuffaloTurn, turnsUntilBuffalo } from '../src/engine/spawn.js';
 import {
-  BUFFALO_BARS, CHIP_H, CHIP_RULES, CHROME, COUNTDOWN_GAP, COUNTDOWN_W, GUTTER,
-  buffaloStripMetrics, chipRoomFor, chipRuleFor,
+  BUFFALO_BARS, CHIP_H, CHIP_RULES, CHROME, COUNTDOWN_GAP, COUNTDOWN_W, GUTTER, METER,
+  METER_MARGIN, buffaloStripMetrics, chipRoomFor, chipRuleFor, meterWidth,
 } from '../src/ui/layout.js';
+import { STAND_DOWN_SEGMENTS } from '../src/engine/abilities.js';
 import {
   COUNTDOWN_SHOW_AT, stripIsVisible, stripLabel, stripRows,
 } from '../src/ui/buffaloStrip.js';
@@ -143,13 +144,65 @@ test('AC-509d ui.md §7.1s three chip rules are reproduced exactly', () => {
   assert.ok(ten.row < chipRoomFor(REFERENCE_CONTENT), 'ten chips do not fit beside the countdown');
 });
 
+test('ui.md §7.1 the Stand Down meter is ten 3 x 10 ticks with 10 pt clear either side', () => {
+  assert.equal(METER.tick, 3);
+  assert.equal(METER.tickH, 10);
+  assert.equal(METER.gap, 1.5);
+  assert.equal(METER.clear, 10);
+  // §7.1's own figure: "10 ticks, each 3 x 10 pt, 1.5 pt gap = 43.5 pt".
+  assert.equal(meterWidth(STAND_DOWN_SEGMENTS), 43.5);
+
+  // §7.1's width arithmetic for the MEASURED worst case, executed: eleven chips
+  // at 204 pt, the meter at 43.5 with 20 pt of clearance, and about 78 pt of
+  // countdown is 345.5 of a 361 pt content width — "tight and deliberate".
+  const room = chipRoomFor(REFERENCE_CONTENT, STAND_DOWN_SEGMENTS);
+  const eleven = chipRuleFor(11, room);
+  assert.equal(eleven.row, 204, 'eleven chips no longer occupy §7.1\'s 204 pt');
+  const total = eleven.row + meterWidth(STAND_DOWN_SEGMENTS) + 2 * METER.clear + COUNTDOWN_W;
+  assert.equal(total, 345.5);
+  assert.ok(total < REFERENCE_CONTENT, `the strip overflows at ${total} of ${REFERENCE_CONTENT}`);
+  assert.ok(REFERENCE_CONTENT - total < 20, 'the strip is no longer the tight fit §7.1 describes');
+
+  // The meter comes out of the CHIPS' room and never the countdown's: `NEXT 🐃 n`
+  // is a promise the engine always keeps (AC-509c), and the chips are the thing
+  // that already scales rather than scrolling (AC-509d).
+  // The meter's own 10 pt right clearance REPLACES the chip row's 8 pt gap to
+  // the countdown rather than stacking on it, which is what §7.1's figure counts.
+  assert.equal(
+    chipRoomFor(REFERENCE_CONTENT) - chipRoomFor(REFERENCE_CONTENT, STAND_DOWN_SEGMENTS),
+    meterWidth(STAND_DOWN_SEGMENTS) + 2 * METER.clear - COUNTDOWN_GAP,
+  );
+  // ...and the component adds only what the strip's flex gap does not pay.
+  assert.equal(METER_MARGIN, METER.clear - COUNTDOWN_GAP);
+  assert.equal(METER_MARGIN, 2);
+  assert.equal(chipRoomFor(REFERENCE_CONTENT, 0), chipRoomFor(REFERENCE_CONTENT),
+    'a hidden meter still took room');
+});
+
 test('AC-509d the chips fit at every count and every supported width — and never elide', () => {
   // The sweep is the point. §7.1 sizes ten chips against the REFERENCE device;
   // the viewport sweep supports 272 pt of width, and with no population cap
   // (AC-311) nothing bounds the count. So both are swept, and the assertion is
   // that the row fits — never that something was dropped to make it fit.
+  //
+  // IT IS SWEPT WITH THE METER TOO, because the meter takes 63.5 pt out of the
+  // chips' room and the strip has to fit with it showing, which is the state
+  // the strip is in whenever a buffalo is on the board.
   let checked = 0;
   for (let screenW = 272; screenW <= 900; screenW += 1) {
+    for (const ticks of [0, STAND_DOWN_SEGMENTS]) {
+      const withMeter = chipRoomFor(Math.max(0, screenW - GUTTER), ticks);
+      let lastWide = Infinity;
+      for (let n = 1; n <= 30; n += 1) {
+        const rule = chipRuleFor(n, withMeter);
+        assert.ok(rule.row <= withMeter + 1e-9,
+          `${screenW} pt, ${n} chips, meter ${ticks}: ${rule.row} > ${withMeter}`);
+        assert.ok(rule.bar > 0, `${screenW} pt, ${n} chips, meter ${ticks}: a zero-width bar`);
+        assert.ok(rule.bar <= lastWide,
+          `${screenW} pt, meter ${ticks}: ${n} chips got a wider bar than ${n - 1}`);
+        lastWide = rule.bar;
+      }
+    }
     const room = chipRoomFor(Math.max(0, screenW - GUTTER));
     let lastBar = Infinity;
     for (let n = 1; n <= 30; n += 1) {

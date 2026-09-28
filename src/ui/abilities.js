@@ -1,10 +1,10 @@
 // The abilities UI, as pure functions (ui.md §13).
 //
 // It imports the engine and the tokens and NOTHING that only runs on a device,
-// for §6.7's reason: the sheet's affordability, the pip row, the targeting copy
-// and the frozen tray are all things a harness must be able to evaluate without
-// a phone. `src/ui/trajectory.js` is the precedent and a hygiene test keeps it
-// true here too.
+// for §6.7's reason: the sheet's affordability, the pip row, the Stand Down
+// meter's three states and the targeting copy are all things a harness must be
+// able to evaluate without a phone. `src/ui/trajectory.js` is the precedent and
+// a hygiene test keeps it true here too.
 //
 // It is also the one place any of this is decided. The sheet, the action bar,
 // the board's targeting dim and the tray all read these functions rather than
@@ -13,18 +13,20 @@
 
 import {
   ABILITIES,
-  MIN_ABILITY_COST,
   isAbilityRemovable,
   ABILITY_BAD_TARGET,
   ABILITY_DART_ACTIVE,
   ABILITY_DISABLED,
   ABILITY_IDS,
+  ABILITY_METER_LOW,
+  ABILITY_NO_BUFFALO,
   ABILITY_NO_CHARGE,
+  STAND_DOWN_SEGMENTS,
   abilityFault,
   isMigratable,
 } from '../engine/abilities.js';
 import { ABILITY_CHARGE_CAP } from '../engine/constants.js';
-import { plural } from './format.js';
+import { plural, word } from './format.js';
 import { COPY } from './theme.js';
 
 /**
@@ -51,9 +53,20 @@ export const ABILITY_COPY = Object.freeze({
     name: 'Stampede',
     effect: 'Every row slides left, closing the gaps inside it.',
   }),
-  hold: Object.freeze({
-    name: 'Hold the Line',
-    effect: 'Nothing arrives for three turns.',
+  /**
+   * ui.md §13.2 records the rejected drafts, and they are why this line reads
+   * as it does. "Shrink every buffalo" omits the amount, which is the only
+   * number that matters. "Clear the herd" promises a removal the ability does
+   * not perform — the buffalo stay, and a player who read that and then watched
+   * eleven one-cell buffalo remain would reasonably think it had failed. "Every
+   * buffalo loses all but one segment" is accurate and three words too long for
+   * 13/400 at `xxLarge`. This states the DESTINATION rather than the delta,
+   * which is shorter and is the thing the player can verify by looking at the
+   * chips afterwards: every chip shows one bar.
+   */
+  standDown: Object.freeze({
+    name: 'Stand Down',
+    effect: 'Every buffalo drops to one segment.',
   }),
 });
 
@@ -66,6 +79,13 @@ const REASON = Object.freeze({
   [ABILITY_DART_ACTIVE]: 'Dart in progress',
   [ABILITY_DISABLED]: 'Unavailable',
   [ABILITY_BAD_TARGET]: 'Nothing to target',
+  /**
+   * AC-1421, and it is the middle of Stand Down's three states — the one a
+   * lazier design would collapse into "keep breaking segments". It must not be:
+   * a player holding a full meter with no buffalo on the board has NOTHING to
+   * do about it, and telling them to keep breaking segments would be false.
+   */
+  [ABILITY_NO_BUFFALO]: 'No buffalo on the board',
 });
 
 /**
@@ -82,6 +102,57 @@ function shortfall(cost) {
 }
 
 /**
+ * ui.md §13.2 — Stand Down's cost column is the METER, not pips, and the two
+ * vocabularies are deliberately different SHAPES: round pips for charges, square
+ * ticks for the meter.
+ *
+ * A player who could not tell those apart would try to save charges for Stand
+ * Down, which is exactly the confusion gameplay.md §13.2f-vi is built to
+ * prevent. So this is not "pips at a different count": it is a second object,
+ * and the sheet and the strip draw the same one.
+ *
+ * `gold` is the whole meter's state rather than a per-tick one (ui.md §7.1: at
+ * full "every tick goes `last-stand` gold"), because full is a fact about the
+ * meter and a tick has no business deciding it.
+ */
+export function meterTicks(meter, cap = STAND_DOWN_SEGMENTS) {
+  const filled = Math.max(0, Math.min(cap, meter));
+  return Array.from({ length: cap }, (_, i) => ({ index: i, filled: i < filled }));
+}
+
+/**
+ * ui.md §7.1 — "the VoiceOver label is the numeral, because a screen reader
+ * cannot count ticks".
+ *
+ * The visible meter is ticks for two reasons §7.1 gives — the charge pips
+ * established the accumulate-a-quantity vocabulary, and *how close am I* and
+ * *am I there* are readable off ticks without arithmetic where `6/10` needs two
+ * numbers subtracted. Neither survives a screen reader, so the label is the
+ * numeral it refuses to draw.
+ */
+function meterWords(meter, cap = STAND_DOWN_SEGMENTS) {
+  const filled = Math.max(0, Math.min(cap, meter));
+  // `word(0)` is "no", which is right for the strip's "no buffalo on the board"
+  // and wrong for a QUANTITY: an empty meter read "Stand Down, no of ten",
+  // which is not a sentence. Caught in the browser at the one value the meter
+  // spends most of a run at, and the one a fixture is least likely to pick.
+  return `${filled === 0 ? 'zero' : word(filled)} of ${word(cap)}`;
+}
+
+export function meterLabel(meter, cap = STAND_DOWN_SEGMENTS) {
+  return `Stand Down, ${meterWords(meter, cap)}.`;
+}
+
+/**
+ * The same quantity as a sentence of its own, for the sheet row — where the
+ * name has already been said and the unit has not.
+ */
+function meterSentence(meter, cap = STAND_DOWN_SEGMENTS) {
+  const words = meterWords(meter, cap);
+  return `${words[0].toUpperCase()}${words.slice(1)} buffalo segments.`;
+}
+
+/**
  * The five rows of the sheet, in scope order.
  *
  * `enabled` is `abilityFault() === null` and nothing else, so what the sheet
@@ -89,6 +160,17 @@ function shortfall(cost) {
  * asked about the BEST target available — one that exists — because at sheet
  * time the player has not chosen one yet and "Burrow is unaffordable" must mean
  * "you cannot burrow", not "you have not said what yet".
+ *
+ * TWO SLOTS FOR TEXT, and the split is ui.md §13.2/§13.3 read literally rather
+ * than approximately. `line` is the second line of the row and `note` is the
+ * right-hand column under the price. A charge-priced row keeps its effect on the
+ * line and puts `Needs 2 charges` in the note (AC-1405j). Stand Down replaces
+ * THE EFFECT LINE ITSELF, because both of its unavailable states need a whole
+ * sentence and because the two say different things about what to do next:
+ *
+ *   meter not full          `6 of 10 buffalo segments`   — keep breaking them
+ *   full, no buffalo up     `No buffalo on the board`    — ready, nothing to use it on
+ *   full, buffalo up        the effect line              — live
  */
 export function abilityRows(state) {
   return ABILITY_IDS.map((id) => {
@@ -101,6 +183,14 @@ export function abilityRows(state) {
         ? migratableSpecies(state.animals)[0]
         : undefined;
     const fault = abilityFault(state, id, probe);
+    const effect = ABILITY_COPY[id].effect;
+    // The cost stated in its own unit, which is the rule the pips already
+    // follow — a dimmed row showing ●●● looks expensive, a dimmed row showing
+    // nothing looks broken (ui.md §13.2).
+    const short = fault === ABILITY_METER_LOW
+      ? `${state.standDownMeter} of ${STAND_DOWN_SEGMENTS} buffalo segments`
+      : fault === ABILITY_NO_CHARGE ? shortfall(spec.cost)
+        : fault ? REASON[fault] || 'Unavailable' : null;
     return {
       id,
       species: spec.species,
@@ -110,16 +200,51 @@ export function abilityRows(state) {
       /**
        * AC-1405j / ui.md §13.2: the price renders as PIPS, not a numeral, so
        * the player compares two rows of dots — the cost against the reserve on
-       * the button — rather than a number against a number.
+       * the button — rather than a number against a number. Stand Down's is
+       * empty and its `meter` is the cost column instead (AC-1433).
        */
       costPips: Array.from({ length: spec.cost }, (_, i) => i),
+      meter: spec.meter
+        ? {
+          ticks: meterTicks(state.standDownMeter),
+          filled: Math.min(STAND_DOWN_SEGMENTS, state.standDownMeter),
+          cap: STAND_DOWN_SEGMENTS,
+          /** Gold as soon as it is FULL, including when there is no target:
+           *  "ready, nothing to use it on" is a different fact from "not yet". */
+          gold: state.standDownMeter >= STAND_DOWN_SEGMENTS,
+          label: meterLabel(state.standDownMeter),
+        }
+        : null,
       needsTarget: spec.target !== null,
       name: ABILITY_COPY[id].name,
-      effect: ABILITY_COPY[id].effect,
+      effect,
+      /** The second line, always drawn. */
+      line: spec.meter && short ? short : effect,
+      /** The right-hand note under the price, or null. */
+      note: spec.meter ? null : short,
+      /**
+       * The whole sentence VoiceOver reads, built HERE rather than in the
+       * component (§6.7: a label is a claim about what is on screen, and a
+       * claim only a device can read is a claim nobody checks).
+       *
+       * THE PRICE IS SPOKEN IN ITS OWN UNIT. "Costs 0 charges" would tell a
+       * screen-reader user that Stand Down was free, which is the confusion
+       * §13.2f-vi exists to prevent — so the meter row speaks notches.
+       *
+       * AND THE PRICE IS NOT SAID TWICE. Stand Down's visible second line IS
+       * its price while the meter is filling, so speaking both gave "Stand
+       * Down. Zero of ten buffalo segments. 0 of 10 buffalo segments." When the
+       * line is the price restated, the EFFECT is spoken in its place; when it
+       * is the no-target reason, that is spoken, because the two states need
+       * different answers.
+       */
+      spoken: [
+        `${ABILITY_COPY[id].name}.`,
+        spec.meter ? meterSentence(state.standDownMeter) : `Costs ${plural(spec.cost, 'charge')}.`,
+        fault === ABILITY_METER_LOW || !spec.meter || !short ? effect : `${short}.`,
+        !spec.meter && short ? `${short}.` : null,
+      ].filter(Boolean).join(' '),
       enabled: fault === null,
-      reason: fault === ABILITY_NO_CHARGE
-        ? shortfall(spec.cost)
-        : fault ? REASON[fault] || 'Unavailable' : null,
     };
   });
 }
@@ -182,26 +307,9 @@ export function pipAlpha(pip) {
 }
 
 /**
- * ui.md §13.4 / AC-1410b — the frozen strip greys out, and it is load-bearing:
- * the tray's contract is that it shows what is coming, so while nothing is
- * coming the strip has to read as switched off rather than merely relabelled.
- *
- * It is a FUNCTION rather than a style, because the strip's opacity is also
- * driven by the arrival reveal, and a static `opacity: 0.45` sitting in the
- * same style array as an animated one is silently overwritten by whichever is
- * written last — which is exactly how it shipped rendering at opacity 1. The
- * two are multiplied on the UI thread instead, so neither can erase the other.
- */
-export const FROZEN_STRIP_OPACITY = 0.45;
-
-export function trayStripOpacity(frozen) {
-  return frozen > 0 ? FROZEN_STRIP_OPACITY : 1;
-}
-
-/**
  * ui.md §13.3 — the targeting chip.
  *
- * Stampede, Dart and Hold the Line resolve immediately on arming, so they never
+ * Stampede, Dart and Stand Down resolve immediately on arming, so they never
  * reach a targeting state at all and this returns null for them.
  *
  * UNDERSPECIFIED IN THE DESIGN, and reported: ui.md gives the Burrow string
@@ -242,24 +350,6 @@ export function targetOf(ability, animal) {
 /** ui.md §13.3: everything that is not a valid target dims to this. */
 export const TARGET_DIM = 0.45;
 
-/**
- * ui.md §13.4 — the tray's frozen label.
- *
- * "The tray's whole contract is that it shows what is coming; when nothing is
- * coming it must say so, or the contract reads as broken for three turns."
- *
- * UNDERSPECIFIED, and reported. The design writes `FROZEN · 3`, which is only
- * reachable if the freeze spares the turn it was used on — and a freeze that
- * lets the batch already in the tray land has not rescued the player who
- * pressed it for exactly that batch. The engine therefore suppresses this
- * turn's arrival and the two after it, three in total (AC-1410), and this
- * counts what is still to come rather than what has already happened. The
- * player sees 2, then 1. The ability's own announcement says 3.
- */
-export function frozenLabel(frozen) {
-  return frozen > 0 ? `FROZEN · ${frozen}` : null;
-}
-
 /** ui.md §13.4 — `2 MOVES LEFT`, counting down, while a Dart is open. */
 export function dartLabel(dart) {
   if (dart <= 0) return null;
@@ -292,16 +382,27 @@ export function turnStatus({ gameOver, resolving, arming, dart }) {
  */
 export function abilityButton(state) {
   const rows = abilityRows(state);
+  const usable = rows.filter((r) => r.enabled).length;
   return {
     visible: true,
-    // AC-1415: muted below the price of the CHEAPEST thing in the set, which
-    // is what "you cannot use an ability right now" means once the five carry
-    // three different prices.
-    muted: state.charges < MIN_ABILITY_COST || !state.abilities || state.dart > 0,
+    /**
+     * AC-1415, and the predicate is now `nothing is usable` rather than
+     * `charges < the cheapest price`.
+     *
+     * IT HAD TO CHANGE, and the reason is the whole of the second currency: at
+     * zero charges with a full meter and a buffalo on the board the player HAS
+     * an ability, and a button muted on a charge count would have told them they
+     * had none — in exactly the position Stand Down exists for. `usable` is the
+     * engine's own predicate counted, so this cannot disagree with the sheet or
+     * with `reduce()` (§6.3); the two conditions it replaces are subsumed
+     * because `abilityFault` already faults every row when abilities are off or
+     * a Dart is open.
+     */
+    muted: usable === 0,
     charges: state.charges,
     pips: chargePips(state.charges),
     /** How many of the five are usable right now — the sheet is worth opening. */
-    usable: rows.filter((r) => r.enabled).length,
+    usable,
   };
 }
 

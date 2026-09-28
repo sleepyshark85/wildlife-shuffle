@@ -40,7 +40,7 @@ import {
 } from '../engine/engine.js';
 import { ABILITIES } from '../engine/abilities.js';
 import { turnsUntilBuffalo } from '../engine/spawn.js';
-import { abilityButton, abilityRows } from './abilities.js';
+import { abilityButton, abilityRows, meterLabel, meterTicks } from './abilities.js';
 import { STATUS } from '../engine/constants.js';
 import { inspectChainGuard } from './chainGuard.js';
 import { recordTurn } from './diagnostics.js';
@@ -117,7 +117,14 @@ export function runReducer(state, action) {
     if (next.lastTurn === state.lastTurn) return logged;
     // `action.reservedMs` is AC-824f's correction, carried on the action so
     // the impurity stays in the event handler where the seeds already live.
-    return { ...logged, plan: buildReplay(state.animals, next.lastTurn, action.reservedMs || 0) };
+    return {
+      ...logged,
+      // The PRE-TURN meter: `buildReplay` needs to know which ticks this turn
+      // filled, and the meter clamps at its cap so `now − gained` is not it.
+      plan: buildReplay(
+        state.animals, next.lastTurn, action.reservedMs || 0, state.standDownMeter,
+      ),
+    };
   }
   return next;
 }
@@ -326,6 +333,16 @@ export function useGameRun({ seed, resumed = null }) {
       charges: chargeState(state),
       ability: abilityButton(state),
       abilityRows: abilityRows(state),
+      /**
+       * ui.md §7.1's Stand Down meter, for the strip. The same object the sheet's
+       * own row carries, so the sheet and the strip are showing ONE thing rather
+       * than two readings of it (ui.md §13.2).
+       */
+      meter: {
+        ticks: meterTicks(state.standDownMeter),
+        gold: chargeState(state).meterFull,
+        label: meterLabel(state.standDownMeter),
+      },
     }),
     [state],
   );
