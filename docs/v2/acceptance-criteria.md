@@ -437,19 +437,39 @@ medians differed by 1.68×.)*
 against the curve having moved, not a target to tune toward, and AC-318g's minutes gate still
 supersedes it once a device measurement exists.)*
 
-**AC-308** Given Meadow, Savanna and Tundra are each played for 50 turns, Then the three runs
-produce measurably different mean cells-per-turn. *(v1 C1: Normal and Hard were identical
-because `Math.ceil(1.5) === Math.ceil(2)`.)*
+**AC-308 — WITHDRAWN. THERE IS NOTHING LEFT TO ORDER.** Given AC-320, Then Meadow, Savanna and
+Tundra do not exist, so "the three runs produce measurably different mean cells-per-turn" names
+three things that are one thing. *(PR #44 collapsed the habitats and did not amend this. **Its test
+is deleted**, not skipped and not rewritten against phases — the curve's escalation is the buffalo
+cadence, which AC-310 already asserts exactly, and a cells-per-turn comparison between turn 20 and
+turn 80 would assert the band ramp that AC-307d says is flat from turn 13. v1's C1 defect — Normal
+and Hard identical because `Math.ceil(1.5) === Math.ceil(2)` — is guarded now by AC-306's band
+means, which is a stronger check than this ever was.)*
 
-**AC-309** *(amended — the old wording demanded a 9-column batch "at any difficulty", which is
-unachievable by design: only Tundra's band reaches a high of 9, and only from turn 37.)*
-Given 500 batches at **Tundra's ceiling band (5–7, turn 25+)**, Then the maximum occupancy
-observed equals that band's high of **7**, and **no batch at any difficulty ever reaches
-`BOARD.width` = 9**, which would be a self-clearing arrival. *(The `W − 1` = 8 cap is now
-headroom rather than a binding constraint, since no band's high reaches it.)* *(v1 C3: the 1-column buffer capped every batch at 8 of 10 and averaged 6.0.)*
+**AC-309** *(amended twice — the habitat half is withdrawn and the general half is re-measured on
+this curve)* Given 500 batches at any turn on the shipped curve, Then **no batch ever occupies
+`BOARD.width` = 9 columns**, which would be a self-clearing arrival, and the **maximum occupancy
+observed is 8**.
+
+**8 is reached by two different routes, and the `W − 1` cap is now BINDING rather than headroom**
+— which reverses the superseded parenthetical. Measured over 18,712 batches on 300 seeds:
+
+| | batches | max occupancy | at 8 |
+|---|---:|---:|---:|
+| buffalo turns | 1,634 | **8** | **1,079 (66%)** |
+| ordinary turns | 17,078 | **8** | 446 (2.6%) |
+
+- On a **buffalo turn** the buffalo's 5 cells plus a drawn batch from the ceiling band's 3–5 is 8–10
+  before clamping, so `MAX_BATCH_CELLS = 8` clamps **two thirds** of them. It is the only thing
+  standing between the game and an arrival that clears its own row.
+- On an **ordinary turn** 8 is reachable without the cap binding, because the generator rolls a
+  *cell target* and then draws species: a target of 5 becomes two animals, and two elephants are 8
+  columns. That is the count-first generator's known overshoot (AC-309b), not a defect.
+
+*(v1 C3: the 1-column buffer capped every batch at 8 of 10 and averaged 6.0.)*
 
 **AC-309b** *(amended for the 9-wide board and the count-first generator)* Given 500 batches
-at any difficulty and turn, Then **no batch ever occupies `BOARD.width` columns**, and the
+at any turn, Then **no batch ever occupies `BOARD.width` columns**, and the
 distribution of occupied-column counts tracks the rolled targets in the mean (AC-306) — the
 general proof that the 1-column buffer is gone.
 
@@ -490,12 +510,32 @@ population caps of 2 and 3 were measured, they work, and they were rejected on d
 not overlooked. Reintroducing a cap is an owner decision (`open-questions.md` Q3), never a
 defect fix.
 
-**AC-311b — AT MOST ONE BUFFALO PER ROW, AND IT IS ARITHMETIC.** Given any board state
-reachable by play, Then no row contains two buffalo, because `2 × SPECIES.buffalo.size >
-BOARD.width` (10 > 9). *(This is what leaves every rule in `gameplay.md` §6.4 untouched: a
-completed row still holds exactly one buffalo or none. The test asserts the arithmetic against
-the constants, so narrowing the board or shrinking the buffalo fails it rather than silently
-breaking the shrink mechanic.)*
+**AC-311b — WITHDRAWN. A ROW MAY HOLD UP TO FOUR BUFFALO, AND IT IS MEASURED.** The approved text
+argued that no row contains two buffalo because `2 × SPECIES.buffalo.size > BOARD.width` (10 > 9).
+
+**That is true of two *full* buffalo and of nothing else. A buffalo shrinks** — and the mechanic that
+shrinks it is the one the AC was written to protect. **4 + 5 = 9 fits a 9-wide row exactly.**
+Measured over 18,712 settled bot boards on 300 seeds:
+
+| | measured |
+|---|---:|
+| settled boards with **≥ 2 buffalo in one row** | **2,840 of 18,712 = 15.2%** |
+| most buffalo ever in **one row** | **4** *(sizes 3/2/2/1)* |
+| clear steps that shrank more than one buffalo | 257 of 6,595 |
+| most buffalo shrunk in a single step | **3** |
+
+One settled board in seven has a doubled row: this was never an edge case, and the test that asserted
+the arithmetic asserted a false theorem against true constants.
+
+**What survives, and it is the mechanic rather than the count.** A completed row containing *n*
+buffalo removes every non-buffalo animal in it and shrinks **each** of those *n* buffalo by one
+segment; the row does not clear; each shrink pays +50 and each buffalo reaching 0 retires for +650.
+`resolveClears` (`resolve.js:74-101`) already iterates every animal in every filled row and does
+exactly that — **the code was correct**; the comment above it and the AC that licensed it were not.
+
+**The replacement assertion:** given any board state reachable by play, Then every row's buffalo
+satisfy `Σ size ≤ BOARD.width`, and **nothing asserts a maximum count per row**. *(See AC-504 for
+what this does to the termination floor, which is the consequence that actually matters.)*
 
 **AC-312** Given the turn advances, Then the next batch is generated **exactly once**.
 *(v1 C6: `generateAnimalsForTurn(turn + 1, …)` was called from two places for the same turn.)*
@@ -890,23 +930,70 @@ abilities for dangerous situations".)*
 record and simply stops buying charges. That pause is **intended pressure to spend**, not a
 gap in the reward curve.
 
-**AC-1405h — ABILITIES COST DIFFERENT AMOUNTS.** Given the ability sheet, Then costs are
-**Burrow 1, Dart 1, Migrate 2, Hold the Line 2, Stampede 3** charges. *(Priced from measured
-value, not from species size: at one flat charge the value spread was 24× and Stampede made
-the other four irrelevant. Scope follows size, price follows value — Hold the Line has the
-largest scope and the smallest score effect, so pricing by size would have charged most for
-it.)*
+**AC-1405h — ABILITIES COST DIFFERENT AMOUNTS.** *(amended twice — repriced on this curve, and Stand
+Down has left the charge economy; `gameplay.md` §13.2d, §13.2f-ii)* Given the ability sheet, Then
+charge costs are **Burrow 1, Dart 1, Migrate 2, Stampede 2**, and **Stand Down costs no charge at
+all** (AC-1433). *(Priced from measured value, not from species size. Scope follows size, price
+follows value, and the two ladders deliberately do not agree.)*
 
-**AC-1405i** Given a full reserve of 3, Then it buys **one Stampede or three Burrows** — so
-§13.2a's recovery/reset dial also governs breadth against depth. Stampede costing the entire
-reserve is intended: it was the ability that made the other four irrelevant, and taking it now
-costs the other four.
+**AC-1405h2 — NOTHING COSTS 3 CHARGES, AND THE CAP STAYS AT 3.** Given the roster, Then no ability
+costs 3 charges, and `ABILITY_CHARGE_CAP` is still **3**. *(The cap bounds how many turns of
+intervention a player may walk into a crisis holding — §13.2a's recovery/reset dial — which is
+independent of whether anything is priced at its ceiling. A rung nobody can reach is worse than no
+rung: AC-1433b measured a 3-cost ability at **0.01 uses a run**.)*
+
+**AC-1405i** *(amended twice for the revised roster)* Given a full reserve of 3, Then it buys **one
+Stampede plus one Burrow or Dart, or one Migrate plus one, or three Burrows** — so §13.2a's
+recovery/reset dial also governs breadth against depth. **Every rung holds at least two choices and
+nothing sits at the ceiling:**
+
+```
+1 charge   Burrow, Dart
+2 charges  + Migrate, Stampede
+3 charges  Stampede and change, or three Burrows
+           — Stand Down is NOT here; it is earned, not bought (AC-1433)
+```
+
+**AC-1405k — THE MEASURED ARM TABLE IS THE PRICING EVIDENCE.** Given 200 identical seeds per arm
+with the ability offered to a one-ply bot as **one more candidate action** (taken only when the
+resulting board beats the best ordinary move) and priced at its real cost, Then against a control
+of median 2,312 / p90 6,165 / 59 turns / 0.60 buffalo retired / 17.9 buffalo cells at game over:
+
+| ability | cost | uses/run | Δ median | Δ p90 | Δ turns | retired/run | cells at end |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Burrow *(with the lever)* | 1 | 2.98 | +26% | +23% | +20% | 0.79 | 19.4 |
+| Dart | 1 | 2.71 | +10% | +70% | +6% | 1.05 | 18.8 |
+| Migrate | 2 | 1.13 | +13% | +36% | +19% | 1.00 | 21.1 |
+| Stampede | 2 | 0.57 | +5% | +51% | +8% | 1.22 | 19.7 |
+| Stand Down *(at a price, before AC-1433)* | 3 | 0.55 | +4% | +75% | +5% | 2.04 | 14.3 |
+
+*(The method matters as much as the numbers: the superseded arms spent the charge the instant it
+was affordable, which at a flat cost of 1 fired Stampede **27.8 times a run** and measured charge
+income rather than the ability. Re-run this table after any reprice — it is the specification for
+how, not just the current values.)*
+
+**AC-1405L — AND THE ARM TABLE'S LIMIT IS NAMED.** Given each row above was measured with **that
+ability alone** available, Then it prices the **effect** and says nothing about whether a player will
+pick it. Given the **whole roster** available and every ability offered as a candidate, 200 seeds,
+Then:
+
+| roster | uses/run | median | p90 | turns |
+|---|---|---:|---:|---:|
+| Burrow 1, Dart 1, Migrate 2, Stampede 2, **Stand Down 3 charges** | burrow **1.51**, dart **1.41**, migrate 0.08, stampede 0.00, **standDown 0.01** | 2,962 | 9,435 | 68 |
+| the same with **Stand Down at 2 charges** | burrow 1.51, dart 1.40, migrate 0.08, **standDown 0.01** | 2,962 | 9,765 | 68 |
+
+*(**A 3-cost ability is never taken — 0.01 times a run — and 2 measures the same.** Two causes: a
+3-cost ability competes with three 1-cost purchases for a reserve that refills slowly, and a one-ply
+search cannot value a payoff two turns out. Neither is fixed by a price, which is the finding AC-1433
+acts on. This AC exists so that no future reprice is argued from a single-ability arm alone.)*
 
 **AC-1405j** Given an ability the player cannot afford, Then its row is shown at 40% opacity
 **with its cost still legible**. *(Why a row is unavailable must be visible, or the sheet looks
 broken rather than expensive.)*
 
-**AC-1412e — BURROW'S SECOND LEVER, NAMED BUT NOT APPLIED.** Given Burrow is still the
+**AC-1412e — SUPERSEDED BY AC-1428: the lever is now applied.** *(Kept as the record of the
+condition and the discipline that deferred it. The condition has since been met a second time, on a
+second curve, by a second measurement.)* Given Burrow is still the
 least-picked ability at 1 charge in **human** play, Then it gains gap closing: **remove one
 animal and left-pack the row it was in**. *(Measured +11% at a flat charge — the AC-1412c
 revisit condition was already met on evidence predating the buffalo ruling, and excluding the
@@ -914,7 +1001,11 @@ buffalo cost nothing: 1,640 with against 1,680 without. Repricing to 1 charge is
 lever; this is the second, named now so it is not open-ended, and withheld so the next
 measurement stays attributable.)*
 
-**AC-1412f** Given Dart's measured +8%, Then it is treated as a **floor rather than a verdict**
+**AC-1412f — CLOSED BY AC-1429, and closed *against* its own prediction.** *(The trigger fired — a
+bot that plays all three moves measures Dart at +70% p90 — and Dart stays at 1 anyway, because at 2
+it would be the worst row at that price. The pre-commitment is discharged rather than left hanging;
+read AC-1429 for why the promised conclusion does not follow from the measurement that triggered
+it.)* Given Dart's measured +8%, Then it is treated as a **floor rather than a verdict**
 — a one-ply bot cannot use three moves as a plan. If human play shows Dart is strong it moves
 to **2 charges** before anything else in the set changes.
 
@@ -947,22 +1038,45 @@ settles to its lowest non-colliding position.
 **AC-503** Given clearing one row causes another row to become complete, Then that row also
 clears in a subsequent chain step, and the process repeats until no row is complete.
 
-**AC-504** *(amended twice — the 8-step rail is removed as a scoring cutoff, and the
-termination argument is re-derived now that multiple buffalo are permitted)* Given a
-resolution, Then the chain loop runs until no row is complete, however many steps that takes,
-and **terminates by construction**: a completed row is `BOARD.width` = 9 cells, of which at
-most `SPECIES.buffalo.size` = 5 can belong to a buffalo (AC-311b), so every step removes at
-least **4** cells and board mass strictly decreases from a maximum of 135.
+**AC-504** *(amended three times — the 8-step rail was removed as a scoring cutoff, the argument was
+re-derived for multiple buffalo, and **that re-derivation was also wrong**)* Given a resolution,
+Then the chain loop runs until no row is complete, however many steps that takes, and **terminates
+by construction: every step removes at least 2 cells** and board mass strictly decreases from a
+maximum of `BOARD.width × BOARD.height` = 135.
 
-*(`src/engine/resolve.js:28-31` currently argues this from "the single permitted buffalo",
-which AC-311 has overruled. The conclusion survives; the premise must be replaced with the
-arithmetic above rather than deleted, or the next reader has a loop with no termination
-argument at all.)*
+**The floor is 2, not 4, and the previous amendment made the same mistake the original did — it
+assumed one buffalo.** Derivation: a completed row is `width` cells; every non-buffalo cell leaves
+and every buffalo in it spends exactly one segment, so the cells that leave are
+`(width − B) + n = width − (B − n)` where *B* is the buffalo cells and *n* the number of buffalo.
+`B − n` is `Σ(size − 1)` over those buffalo, and maximising it subject to `Σ size ≤ 9` and
+`size ≤ 5` gives the **5 + 4** pair at `4 + 3 = 7`. So at least `9 − 7` = **2** cells leave.
 
-**AC-504b** *(amended — the engine cannot log; AC-201 forbids it and a test enforces it)*
-Given a resolution, Then `assert step <= 32` holds. This is a **crash guard against an engine
-bug**, not a gameplay parameter: 32 is more than twice the mass bound, so tripping it means
-gravity is not settling or a clear is not removing. On trip the engine **emits a `CHAIN_GUARD`
+*(Measured, and the worst case is reachable rather than theoretical: a step that removed no animal
+at all and shrank two buffalo, on a row that was nothing but buffalo. `src/engine/resolve.js:28-31`
+must carry this derivation, and it must be derived from `BOARD.width` and `SPECIES.buffalo.size`
+rather than written as literals — the same rule AC-126 applies everywhere else.)*
+
+**AC-504b** *(amended twice — the engine cannot log, and 32 is no longer above the bound)* Given a
+resolution, Then `assert step <= CHAIN_GUARD_STEPS` holds, where
+
+> **`CHAIN_GUARD_STEPS = Math.floor(BOARD.width * BOARD.height / 2) + 1` = 68**, derived and not a
+> literal.
+
+**32 is withdrawn.** Two cells a step against 135 cells bounds a cascade at **67 steps**, so 32 is
+*below* the bound and *"32 is more than twice the mass bound"* is false. That matters because a
+tripped guard may leave a completed row standing and **discards the run's score entirely**
+(AC-504e): a crash guard reachable by legal play can abort a legal resolution. At 68 the guard
+recovers its only useful property — reaching it **proves** the engine is broken — so the
+`CHAIN_GUARD` event, `stats.chainGuardTrips` and AC-504e all mean what they say again.
+
+*(Raising it costs nothing: a broken engine loops 68 times instead of 32 and is still bounded, and
+the deepest cascade ever measured is **4 steps** against a committed 7-step fixture. Deriving it
+from the constants means narrowing the board or changing the buffalo's size moves it automatically —
+the literal `32` is what let the bound and the guard drift apart. `CHAIN_GUARD_STEPS` is in
+`TUNING_SURFACE`, so this bumps `ENGINE_VERSION`; AC-1430 discards resumes in the same pass anyway,
+so it is free now and would not be later. `gameplay.md` §6.4b.)*
+
+On trip the engine **emits a `CHAIN_GUARD`
 event, increments `stats.chainGuardTrips`, and stops the loop** — it does not call `console`,
 does not throw, and does not silently alter scoring. Reporting is a presentation obligation
 (AC-216, AC-1309).
@@ -1021,9 +1135,22 @@ no input the player cannot see. *(This is AC-301's contract applied to the one a
 player most needs to plan around. It was impossible to show under the superseded rule, whose
 "next" depended on when a buffalo the player could not predict happened to die.)*
 
-**AC-509d** Given more chips than fit the HUD's width, Then the chips **shrink to fit and do
-not wrap, scroll or elide**; the count is never hidden behind a "+3". *(`ui.md` §7 sizes them
-for the measured worst case of 10.)*
+**AC-509d** *(amended — the worst case is eleven, not ten)* Given more chips than fit the HUD's
+width, Then the chips **shrink to fit and do not wrap, scroll or elide**; the count is never hidden
+behind a "+3". Given **11** buffalo — the measured worst case over 300 seeds, reproduced three
+independent ways — Then the chip row occupies **204 pt** of a 361 pt content width at the 8–11 rule
+(`11 × (5 × 2 + 4 × 1) + 10 × 5`), leaving 157 pt for a countdown that needs about 78 pt.
+
+*(`ui.md` §7.1 and `gameplay.md` §5.9 both said **ten**, and the row was sized 19 pt narrower than
+the board can actually demand. At **12+** the bars drop to 2 × 10 pt with a 1 pt gap and 4 pt between
+chips, carrying fifteen chips in 224 pt; past fifteen the row **clips at the right edge with no
+ellipsis and no count badge**, because a board carrying sixteen buffalo is a board about to end. The
+behaviour is specified at every *n* rather than measured at one.)*
+
+**AC-509e** Given more than six buffalo, Then the strip's accessibility label enumerates a **tally**
+rather than a list — *"Eleven buffalo on the board: four at five segments, three at three, four at
+one. Next buffalo in eight turns."* *(The list form is unreadable at eleven, and a truncated list
+would be worse than a tally. Same facts, bounded length.)*
 
 **AC-509b** Given a buffalo shrinks, Then the chip's segment fades on the **same 260 ms
 timeline as the body's shrink**, not on the React commit. *(Slice 3 measured the chip reading
@@ -1990,14 +2117,25 @@ were written.)* Re-run it after any edit to `docs/v2/`.
 
 ## AC-14xx · Special abilities (Layer D)
 
-Structure per `gameplay.md` §13 and `ui.md` §13. **Every threshold is provisional pending
-AC-318b** — the economy is priced in score and the score distribution for a 9-wide board with
-a corrected species mix does not exist yet. This group **blocks nothing in Slices 4–6.**
+Structure per `gameplay.md` §13 and `ui.md` §13. **The thresholds are no longer provisional** —
+AC-318b's distribution exists, AC-1432 re-derives the ladder from it and reproduces the shipped array
+exactly. **The roster was revised after the owner played build 5** (`gameplay.md` §13.5): Hold the
+Line is withdrawn (AC-1410), Stand Down takes its slot (AC-1419), Stampede is repriced (AC-1426) and
+Burrow's named lever is applied (AC-1428).
 
-**AC-1401** Given a run, Then five abilities exist, one per species: Rat **Burrow** (remove one
-animal), Fox **Dart** (three moves this turn), Elk **Migrate** (remove every animal of one
-species), Elephant **Stampede** (left-pack every row, then gravity), Buffalo **Hold the Line**
-(no arrivals for 3 turns).
+**AC-1401** *(amended — the roster is revised after the owner played build 5; `gameplay.md` §13.1,
+§13.5)* Given a run, Then five abilities exist, one per species, at these costs:
+
+| species | ability | effect | cost |
+|---|---|---|---:|
+| Rat | **Burrow** | remove one animal of the player's choice, **then left-pack the row it was in** | **1** |
+| Fox | **Dart** | three moves this turn | **1** |
+| Elk | **Migrate** | remove every animal of one species | **2** |
+| Elephant | **Stampede** | left-pack every row, then gravity | **2** |
+| Buffalo | **Stand Down** | **every buffalo on the board loses all but one segment** | **no charge — a 10-segment meter (AC-1433)** |
+
+and **Hold the Line does not exist.** *(AC-1419–AC-1424 and AC-1433–AC-1437 for Stand Down, AC-1428 for Burrow's
+lever, AC-1426 for Stampede's price, AC-1410 and AC-1427 for Hold's withdrawal.)*
 
 **AC-1402** Given any ability, Then it is available regardless of whether that species is on
 the board.
@@ -2088,34 +2226,40 @@ that player.)*
 **AC-1408f** Given a resume, Then whether Last Stand has fired is reconstructed from the
 replay rather than persisted separately — the engine knows when the band was first entered.
 
-**AC-1409 — RUNS STILL ALWAYS END.** *(confirmed by measurement)* Given unlimited skilled play
-with abilities, Then a run still terminates. *(90 runs with a policy that hoards nothing and
-freezes the instant it can afford to: **zero failed to end**, longest 184 turns, most frozen
-turns in one run **10** against a predicted 9–12. A freeze-abusing bot gains **+16% turns and
-+4% score** — it buys survival and not points, which is exactly what this AC rests on.)* *(The economy is self-limiting: charges come from score, score from
-clearing, clearing from arrivals. A player cannot freeze their way to an unbounded run because
-freezing stops the supply of the thing that buys freezes.)*
+**AC-1409 — RUNS STILL ALWAYS END, AND NOW BY CONSTRUCTION.** *(amended — the freeze is gone, so
+this stops being a defence against a counterexample)* Given unlimited skilled play with abilities,
+Then a run still terminates — and given the roster, Then **no ability can suppress an arrival**
+(AC-1410, AC-1427), so every turn however spent delivers its batch and the economy's self-limiting
+property (charges from score, score from clearing, clearing from arrivals) is a *consequence* rather
+than an argument.
 
-**AC-1410** *(amended — the approved text and any honest counter could not both be right)*
-Given Hold the Line, Then the freeze **starts immediately**: the arrival that would have
-occurred on the turn it is used is suppressed, **and the next two** — three suppressed in
-total. *(Sparing the turn it is used on would let the batch already in the tray land — and
-that is the batch the player pressed the button to stop. "For 3 turns" has to include this
-one.)*
+*(Measured on this curve, 200 seeds per arm with a policy that spends everything it earns: **zero
+failed to end** on any arm. Stand Down frees up to 44 cells at once and is the ability a future reader
+will suspect of breaking this: at its shipped 10-segment meter it moves median run length by **+3%**
+— 68 → 70 turns, AC-1434 — and at a 4-segment meter, which was measured and rejected, by +35%. **It
+buys score and not time.** The superseded measurement — 90 runs of a freeze-abusing bot, longest 184
+turns, most frozen turns 10 against a predicted 9–12, +16% turns and +4% score — retired with Hold
+the Line.)*
 
-**AC-1410b** Given the freeze is active, Then the tray greys out and shows **arrivals
-remaining**: `FROZEN · 2`, then `FROZEN · 1`, then the normal tray. *(The tray's contract is
-that it shows what is coming; when nothing is coming it must say so, or the contract reads as
-broken for three turns.)*
+**AC-1410 — WITHDRAWN. HOLD THE LINE DOES NOT EXIST.** Given the roster, Then no ability
+suppresses an arrival, and `HOLD_TURNS`, the `frozen` state and the `arrivalSkipped` branch in
+ADVANCE (`engine.js:400-407`) are **gone from the engine**. *(`gameplay.md` §13.2g. The owner:
+"`Hold the line` and `Dart` are basically the same thing" — true of the felt effect, and the
+measurement is harsher than the report: Hold is the **only arm with a negative p90** (−5%) at the
+second-highest price, spending 0.98 charges a run for +2% median. AC-1420 carries the full
+reasoning and the list of what goes with it. AC-1410b, AC-1410c and AC-1410d are withdrawn with
+it and their text is deleted rather than kept, because a tray state that cannot occur is not
+history, it is a trap for a reader.)*
 
-**AC-1410c** Given the announce and the counter, Then they are in **different units and cannot
-be mistaken for each other**: the announce reads `HOLD THE LINE · 3 TURNS` — what was bought —
-and the counter reads `FROZEN · 2` — what is left. An announce of "3" beside a counter of "2"
-in the same unit would look like an off-by-one.
+**AC-1410b — WITHDRAWN with AC-1410.** Given the tray, Then it has **one** state. There is no
+`FROZEN · n` label, no `frozenLabel`, no `FROZEN_STRIP_OPACITY` and no `trayStripOpacity`, and
+`format.js`'s *"Nothing arrives for n more turns"* accessibility sentence is removed.
 
-**AC-1410d** Given Hold the Line is used while a freeze is already active, Then the freeze
-**resets to 3** rather than stacking. *(Stacking to six would be a far stronger play and would
-weaken AC-1409's self-limiting argument.)*
+**AC-1410c — WITHDRAWN with AC-1410.** Given the HUD, Then no announce and no counter refer to a
+freeze.
+
+**AC-1410d — WITHDRAWN with AC-1410.** Given any ability, Then none of them has a duration, so
+there is nothing that can stack or reset.
 
 **AC-1411** Given Stampede, Then every row's animals slide left to close gaps **within** that
 row, then gravity applies. It never completes a row by itself — a seven-cell row still holds
@@ -2139,6 +2283,26 @@ Two things break if it does:
 - **§6.4's premium stops being a decision.** The buffalo is worth 900 against 500 for five
   clean rows *because* you commit to it. One charge that deletes it makes taking the premium
   optional and never costly, which is strictly dominant play and therefore not a choice.
+
+**AC-1418 — THE BUFFALO RULE IS ABOUT REMOVAL, AND STAND DOWN DOES NOT REMOVE.** Given AC-1412b's two
+objections, Then **both are objections to a cheap removal and neither is raised by Stand Down**,
+so AC-1412b stands **unamended** and is bounded as follows: *no ability **removes** a buffalo;
+exactly one ability may **change** one, and only by decrementing `size`, the one field and the one
+mechanism the rules already use.*
+
+- **The scope ladder does not invert.** Stand Down is not the weakest ability reaching the largest
+  obstacle — it is the **buffalo's own**, at scope 5, at the **top of the price ladder**, reaching
+  nothing but buffalo. Burrow still cannot target a buffalo (AC-1412b) and still cannot remove
+  one. The ladder is completed rather than inverted.
+- **§6.4's premium stays a decision and starts getting paid.** Stand Down removes nothing and
+  waives nothing: the buffalo stays on the board, still refuses to clear, still must be retired by
+  completing its row, still pays +650. The commitment goes from five completions to one; it is not
+  skipped. **Measured: the premium is collected 3.4× more often with Stand Down (2.04 retirements
+  a run against 0.60), where clearing the buffalo collects it LESS often than using nothing at all
+  (0.51).** An ability that makes a premium get collected is not one that makes it optional.
+
+*(`gameplay.md` §13.2f-i. This is the AC to cite if anyone proposes a cheap anti-buffalo tool
+again: the price is what carries the argument, not the existence of the tool.)*
 
 **AC-1412c** Given the tester's measurement shows Burrow is genuinely dead weight without the
 buffalo, Then the fix is to **strengthen Burrow**, not to let it eat the buffalo. *(Burrow is
@@ -2180,6 +2344,263 @@ threshold crossing nor Last Stand. *(A bloom behind the Game Over sheet helps no
 
 **AC-1417** Given any ability resolves, Then the input-lock budget (AC-822) still holds — every
 ability animation in `ui.md` §13.4 is an announcement over an ordinary structural resolution.
+
+---
+
+### Stand Down, and the revised roster *(the build-5 report — `gameplay.md` §13.5)*
+
+**AC-1419 — STAND DOWN.** Given the player uses **Stand Down**, Then **every buffalo on the board
+with `size > 1` has its `size` set to 1**, its `x` unchanged, and gravity then settles as it does
+after any action. No buffalo is removed. Nothing is retired. *(`gameplay.md` §13.2f.)*
+
+**AC-1420 — STAND DOWN SCORES NOTHING.** Given Stand Down resolves, Then the score awarded is
+**exactly 0** — not 50 per segment, not 650 per buffalo, and `stats.buffaloShrunk` and
+`stats.buffaloRetired` are **unchanged**. *(The shrink path in `resolveClears` pays 50 a segment
+because a completed row bought it. A button is not a completed row, and wiring Stand Down through
+that path pays up to 500 for one tap. AC-1403 says spending costs no score; this says spending
+earns none either.)*
+
+**AC-1421 — WITH NO BUFFALO ON THE BOARD IT IS UNAVAILABLE, AND FREE.** Given no buffalo is on the
+board, Then Stand Down's sheet row is drawn at 40% opacity with the reason in place of the effect
+line — `No buffalo on the board` — tapping it does nothing, an armed use is **rejected**, and **the
+meter is not emptied**. Given the row is unavailable, Then it is **still visible**. *(AC-1414's
+ruling reached in the second currency: a full meter that evaporates for nothing is the opposite of an
+assist. It is the first no-target ability that can have nothing to do, so it needs the rule stated
+rather than inherited.)*
+
+**AC-1422** Given every buffalo on the board is already at `size` 1, Then Stand Down is **legal**
+and changes nothing. *(The chips show one bar each, so the player has been told what they are
+buying. The engine does not second-guess a legal purchase.)*
+
+**AC-1423 — IT IS THE TURN'S ACTION AND TAKES NO SPECIAL PATH.** Given Stand Down resolves, Then it
+runs through the same ACTION → SETTLE → ARRIVAL → JUDGE → ADVANCE phases as a one-cell drag
+(AC-204, AC-1406), and the arrival for that turn lands. *(Freeing up to 44 cells in one ACTION
+phase is the largest structural change the engine can be asked to make; it is still one action and
+still one turn.)*
+
+**AC-1424 — SHRINK, NOT CLEAR, AND THE TWO ARE A FACTOR OF TWO APART.** Given 200 identical seeds
+at cost 3 against a control of 0.60 buffalo retired per run and 17.9 buffalo cells standing at game
+over, Then:
+
+| at cost 3 | Δ median | Δ p90 | retired/run | cells at end |
+|---|---:|---:|---:|---:|
+| **shrink every buffalo to 1** | +4% | **+75%** | **2.04** | 14.3 |
+| clear every buffalo | +6% | +2% | **0.51** | 13.5 |
+| clear one buffalo | −0% | **−7%** | 0.61 | 16.8 |
+
+*(The owner offered both variants. Clearing **forfeits** §6.4's premium — retirements fall below
+control, because a buffalo deleted can never be retired — and pays 2% at p90 against shrink's 75%.
+Clearing one buffalo for the whole reserve is measurably bad play. Cite this AC before proposing a
+clear variant again.)*
+
+**AC-1433 — STAND DOWN IS EARNED, NOT BOUGHT.** Given Stand Down, Then it **costs no charge**. It is
+available when the **Stand Down meter** is full, and using it empties the meter:
+
+| | |
+|---|---|
+| unit | one buffalo **segment** removed **by a completed row** — the event that pays +50 (AC-506) and that `stats.buffaloShrinks` already counts |
+| full at | **`STAND_DOWN_SEGMENTS` = 10**, which joins `TUNING_SURFACE` |
+| a retirement | size 1 → retired is **one** segment and fills **one** notch |
+| Stand Down's own shrinks | fill **nothing**, or the ability refills itself and the meter is not a cost |
+| spending | empties the meter to **0**, with no remainder carried |
+| overflow | the meter **stops at 10** and never banks a second use |
+| no buffalo on the board | the meter still fills and still holds; the **ability** is unavailable (AC-1421) and the meter is **not** emptied |
+| persistence | reconstructed by replay; nothing new is stored (AC-1430) |
+
+*(`gameplay.md` §13.2f-ii and §13.2f-v.)*
+
+**AC-1433b — WHY IT LEFT THE CHARGE ECONOMY, MEASURED IN TWO PLACES.** Given the owner has made this
+the **late-game balance lever** — *"having a solution to deal with buffalo is a way I think to balance
+the late game"* — Then it cannot be priced in charges, because:
+
+1. **The currency dries up in the phase the tool is for.** Over 262 runs of 40+ turns:
+
+   | phase | clearing turns | score per turn | locked buffalo segments |
+   |---|---:|---:|---:|
+   | first 15 turns | 25.6% | 38 | 0.9 |
+   | the middle | 38.2% | **51** | 5.8 |
+   | **last 15 turns** | 29.8% | **34** | **11.2** |
+
+   **Score per turn falls 33% from the middle of a run to its last fifteen turns while the herd's
+   locked load doubles.**
+
+2. **Even when affordable it is not taken.** AC-1405L: **0.01 uses a run** at 3 charges, and the same
+   at 2.
+
+**AC-1433c — THE CURRENCY IS GENERATED BY THE PROBLEM IT SOLVES.** Given the same 262 runs, Then the
+two currencies move in **opposite directions** across a run:
+
+| | early half | late half | change |
+|---|---:|---:|---:|
+| score per turn | 38 → 51 (peak) | 34 | **−33%** from the peak |
+| **buffalo segments broken** per turn | 0.128 | **0.189** | **+48%** |
+
+*(A board crowded with buffalo is a board where most completed rows contain one, so the meter fills
+faster the worse the board gets. This is the property the score ladder lacks and the reason this is a
+second currency rather than a discount on the first.)*
+
+**AC-1434 — WHY 10, AND THE LEVERS EITHER SIDE.** Given the full roster available, 200 seeds, against
+a control of median 2,962 / p90 9,435 / 68 turns / 1.03 buffalo retired / 20.1 buffalo cells at game
+over, Then:
+
+| meter | uses/run | Δ median | Δ p90 | **Δ turns** | retired/run | cells at end |
+|---:|---:|---:|---:|---:|---:|---:|
+| 9 | 1.13 | +24% | +99% | +6% | 3.93 | 14.9 (−26%) |
+| **10** | **0.98** | **+11%** | **+97%** | **+3%** | **3.79** | **15.8 (−21%)** |
+| 11 | 0.81 | +2% | +89% | +3% | 3.37 | 16.7 |
+| 12 | 0.69 | +2% | +67% | **0%** | 3.04 | 16.7 (−17%) |
+| 16 | 0.42 | 0% | +72% | 0% | 2.48 | 18.1 |
+| *3 charges instead* | *0.01* | *0%* | *0%* | *0%* | *1.05* | *20.1* |
+
+*(**10 fires roughly once in a run that reached the late game and moves median run length by +3%** —
+the buffalo become tractable without the curve flattening. It also has a symmetry worth keeping: the
+median run's worst herd locks **13** segments, so a median run's own buffalo debt pays for exactly one
+Stand Down. **Levers:** too dear → **9**; too generous → **12**, at which median run length does not
+move at all and the ratchet still falls 17%. **Do not reach for a charge price** — AC-1405L measured
+both 3 and 2 at 0.01 uses a run.)*
+
+**AC-1435 — IT REACHES THE DROWNING PLAYER, WHICH A CHARGE PRICE DID NOT.** Given 300 runs bucketed
+by the worst herd they ever carried, Then:
+
+| peak locked segments | runs | **meter fires ≥ once** | charges ≥ 3 at the crisis *(superseded model)* | median lifetime charges |
+|---:|---:|---:|---:|---:|
+| 5–9 | 56 | **13%** | 8% | 1 |
+| **10–14** *(the modal crisis)* | **175** | **26%** | **34%** | **2** |
+| 15–19 | 63 | **24%** | 81% | 3 |
+| 20+ | 6 | **33%** | 100% | 4 |
+
+*(**The shape is the finding, not the level.** Charge availability climbs 8 → 34 → 81 → 100%: it
+concentrates the tool in the runs that need it least. The meter runs 13 → 26 → 24 → 33% — flat to
+rising, because it does not ask how well the player has been scoring. That is AC-1408e's principle
+expressed as a currency rather than as a one-off grant, and unlike Last Stand it is not once per run,
+because the buffalo are not capped either. The levels in that column are measured with Stand Down as
+the only ability available, so runs are shorter and it fires less often than AC-1434's full-roster
+0.98; the comparison between columns is what this AC asserts.)*
+
+**AC-1436 — NO POPULATION CAP, STILL.** Given this pass adds a tool, Then it does **not** add a cap
+on buffalo. *(The owner has now chosen a tool over a cap twice, the second time with the worst case in
+front of them. A cap is the game protecting the player, so past the third buffalo ignoring them would
+stop costing anything and "clear it as soon as possible" would mean nothing. The meter sharpens that
+further: **ignoring buffalo is the one strategy that cannot buy the anti-buffalo tool**, because only
+segments broken by play fill it. `open-questions.md` Q3 remains the record of the cap as a lever.)*
+
+**AC-1437 — IT MUST NOT REWARD HOARDING BUFFALO.** Given the meter is filled **only by segments
+broken through play**, Then **ignoring buffalo is the one strategy that cannot buy the anti-buffalo
+tool** — the currency is the work already done against the herd, not the herd's size. Given 200 seeds
+with policies that wait for a herd of *n* before firing, Then **waiting also scores less**:
+
+| fires at ≥ n | uses/run | segments/use | Δ p90 | cells at end |
+|---:|---:|---:|---:|---:|
+| **1** | 0.63 | 9.9 | **+79%** | 13.8 |
+| 5 | 0.47 | 13.5 | +52% | 13.7 |
+| 7 | 0.15 | 16.8 | +41% | 16.1 |
+
+*(The greedy read — fire it when it helps — is also the correct one, so the ability does not teach the
+opposite of `gameplay.md` §5.9's "clear it as soon as possible". The second reason is structural and
+needs no balancing: a run spent waiting for an eleven-buffalo board is a run that ends on an
+eleven-buffalo board. That table was measured against the superseded charge price and is kept because
+it tests a property of the **effect** rather than of the price; under the meter, waiting also stops
+the currency arriving. **The meter stopping at 10 (AC-1433) closes the last version of this**: a
+banked second use would reward grinding buffalo without spending, and grinding without spending is
+what leaves the board locked.)*
+
+**AC-1426 — STAMPEDE COSTS 2.** Given the ability sheet, Then Stampede costs **2** charges.
+*(`gameplay.md` §13.2d. The owner: "Stampede is good, but 3 points is a little bit costly". The
++194% that bought it the top price **does not reproduce** on this curve — +5% median, +51% p90 —
+and it measures **identically at cost 2 and cost 3**, because the binding constraint on a one-ply
+bot is usefulness, not affordability. A one-ply search still cannot value a repack it cashes in two
+turns later, so this is not a claim that Stampede is weak; it is that the measurement which
+justified 3 is falsified and the top rung now has a tenant that needs it.)*
+
+**AC-1427 — WHAT THE WITHDRAWAL OF HOLD THE LINE REMOVES.** Given the source tree, Then
+`HOLD_TURNS`, `state.frozen`, the `arrivalSkipped` branch in ADVANCE, `chargeState().frozen`,
+`FROZEN_STRIP_OPACITY`, `trayStripOpacity`, `frozenLabel`, `Tray`'s `frozen` prop, `format.js`'s
+frozen tray sentence, `replay.js`'s `hold-` announce (`replay.js:258-260`) and
+`GameScreen.js:353`'s pass-through are **all gone**, and `HOLD_TURNS` leaves `TUNING_SURFACE`.
+Given any turn, Then **an arrival always lands** — nothing in the game can suppress one. *(A
+retained-but-unreachable freeze is dead code, AC-1303. This is also what turns AC-1409's
+self-limiting argument from reasoning into a structural fact.)*
+
+**AC-1428 — BURROW'S SECOND LEVER IS APPLIED.** Given Burrow, Then the chosen animal is removed
+**and the row it was standing in is left-packed** — animals keep their left-to-right order and are
+pushed against the wall in that order — before gravity applies. *(AC-1412e's condition has now been
+met twice by two measurements on two curves, and the reprice did not fix it: at 1 charge,
+Burrow-as-shipped is +9% median and +12% p90, last in the set on both. With the lever it is **+26%
+median, +23% p90, 2.98 uses per run** — the highest median delta in the set, at the lowest price,
+on the rung 34% of runs never leave. AC-1412e is superseded by this.)*
+
+**AC-1428b** Given Burrow's left-pack, Then it **never completes a row by itself** — packing is a
+permutation of that row's occupancy (AC-1411's argument at one-row scope), so a row two cells short
+is two cells short afterwards. The *removal* is what changes occupancy, by exactly one animal.
+
+**AC-1428c** Given the packed row contains a buffalo, Then the buffalo packs with it like any other
+body: its `x` may move, its `size` **may not**. *(AC-1412b is untouched — Burrow still cannot target
+a buffalo and still cannot remove one.)*
+
+**AC-1428d** Given Burrow is priced at 2 instead of 1, Then it measures **+11% median and −7% p90**
+— worse than the control at p90. *(Recorded so the price is not "tried later": Burrow's value is
+volume, so it can only ever be priced at 1.)*
+
+**AC-1429 — DART STAYS AT 1, AND THE PRE-COMMITMENT IS DISCHARGED.** Given AC-1412f's promise that
+Dart moves to 2 if it proves strong, Then the trigger has fired — a bot that plays out all three
+moves measures Dart at **+70% p90**, second best in the table — and Dart **stays at 1** anyway,
+because at 2 it measures +6% median and +11% p90, which would make it **the worst row at that
+price** and recreate the exact defect AC-1405h was written to fix. *(Dart's value is volume — 2.71
+uses a run — not power per use; doubling the price halves the volume and throws away the value. The
+spread at rung 1 is now 3× against the 8× AC-1405h accepted across the whole set. AC-1412f is
+closed by this, not left open.)*
+
+**AC-1430 — THE ROSTER CHANGE DISCARDS EVERY STORED RESUME, AND NO TOLERANT REPLAY IS ADDED.**
+Given a stored resume written before this pass, When it is loaded, Then `ENGINE_VERSION` no longer
+matches and it is **discarded without replay** (AC-1016). Given the engine, Then it contains **no
+fallback for an unknown ability id and no default cost** — a stored `{t:'A', ability:'hold'}` is
+never skipped, defaulted or reinterpreted. *(`gameplay.md` §13.4a. `ABILITIES` and `HOLD_TURNS` are
+both in `TUNING_SURFACE`, so the fingerprint moves automatically. A tolerant replay is replaying a
+run under rules that did not produce it, which is precisely what AC-1016 exists to prevent.)*
+
+**AC-1430b — BURROW'S EFFECT CHANGE MUST BE VISIBLE TO THE FINGERPRINT.** Given `ABILITIES.burrow`,
+Then it carries the behaviour as data — a `packs: true` field beside `scope`, `cost` and `target` —
+so `TUNING_SURFACE` sees an effect change the way it already sees a price change. *(Burrow's cost
+does not move, so without this the one change in the pass that alters a board without altering a
+constant would be invisible to the hash. A behaviour change the surface cannot see is the one shape
+of AC-1016's bug the surface cannot catch.)*
+
+**AC-1430c** Given the save (records, lifetime totals, unlocks, daily streak, settings), Then this
+pass needs **no migration step** for it. *(None of the four unlock conditions references an ability
+— `src/ui/cosmetics.js:36-76`.)*
+
+**AC-1431 — STAND DOWN'S BEAT IS ONE EVENT, NOT ELEVEN.** Given Stand Down resolves with *n*
+buffalo shrinking, Then: the `STAND DOWN` announce runs **0 → 260 ms**; **every** spent segment on
+**every** buffalo cracks in unison over **180 → 380 ms** (one 200 ms beat, never staggered per
+segment or per buffalo); bodies spring to one cell and **every chip collapses to one bar on the same
+clock**, **380 → 640 ms**; gravity then settles normally. *(`ui.md` §13.4a. Staggering 11 buffalo ×
+4 segments is 44 units and is AC-1411b's error repeated. The chip riding the body's clock is
+AC-509b applied to the turn that changes eleven buffalo at once.)*
+
+**AC-1431b** Given Stand Down, Then there is **no floating score label of any kind** — no `−4`, no
+per-buffalo number. *(It scores nothing, AC-1420. §5.3's `BUFFALO −1` label belongs to a shrink
+bought with a completed row.)*
+
+**AC-1431c** Given Reduce Motion, Then Stand Down's crack and spring collapse into a single 200 ms
+cross-fade from the old widths to the new; the announce text remains.
+
+**AC-1431d** Given Stand Down, Then **one** sound cue fires — §15's buffalo metal, struck once, at
+the pitch of the **largest** buffalo on the board before the ability fired — not one per buffalo.
+
+**AC-1432 — THE LADDER DOES NOT MOVE, AND THAT IS CHECKED RATHER THAN ASSUMED.** Given any ability
+is repriced, Then `ABILITY_THRESHOLDS` is **unchanged**, because AC-1404 requires the distribution
+it is priced from to be measured with abilities **disabled** — the ladder is a function of the
+curve, not of the roster. Given 300 abilities-off seeds on the shipped curve, Then the re-derivation
+reproduces the shipped array exactly: raw p35/p50/p75/p90 = **1,750 / 2,335 / 3,635 / 5,870**,
+floored to 100 and extended by ×1.6 and ×2.4 = **[1700, 2300, 3600, 5800, 9200, 13900]**.
+
+**AC-1432b — MEASURED CHARGE INCOME.** Given 300 abilities-off seeds, Then charges earned per run
+(rungs crossed plus Last Stand) are distributed **1:102, 2:42, 3:79, 4:47, 5:23, 6:6, 7:1** —
+median **3**, mean 2.56, p90 **5** — and **52% of runs would have been able to afford a 3-charge
+ability at some point, 2% two of them.** *(AC-1405e asked for a median of two and a p90 of four; the
+curve delivers three and five, one rung generous in the player's favour. **This is half the evidence
+AC-1433b acts on** — the other half is that the income arrives at the wrong time and is spent on
+cheaper rows anyway (AC-1405L). Re-derived whenever AC-318 is re-run.)*
 
 ---
 
@@ -2344,3 +2765,258 @@ for and 2.56:1 over Night Savanna — Tundra failed AC-1503 on every ground, inc
 and nothing was checking. `#5C77A7` is 3.61:1 and 4.10:1, L\* 36.9 → 49.8, still the darkest of
 the four. The light rat is 1.69:1 on fill and 4.57:1 on edge: the same division of labour as
 AC-1503. No palette touches the buffalo, so AC-1505 holds across cosmetics unchanged.)*
+
+---
+
+## AC-15xx (continued) · the danger rows are part of the board theme
+
+`ui.md` §16.5. The owner, after build 5: *"the board theme does change the theme of normal rows, but
+the dangerous rows are still the same, I think those rows need new design for the theme too."*
+Confirmed, and extending the rule found **two failures already in the build** that have nothing to
+do with board themes.
+
+**AC-1523 — A COSMETIC GROUND SUPPLIES ALL THREE GROUNDS.** Given a board theme (AC-1011), Then it
+supplies **`board`, `cell`, `cellLine`, `dangerBand` and `killRow`** — five tokens, up from the four
+`BOARD_THEMES.nightSavanna` ships (`src/ui/cosmetics.js:140-147`). Given a board theme missing any of
+them, Then that is a **defect and AC-1504 fails**; it does not silently fall back to the base theme's
+value. *(The grounds a board can present are the ordinary cell, the danger band and the kill row. The
+band is a ground animals stand on, at the one moment in the run when the player most needs to read
+the board, and nothing had ever measured against it — AC-1518's rule was written against the grounds
+somebody had thought to enumerate. Same finding as AC-1518's, one layer down.)*
+
+**AC-1524 — A BOARD THEME CHANGES WHAT THE HAZARD IS DRAWN ON, NEVER WHAT IT IS DRAWN IN.** Given any
+board theme, Then `killLine`, `dangerCellLine`, `hazardStripe`, `dangerWash` and `dangerOutline`, and
+their alphas, come from **the ramp the board theme names** (AC-1518) and are **never** supplied by the
+cosmetic. *(The hazard language belongs to the game, not to the unlock: red-family, flat, pulsing, at
+fixed opacities. A cosmetic that could restyle the alarm is a cosmetic that could make the alarm
+quieter, and an unlock must never be able to do that. It is also what keeps AC-1531's product
+finite.)*
+
+**AC-1525 — `killRow` IS ITS OWN TOKEN AND IS NOT `bg`.** Given the kill row, Then its fill is
+`colors.killRow`. *(`BoardCells.js:79` draws it as `kill ? colors.bg : …`. The kill row's colour is
+*the deepest ground on the board*, which happened to equal the app background in both base themes and
+is not the same fact. The reuse is the entire defect in one line: with Night Savanna equipped in the
+light theme the kill row draws `#F2EDE3` — a near-white row at **14.98:1** against a `#151026`
+board.)*
+
+**AC-1526 — THE ELEVEN DUTIES OF THE DANGER ROWS.** Given any ground a player can be looking at,
+Then:
+
+| # | duty | measure | floor |
+|---|---|---|---:|
+| D1 | the band is separable from the ordinary cell | `cr(dangerBand, cell)` | ≥ 1.02 |
+| D2 | the band is in the hazard hue family | `hueΔ(dangerBand, killLine)` | ≤ 60°, **and** < `hueΔ(cell, killLine)` |
+| D3 | the band's cell line separates it from the band | `cr(dangerCellLine ∘ dangerBand, dangerBand)` | ≥ 1.25 |
+| D4 | every body clears the band at rest | best of fill/edge vs `dangerBand` | **≥ 3.0** |
+| D5 | every body clears the band **pulsed** | best of fill/edge vs `dangerBand + dangerWash @ high` | **≥ 3.0** |
+| D6 | the pulse is perceptible | `cr(band@high, band@low)` | ≥ 1.09 |
+| D7 | the kill row is separable from the band | `cr(killRow, dangerBand)` | ≥ 1.05 |
+| D8 | the kill row is separable from the ordinary cell | `cr(killRow, cell)` | ≥ 1.15 |
+| D9 | the kill rule reads on the kill row | `cr(killLine, killRow)` | ≥ 4.5 |
+| D10 | the hazard stripes read on the kill row | `cr(hazardStripe ∘ killRow, killRow)` | ≥ 1.10 |
+| D11 | a body in the band takes an outline that reads | `cr(dangerOutline ∘ dangerBand, dangerBand)` | ≥ 1.50 |
+
+*(**The floors are the shipped themes' own measured values rounded down, not invented ideals** — the
+gate is "no worse than what the owner has already seen and accepted", which is the only honest floor
+for a band designed to be subtle at rest. D4 and D5 are the exceptions: they take AC-1503's external
+3:1, and they are the two that catch the defects. **D1 and D3's numbers look alarmingly low and are
+correct** — the shipped bands sit at 1.074:1 and 1.023:1 against their cells, because the band is
+identified by hue, by its cell line and by the pulse, not by contrast. D1 exists to catch a band that
+is literally the cell's colour, never to demand a contrasting one; "fixing" a 1.02 would produce a
+band that shouts at rest, which `ui.md` §7 explicitly does not want.)*
+
+**AC-1527 — THE PULSE ERODES WHATEVER CARRIES THE FLOOR, AND THAT IS WHY D5 EXISTS.** Given the dark
+ramp, the floor is carried by light **fills** and the pulse **lightens** the ground; given the light
+ramp it is carried by dark **edges** and the pulse **darkens** it. Then in both themes the alarm moves
+the band toward the token AC-1503 relies on, and **D5 must be checked separately from D4**. *(Lowering
+the pulse does not fix either defect: the dark elephant fails at every alpha including 0.05 (2.93:1),
+and the light gilded rat fails at alpha **zero** (3.20:1 at rest). The band is the marginal thing; the
+pulse only makes it visible.)*
+
+**AC-1528 — THE THREE FAILURES THE EXTENSION FOUND.** Given the build as it stands, Then the extended
+sweep reports:
+
+| # | combination | measured | floor |
+|---|---|---:|---:|
+| 1 | **dark** theme, base ramp, elephant on the **pulsed** band | **2.65:1** | 3.0 |
+| 2 | **light** theme, **Golden Herd** gild, rat on the **pulsed** band | **2.65:1** | 3.0 |
+| 3 | **Night Savanna in the light theme**, base ramp, rat on the band | **1.53:1** | 3.0 |
+
+*(Failures 1 and 2 are **pre-existing and have nothing to do with cosmetics or board themes** —
+AC-1527 is their shared cause. Failure 3 is the owner's report and is far worse than "it looks
+disconnected": light is the **default** theme (AC-1501), so a light-theme player who unlocks Night
+Savanna gets a bone-pink band `#EBD3CE` under the **dark** animal ramp, at rat 1.53 and fox 2.64, and
+under the pulse rat **1.27**, fox 2.19, elk 2.99 — three of five species invisible in the danger band
+in the default theme.)*
+
+**AC-1529 — THE GROUND VALUES.** Given the themes and board themes, Then:
+
+| token | dark | light | nightSavanna |
+|---|---|---|---|
+| `board` | `#16212C` | `#E6DFD2` | `#151026` |
+| `cell` | `#1A2833` | `#DDD5C6` | `#1B1533` |
+| `cellLine` | `#223442` | `#CBC1AE` | `#2A2047` |
+| `dangerBand` | **`#1C1218`** *(was `#2A1D24`)* | **`#F5E3DF`** *(was `#EBD3CE`)* | **`#1A0A16`** |
+| `killRow` | **`#080C11`** *(was `colors.bg`)* | **`#F2EDE3`** *(same value, now its own token)* | **`#08040F`** |
+
+and every duty in AC-1526 is satisfied:
+
+| duty | floor | dark | light | nightSavanna |
+|---|---:|---:|---:|---:|
+| D1 | 1.02 | 1.214 | 1.175 | 1.093 |
+| D2 | ≤ 60° | 30° *(cell 148°)* | 16° *(45°)* | 39° *(102°)* |
+| D3 | 1.25 | 1.33 | 2.09 | 1.35 |
+| D4 | 3.0 | **3.51** elephant | **4.33** rat | **3.67** elephant |
+| D5 | 3.0 | **3.05** elephant | **3.01** gilded rat | **3.20** elephant |
+| D6 | 1.09 | 1.095 | 1.134 | 1.093 |
+| D7 | 1.05 | 1.073 | 1.063 | 1.062 |
+| D8 | 1.15 | 1.303 | 1.249 | 1.161 |
+| D9 | 4.5 | 5.18 | 6.09 | 5.36 |
+| D10 | 1.10 | 1.119 | 1.243 | 1.114 |
+| D11 | 1.50 | 1.76 | 2.09 | 1.77 |
+
+**AC-1529b — WHY EACH CHANGED VALUE CHANGED.** Given the three changed base-theme values, Then:
+
+- **dark `dangerBand` → `#1C1218`** (L\* 12.6 → 6.7) fixes failure 1: the elephant goes 2.65 → **3.05**
+  pulsed and 3.10 → 3.51 at rest, and D1 **improves** from 1.074 to 1.214 with D3 from 1.27 to 1.33.
+  The danger rows now sink into shadow and the pulse lights them, rather than being a maroon tint
+  nobody can see either way.
+- **dark `killRow` → `#080C11`** is forced by that: at the old `#0D141B` the kill row and the new band
+  are **1.014:1**, indistinguishable. D8 also improves to 1.303.
+- **light `dangerBand` → `#F5E3DF`** (L\* 86.4 → 91.5) fixes failure 2: the gilded rat goes 2.65 →
+  **3.01** pulsed and 3.20 → 3.67 at rest; the base rat goes 3.12 → 3.55. **Fixing this on the gild
+  instead was rejected**: `lastStand` `#9C6D14` is also the buffalo's rim (AC-1505) and the Last Stand
+  pulse, so darkening it to clear one ground moves three measured things where lightening one band
+  moves one.
+- **Night Savanna needs its own band rather than the dark theme's**, because its cell is already
+  darker (L\* 9.1 against 15.4): the dark band at L\* 6.7 would sit *above* it and the band's lightness
+  direction would invert on that ground alone. It takes the dark ramp's `dangerCellLine` unchanged,
+  landing at **1.35** — better than the dark theme's own 1.33, because the band is darker.
+
+**AC-1530 — DERIVING THE BAND FROM THE CELL IS REJECTED.** Given a proposal to compute `dangerBand`
+as the cell mixed with the hazard hue at a fixed alpha, Then it is rejected: **neither shipped band is
+such a mix** — solving for the dark one gives a negative alpha in the green channel — so a formula
+would have to change the two values the owner has already accepted in order to be adopted. The values
+are declared and swept, the way the palettes are (AC-1519).
+
+**AC-1531 — THE BAND SWEEP IS ALSO A PRODUCT.** Given `theme-contrast.mjs`, Then in addition to
+AC-1521's 60 board rows it asserts D4 and D5 over **ground × palette state × gild state × species ×
+pulse state = 3 × 2 × 2 × 5 × 2 = 120 band rows**, plus AC-1526's nine non-species duties per ground.
+Every row is something a player can be looking at: a species, with or without an unlock, on a board
+they may have equipped, in the danger band, with the pulse at either end of its loop. *(AC-1520's rule
+still selects the palette variant by the **ramp in force**, so Tundra over Night Savanna is Tundra's
+dark table in the band exactly as on the board, and the product stays finite.)*
+
+**AC-1532 — THE BAND SWEEP MUST BE ABLE TO FAIL.** Given the three tokens planted at their current
+shipped values — dark `dangerBand` `#2A1D24`, light `dangerBand` `#EBD3CE`, and Night Savanna
+supplying no `dangerBand` and no `killRow` — Then `node docs/v2/theme-contrast.mjs` **exits
+non-zero with 8 defects**, and reports exactly:
+
+```
+*** FAIL: ground nightSavanna supplies no danger band / kill row (AC-1523) ***
+dark/-                    elephant  #2A1D24   3.10    2.65  3.0 *** FAIL ***
+light/-+gild              rat       #EBD3CE   3.20    2.65  3.0 *** FAIL ***
+light/-+gild              fox       #EBD3CE   3.20    2.65  3.0 *** FAIL ***
+light/tundra+gild         rat       #EBD3CE   3.20    2.65  3.0 *** FAIL ***
+light/tundra+gild         fox       #EBD3CE   3.20    2.65  3.0 *** FAIL ***
+light/tundra+gild         elk       #EBD3CE   3.60    2.99  3.0 *** FAIL ***
+*** FAIL: AC-1531: swept 80 band rows, expected 120 ***
+```
+
+*(Run, verified, and restored from a scratchpad copy — never from git, §6.6. **The planted run
+found more than AC-1528 predicted**, and the extra rows are the finding rather than noise: the gild
+replaces **every** species' edge with the theme's gold, so on the light band every species whose
+*fill* is under 3:1 depends entirely on that one gold — rat, fox, and with the Tundra palette the elk
+at 2.99. AC-1528's table names the three worst; this is the full set. Before the extension the script
+passed with all of it in the build, which is §6.2's check that could only ever pass. The 80-vs-120
+row count is the second guard: a ground that silently declares no band would otherwise shrink the
+sweep rather than fail it.)*
+
+---
+
+## AC-15xx (continued) · the ground rule, and the arrival silhouette
+
+`ui.md` §16.4 Rule 0 and §16.6. Found while fixing two build-5 defects and reported rather than
+patched, because it is the **third** instance of one hole and the third instance is a contract
+problem, not a colour problem.
+
+**AC-1533 — THE GROUND RULE, STATED ONCE FOR EVERYTHING.** Given anything drawn on the board, Then it
+is drawn on a **ground a cosmetic can change**, and therefore:
+
+- **(a)** a cosmetic supplying a ground supplies **every ground on that surface** (AC-1523);
+- **(b)** every colour drawn **on** a board ground is supplied **once per ramp** (AC-1519);
+- **(c)** the **ramp in force** selects the variant (AC-1520);
+- **(d)** the check is **the product** — every ground × every colour drawn on it × every state — and
+  the product is enumerated from **one inventory** (AC-1536), never from a list written into the
+  checking script.
+
+*(**(d) is the new clause and it is the one that matters.** The rule has now been extended three
+times by adding whatever a person happened to notice: the species and the Tundra palette (AC-1518–
+AC-1522), the danger band and kill row (AC-1523–AC-1532), and now the arrival silhouette. Each was
+found by a human. An inventory a test asserts is complete is the only form of this rule that catches
+the fourth.)*
+
+**AC-1534 — THE SILHOUETTE FOLLOWS THE RAMP IN FORCE, NOT THE THEME.** Given the arrival flight, Then
+its silhouette comes from the **ramp the ground in force declares**, not from the app's theme
+preference. *(`ArrivalFlight.js:51-52` reads `theme.silhouette` from `useTheme()` while taking its
+ground from `useCosmetics()` at line 50 — two sources for one pairing. This is AC-1520 applied to a
+colour nobody had enumerated; `SILHOUETTE_DARK` and `SILHOUETTE_LIGHT` already exist, so it is a
+wiring change and not a palette one.)*
+
+**AC-1535 — THE MEASURED DEFECT, AND THE MEASURED FIX.** Given the light theme with **Night Savanna**
+equipped, Then the shipped build flies a silhouette at **CIEDE2000 63.80** over a `#1B1533` ground
+whose faintest **landed** animal is **28.82** — a shadow **2.2×** more prominent than any animal on
+the board it crosses; the buffalo silhouette measures **75.16**. Given AC-1534's fix, Then:
+
+| silhouette on `#1B1533` | dE | floor **7.0** | ceiling *(28.82)* |
+|---|---:|---:|---:|
+| ordinary `#495764` | **24.34** | ✓ | ✓ |
+| buffalo `#3A2E38` | **12.23** | ✓ | ✓ |
+
+and **Night Savanna needs no silhouette of its own.** *(It is not a contrast failure — it is the
+opposite of one, and WCAG contrast cannot see it at all, which is why the floor is CIEDE2000 and the
+metric is part of the inventory. It breaks `ui.md` §6.1's claim that a silhouette is **less specific
+than the animal, not less true**: a shadow louder than every body on the board states something false
+about its own importance. The margin is thinner than on slate — 24.34 against a 28.82 ceiling, where
+the dark board has 15.42 against 24.34 — so a future board theme darker than `#1B1533` is the one
+that will fail, which is what the sweep exists for.)*
+
+**AC-1536 — `BOARD_INKS`, THE INVENTORY.** Given the source tree, Then **one** exported list names
+every colour token drawn on a board ground, each with the grounds it can appear over, **the floor it
+must clear and the metric it is measured in**:
+
+| token group | metric | floor | ceiling |
+|---|---|---|---|
+| species fill / edge | WCAG contrast, better of the two | 3:1 (AC-1503) | — |
+| danger band, kill row and their inks | WCAG contrast, AC-1526's eleven duties | per duty | — |
+| **arrival silhouette** fill / buffalo fill | **CIEDE2000** | **7.0** | **< the faintest landed body** |
+| numeral chip, drop ghost, origin recess | WCAG contrast | 3:1 | — |
+
+Given `theme-contrast.mjs`, Then it **iterates that list** rather than an enumeration of its own.
+
+*(**The metric column is not decoration**: the silhouette's defect is invisible to WCAG contrast — a
+bone shadow on a midnight board has excellent contrast — so a single metric across the inventory would
+have missed it a second time. An entry with no metric is a defect in the inventory.)*
+
+**AC-1537 — A COLOUR ON THE BOARD THAT IS NOT IN THE INVENTORY FAILS A TEST.** Given the hygiene
+greps in `test/`, Then a component that reads a colour token for something drawn on the board which
+`BOARD_INKS` does not list **fails**. *(A grep can be fooled and an inventory can be incomplete the
+first time it is written. What changes is where the burden sits: today a new element on the board is
+safe until somebody notices; after this, it must be in the list or the build does not go out. That
+converts the fourth instance from a defect the owner finds into one the suite finds.)*
+
+**AC-1538 — THE SILHOUETTE SWEEP, AND IT FAILS ON THE BUILD AS IT STANDS.** Given
+`theme-contrast.mjs`, Then it asserts AC-1535 over **every ground × ramp-in-force × shape** — 3
+grounds × 2 shapes = **6 rows** — reporting both the 7.0 floor and the faintest-landed-body ceiling
+for each. Given the silhouette is planted at its shipped wiring (selected by the app theme rather
+than by the ramp), Then the sweep **exits non-zero with 2 defects**, reporting exactly:
+
+```
+nightSavanna  dark  ordinary  #BFB5A2  63.80  7.0  buffalo  28.82  *** FAIL ***
+nightSavanna  dark  buffalo   #E0CFC9  75.16  7.0  buffalo  28.82  *** FAIL ***
+```
+
+*(Run, verified, and restored from a scratchpad copy — never from git, §6.6. The script's CIEDE2000
+reproduces `theme.js`'s own `separation()` to the second decimal on all six rows — 15.42 / 14.90 /
+8.18 / 7.20 / 24.34 / 12.23 — so the two implementations are cross-validated rather than merely
+present.)*

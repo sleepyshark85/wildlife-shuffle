@@ -804,8 +804,9 @@ Run the existing bot harness (AC-318) **after all three changes are in, not betw
 3. **Turns per run**, 30 seeds × 3 difficulties, against the AC-318 ranges. **Expect the
    approved ranges to move** — they were measured on a 10-wide board with the biased mix.
    Report the numbers before changing any band.
-4. **Maximum batch occupancy**, to confirm 8 of 9 is reachable at Tundra's ceiling and 9 never
-   is. **(AC-309)**
+4. **Maximum batch occupancy**, split by **buffalo turns and ordinary turns**, to confirm 8 of 9 is
+   reached and 9 never is. Measured on this curve: **8 on both**, and the `W − 1` cap **binds on 66%
+   of buffalo turns** — it is load-bearing now, not headroom. **(AC-309)**
 5. **Score distribution per difficulty** — median and 90th percentile of final score. Nothing
    needs it yet, but the ability thresholds in §13 must be priced against measured scores
    rather than guessed, and this is the run that produces them.
@@ -857,7 +858,7 @@ single band value. Use it first.
 | buffalo arrivals per run | 1.13 – 1.26 | **5.45** |
 | buffalo shrinks per run | 2.0 – 2.6 | **9.3** |
 | buffalo **retired** per run | 0.13 – 0.26 | **0.58** |
-| most buffalo on the board at once | 1 | mean **4.7**, worst **10** |
+| most buffalo on the board at once | 1 | mean **4.9**, worst **11** |
 | buffalo cells still standing at game over | 3.7 of 135 | **17.9**, p90 25 |
 | median run length | 70 (Meadow row) | **58** |
 
@@ -877,6 +878,20 @@ bounded), but a cap would blunt exactly the thing the owner asked for — *"the 
 try to clear it as soon as possible"* only means something if not trying has a cost that
 keeps growing. The cap is recorded in `open-questions.md` Q3 as the lever to reach for if the
 device round says the late game is hopeless rather than hard.
+
+> **CORRECTION — the worst case is ELEVEN buffalo on the board at once, not ten**, measured over
+> 300 seeds and reproduced three independent ways; the per-run mean of those peaks is 4.9, not
+> 4.7. The figure was under-reported here, in §6.4a and in `ui.md` §7.1, and the HUD's chip row
+> was sized for ten. All three are corrected, and AC-509d now names eleven.
+>
+> The worst **locked** case is separately worth having, because it is what Stand Down converts:
+> peak `Σ(size − 1)` over the herd reaches **25 segments** in the worst run, median **13**
+> (§13.2f-ii).
+>
+> **Stand Down (§13.2f) is the answer to the servicing gap, and it does not close it.** At cost
+> 3 it takes buffalo cells still standing at game over from 17.9 to **14.3** and retirements from
+> 0.60 to **2.04**, on a median run 5% longer. The ratchet is slowed by a fifth. It is still a
+> ratchet, which is the point — *"as soon as possible"* still has to mean something.
 
 #### The ability ladder must be re-derived
 
@@ -989,7 +1004,9 @@ game that punishes a completed row, and it is the only thing that rewards persis
   countable without reading a number.
 - On shrink: the trailing segment cracks and falls away (120 ms), the body springs to its new
   width, and a `BUFFALO −1` label rises from it. Distinct sound, medium haptic.
-- On retirement: a full-board celebration — gold burst, `+500`, heavy haptic.
+- On retirement: a full-board celebration — gold burst, `+650`, heavy haptic. *(The doc said `+500`
+  in two places after the premium rose with the buffalo's size; the code was always right —
+  `theme.js:831` derives the label as `` `BUFFALO DOWN  +${SCORE.buffaloRetire}` ``.)*
 - A persistent **buffalo chip** sits in the HUD whenever one is on the board, showing its
   remaining segments, so the player is never surprised by which row will refuse to clear.
 
@@ -1002,20 +1019,72 @@ try to clear it as soon as possible."* §5.4 and §5.5b carry the schedule. This
 else moves, and it is deliberately a list of things that **do not** move, because the shrink
 mechanic turns out to survive intact.
 
-#### The invariant that saves the mechanic: at most one buffalo per row
+#### WITHDRAWN — "at most one buffalo per row" is false, and the arithmetic that proved it was incomplete
 
-`2 × 5 > 9`. Two buffalo cannot share a row on a 9-wide board — there is no arrangement that
-fits. So **every rule in §6.4 is unchanged**: a completed row still contains exactly one
-buffalo or none, it still shrinks by exactly one segment, it still refuses to clear, and it is
-still worth +50 to shrink and +650 to retire. Nothing about a single buffalo's behaviour is
-different; there are simply more of them, in different rows.
+The approved text read: *"`2 × 5 > 9`. Two buffalo cannot share a row on a 9-wide board."*
 
-This also rescues `resolveClears`' termination argument, which currently reads *"ten occupied
-cells, of which at most four can belong to the single permitted buffalo"*
-(`src/engine/resolve.js:28-31`). That premise is now false, but the conclusion holds for a
-better reason: a completed row is 9 cells and at most 5 of them are buffalo, so **every step
-still removes at least 4 cells** and board mass still strictly decreases. The comment must be
-re-argued from the width, not deleted. AC-504 is amended.
+**That is true of two *full* buffalo and of nothing else. A buffalo shrinks.** A size-4 and a
+size-5 buffalo are **4 + 5 = 9 cells and fit a 9-wide row exactly**, and the mechanic that
+produces a size-4 buffalo is the one this section is about. Measured over 18,712 settled bot
+boards on 300 seeds:
+
+| | measured |
+|---|---:|
+| settled boards with **≥ 2 buffalo in one row** | **2,840 of 18,712 = 15.2%** |
+| most buffalo ever in one row | **4** (sizes 3/2/2/1, and 3+2+2+1 = 8 ≤ 9) |
+| clear steps that shrank **more than one** buffalo | 257 of 6,595 |
+| most buffalo shrunk in a single step | **3** |
+
+It was never a rare edge: **one settled board in seven has a doubled row.**
+
+**Every rule in §6.4 still survives, and the correction is to the count rather than to the
+mechanic.** A completed row containing *n* buffalo removes every non-buffalo animal in it and
+shrinks **each** of those *n* buffalo by one segment; the row does not clear; each shrink pays
++50 and each buffalo reaching 0 retires for +650. `resolveClears` (`resolve.js:74-101`) already
+iterates every animal in every filled row and does exactly that, so the **code is correct and
+was correct** — what was wrong is the comment above it and the AC that licensed it.
+
+#### 6.4b The termination floor is 2, not 4 — and the crash guard must move
+
+`resolveClears`' termination argument has now been wrong twice: once as *"ten cells, at most four
+of them the single permitted buffalo"*, and once as AC-504's amendment, *"9 cells, at most 5 of
+them buffalo, so every step removes at least 4."* **The second is wrong for the same reason the
+first was: it assumes one buffalo.**
+
+Re-derived properly. A completed row is `width` cells. Let *B* be the buffalo cells in it and
+*n* the number of buffalo. Every non-buffalo cell leaves and every buffalo spends exactly one
+segment, so the cells that leave are `(width − B) + n = width − (B − n)`, and `B − n` is
+`Σ(size − 1)` over those buffalo. Maximise that subject to `Σ size ≤ 9` and `size ≤ 5`: the pair
+**5 + 4** gives `4 + 3 = 7`. So
+
+> **at least `width − 7` = 2 cells leave the board on every clear step.**
+
+Measured, and the worst case is reachable rather than theoretical: *a step that removed no
+animal at all and shrank two buffalo, on a row that was nothing but buffalo.*
+
+**The consequence for `CHAIN_GUARD_STEPS`, and this is the design decision.** Two cells a step
+against a board holding at most `9 × 15 = 135` bounds a cascade at **67 steps**. The guard is
+**32**, which is now *below* the bound — so *"32 is more than twice the mass bound"* (AC-504b) is
+false, and there exists a legal resolution the guard would abort. That matters because a tripped
+guard may leave a completed row standing and **discards the run's score entirely** (AC-504e). A
+crash guard that can fire on legal play is not a crash guard.
+
+> **Decision: `CHAIN_GUARD_STEPS` becomes 68, and it is derived rather than written:**
+> `Math.floor(BOARD.width * BOARD.height / 2) + 1`.
+
+- **It restores the guard's only useful property**, which is that reaching it *proves* the engine
+  is broken. At 32 it proved nothing; at 68 it is unreachable by any legal cascade, so the
+  `CHAIN_GUARD` event, the `stats.chainGuardTrips` counter and AC-504e's refusal to persist the
+  run all mean what they say again.
+- **Raising it costs nothing.** A broken engine loops 68 times instead of 32 and is still
+  bounded; the deepest cascade ever measured is **4 steps**, against a committed 7-step fixture.
+- **It is derived from the constants**, so narrowing the board or changing the buffalo's size
+  moves it automatically — the AC-126 rule applied to the one constant that had escaped it. The
+  literal `32` was what let the bound and the guard drift apart in the first place.
+- **The cost is one bumped `ENGINE_VERSION`**, since `CHAIN_GUARD_STEPS` is in `TUNING_SURFACE`.
+  This pass discards resumes anyway (§13.4a), so it is free to take now and would not be later.
+
+AC-504 and AC-504b are both amended; AC-311b is withdrawn and replaced.
 
 #### What actually breaks
 
@@ -1027,15 +1096,17 @@ re-argued from the width, not deleted. AC-504 is amended.
 | HUD buffalo chip (AC-509/510) | shows one buffalo's remaining segments | **a design question, and the answer is: one chip per buffalo, ordered by row, plus the countdown.** A single chip showing one of four buffalo would be the tray's broken-preview defect in miniature — information on screen that is true of something other than what the player is looking at |
 | tray silhouette (AC-315c) | a batch can contain at most one buffalo, since it is scheduled once per turn | unchanged |
 | `SEAM_BUFFALO` / segment seams (`ui.md` §5.3) | per-animal, driven by `animal.size` | unchanged |
-| Hold the Line (`abilities.js:56`, `species: 'buffalo'`) | freezes arrivals for 5 turns; the ability's *species* is a label on the card | unchanged, and now more valuable — a frozen turn generates no batch (`engine.js:407`), so it skips a scheduled buffalo outright |
-| Migrate / Burrow (`abilities.js:234-250`, AC-1412/1412b) | buffalo is not a Migrate target and no ability removes a buffalo | **unchanged, and now load-bearing.** With one buffalo the rule was flavour; with a herd, a Burrow that removed a buffalo would delete five clears of work for one charge and would be the dominant play every time |
-| `CHAIN_GUARD_STEPS = 32` | crash guard | unchanged; the mass argument above still bounds the cascade |
+| Hold the Line (`abilities.js:56`, `species: 'buffalo'`) | freezes arrivals; a frozen turn generates no batch (`engine.js:407`), so it skipped a scheduled buffalo outright | **withdrawn entirely** (§13.2g). Its slot on the buffalo's card now holds **Stand Down** (§13.2f), which is retrospective rather than prospective — it moves the buffalo already on the board rather than deferring the next one |
+| Migrate / Burrow (`abilities.js:234-250`, AC-1412/1412b) | buffalo is not a Migrate target and no ability removes a buffalo | **unchanged, and now load-bearing.** With one buffalo the rule was flavour; with a herd, a Burrow that removed a buffalo would delete five clears of work for one charge and would be the dominant play every time. Stand Down does not breach it: it removes nothing (§13.2f-i) |
+| `CHAIN_GUARD_STEPS = 32` | crash guard, justified as *"more than twice the mass bound"* | **32 → 68, derived** — the mass floor is 2 cells a step, not 4, so the bound is 67 and 32 was *below* it. §6.4b |
+| Burrow's new left-pack (§13.2e) | new | the row it packs may contain a buffalo; the buffalo packs like any other body — its `x` may move, its `size` may not |
 
 #### The pressure is now legible or it is not fair
 
-With one buffalo the player could simply look at it. With up to ten, three things must be on
-screen and true (`ui.md` §7): **how many buffalo, how much is left of each, and how many turns
-until the next one.** The third is only possible because §5.5b's schedule has nothing left
+With one buffalo the player could simply look at it. With up to **eleven** — the measured worst
+case over 300 seeds, reproduced three independent ways — three things must be on screen and true
+(`ui.md` §7): **how many buffalo, how much is left of each, and how many turns until the next
+one.** The third is only possible because §5.5b's schedule has nothing left
 that can suppress it — which is the same contract §5.1 makes for the tray, applied to the one
 arrival the player most needs to plan around.
 
@@ -1474,7 +1545,32 @@ become `save.best.score` in the same pass, or Tundra's palette unlocks at `NaN`.
 
 **One unlock gets materially easier, and it should.** Night Savanna needs 10 buffalo retired.
 At the shipped 0.26 retirements per run that was about 38 runs; on the curve it is 0.69, about
-15. The goal was priced against a mechanic that was firing once per run — see §5.4.
+15. The goal was priced against a mechanic that was firing once per run — see §5.4. **With Stand
+Down (§13.2f) a run that spends its reserve on it retires 2.04**, so the same unlock is about 5
+runs for a player who uses the ability and about 15 for one who does not. That spread is
+acceptable — it is a cosmetic, and the ability is the thing the condition is now measuring.
+
+#### 9a-i The app says the records merged — one line, once
+
+**Decision (Q12's open half, which the owner answered only as to the merge rule).** Records
+carries a single dismissible line above the four values, the first time it is opened after the
+migration:
+
+> **`Habitats are gone. Your best from any habitat is now just your best.`**
+
+- 13/400 `ink-muted`, full content width, with a 28 pt tappable **×** at the right (AC-1414's
+  target-size rule applies to a dismiss as much as to a Cancel). Dismissal is persisted in
+  `save.settings`, so it appears exactly once per install.
+- It appears **only if the migration actually ran** — a save written at schema 5 or later never
+  shows it, so a new player never reads an apology for something that did not happen to them.
+- **Not a modal, not on Home, not on the Game Over sheet.** It belongs on the screen showing the
+  number that changed, at the moment the player looks at it, and nowhere that interrupts play.
+
+**Why not silence**, which was the defensible alternative: the numbers only go up, so nobody is
+worse off — but the number that changed is the one people remember, and a player who had a
+Tundra best and now sees a different figure on a screen that never explains itself will conclude
+the app lost their data. One line of copy is cheaper than one support email, and much cheaper
+than the review it would otherwise become.
 
 ---
 
@@ -1559,6 +1655,20 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 | D39 | Bands retuned down after the first bot measurement; ramp left alone deliberately | All three medians came in short. Bands are the first lever and moving two at once would make the next measurement unattributable (§5.6a). |
 | D40 | No band's low may be below 2 | `k ≥ 1` means the minimum arrival is one animal, so a band under the difficulty's mean animal size cannot be delivered (§5.6a, AC-306b). |
 | D41 | VoiceOver names species although the silhouette hides it | Parity is about what a player can act on, not about matching the quantity of information on screen (AC-902b). |
+| D61 | **Hold the Line is withdrawn.** Its slot on the buffalo's card becomes **Stand Down** | The owner reports it is indistinguishable from Dart, and the measurement is harsher: it is the only arm with a negative p90 (−5%) at the second-highest price. The anti-buffalo ability belongs on the buffalo's card, and that card was Hold's (§13.2g). Largest departure from approved design in this pass — `open-questions.md` Q14. |
+| D62 | **Stand Down: every buffalo loses all but one segment.** Shrink, not clear | Measured a factor of two apart: shrinking pays §6.4's premium **3.4× more often** (2.04 retirements a run against 0.60), clearing pays it **less** often than not using an ability at all (0.51), and clearing *one* buffalo for a whole reserve measures −7% at p90 (§13.2f). |
+| D71 | **Stand Down leaves the charge economy. It is earned by breaking 10 buffalo segments through play.** | The owner made it the late-game balance lever, and charges cannot fund one: score per turn falls **33%** from mid-run to the last fifteen turns while buffalo segments broken per turn rise **48%**, and against a full roster a 3-charge ability measures **0.01 uses a run** — dropping it to 2 measures the same. The currency has to be generated by the problem it solves (§13.2f-ii). |
+| D72 | **The meter is 10, stops at 10, and Stand Down's own shrinks do not fill it** | 10 fires once in a run that reached the late game and moves median run length by **+3%** — the buffalo become tractable without the curve flattening (cells at game over −21%, retirements 1.03 → 3.79). Banking a second use would be a reset rather than a recovery, and would create the one hoarding incentive §13.2f-iii cannot argue away (§13.2f-ii, §13.2f-v). |
+| D73 | **Nothing costs 3 charges any more, and the cap stays at 3** | The cap bounds how many turns of intervention you walk into a crisis holding, which is independent of whether anything is priced at its ceiling. A rung nobody can reach is worse than no rung (§13.2d). |
+| D74 | **The silhouette follows the ramp in force, not the theme** | Third instance of the same hole: light theme + Night Savanna flies a bone shadow at **dE 63.80** over a ground whose faintest animal is 28.82 — a "shadow" 2.2× more prominent than any animal. §16.4's rule is restated over *everything* drawn on a board ground rather than enumerated per element, with an inventory a test can check (`ui.md` §16.6). |
+| D63 | AC-1412b is **kept unamended** and bounded to removal | Both of its objections are objections to a *cheap removal*. Stand Down removes nothing, waives nothing, sits at the top of the price ladder and reaches only buffalo — so neither the scope ladder nor §6.4's premium is touched (§13.2f-i). |
+| D64 | **Stampede 3 → 2** | The +194% that bought it the top price does not reproduce on this curve: +5% median, +51% p90, and *identical at both prices* because a one-ply bot cannot value a repack. The measurement that justified 3 is falsified, and the top rung now has a tenant that needs it (§13.2d). |
+| D65 | **Dart stays at 1**, and the "move it to 2" pre-commitment is discharged | A bot that plays all three moves now measures Dart at +70% p90 — so the pre-commitment's trigger fired. At 2 it measures +6%/+11%, which would make it *the worst row at that price*: its value is volume, not power per use, and doubling the price halves the volume (§13.2d). |
+| D66 | **Burrow's second lever is applied: remove one animal, then left-pack its row** | The revisit condition has now been met twice by two measurements on two curves, and the reprice did not fix it. At 1 charge the lever gives +26% median against the shipped +9%, which is right for the rung 34% of runs never leave (§13.2e). |
+| D67 | **"At most one buffalo per row" is withdrawn** | True of two *full* buffalo only. 4 + 5 = 9 fits a 9-wide row exactly, and **15.2% of settled boards** have a doubled row, worst case **four** in one row (§6.4a). |
+| D68 | **`CHAIN_GUARD_STEPS` 32 → 68, derived from the constants** | The mass floor per clear step is 2 cells, not 4, so the cascade bound is 67 — *above* the guard. A crash guard reachable by legal play can abort a legal resolution and discard the run's score (AC-504e). At 68 it proves what it claims again (§6.4b). |
+| D69 | **The danger rows are part of the board theme, and the band is a ground** | A cosmetic supplying a ground supplied the cells and not the band, so Night Savanna repainted the ordinary rows and left the hazard in the base theme's colours. Two measured failures fell out of extending the rule, both pre-existing (`ui.md` §16.5). |
+| D70 | Records shows **one dismissible line** explaining the merged bests | The number that changed is the one people remember, and a support email about a "lost" high score costs more than one line of copy. Q12's open half, decided (§9a). |
 | D38 | The origin of a drag is marked as a **recess**, not a third outline | Past/present/future get three visual registers — recessed, solid, outlined — so only one of the three is an outline and the board does not read as a diagram (`ui.md` §5.5). |
 | D33 | Board narrowed to 9 columns; elephant 4 / buffalo 5; species mix fixed — bands re-derived from scratch | Each change alone forces a re-derivation, so three sequential adjustments cost more than one derivation and the intermediate states are not worth measuring (§5.6). |
 | D34 | The band controls the MEAN cells/turn, not each batch's total | §5.2 draws a whole number of animals so the realised mix can match §5.4; per-batch exactness was what biased the mix (§5.2). |
@@ -1598,10 +1708,10 @@ oversight — see `open-questions.md` Q5 for the leaderboard implication.
 
 ## 13. Layer D — Special abilities
 
-**Status: structure decided, numbers pending measurement.** The economy is priced in score,
-and score distributions on a 9-wide board with a corrected species mix do not exist yet
-(§5.7 ¶5 / AC-318b). Every threshold below is marked accordingly. **This layer does not block
-Slices 4–6.**
+**Status: shipped, played, and revised once on the owner's report.** The superseded status line said
+*"numbers pending measurement"* — they are measured now, on this curve, and the roster was revised
+after the owner played build 5. **§13.5 is the index to that revision**, §13.1 is the current roster,
+§13.2d carries the pricing evidence, and §13.2c is kept as history rather than as specification.
 
 The owner's framing: *"The game is all about increased entropy over time, where players can
 use some helps. Score thresholds where players are able to use a special ability from any
@@ -1615,27 +1725,45 @@ of the game is built on — and a game that only ever gets worse needs something
 
 ### 13.1 The five abilities
 
+*(Revised after the owner played build 5 — see §13.5. Hold the Line is gone, Stampede is
+repriced, Burrow gains its named second lever, and the buffalo's slot now holds the one thing
+in the game that can move a buffalo.)*
+
 | Species | Size | Ability | Effect | **Cost** |
 |---|---:|---|---|---:|
-| Rat 🐀 | 1 | **Burrow** | Remove one animal of your choice from the board | **1** |
+| Rat 🐀 | 1 | **Burrow** | Remove one animal of your choice, then **left-pack the row it was in** | **1** |
 | Fox 🦊 | 2 | **Dart** | This turn, make up to **three** moves instead of one | **1** |
 | Elk 🦌 | 3 | **Migrate** | Remove **every** animal of one species you choose | **2** |
-| Elephant 🐘 | 4 | **Stampede** | Left-pack every row, closing all gaps within each row, then gravity | **3** |
-| Buffalo 🐃 | 5 | **Hold the Line** | **No arrivals for 3 turns** | **2** |
+| Elephant 🐘 | 4 | **Stampede** | Left-pack every row, closing all gaps within each row, then gravity | **2** |
+| Buffalo 🐃 | 5 | **Stand Down** | **Every buffalo on the board loses all but one segment** | **not charges — 10 broken segments** |
+
+**Stand Down is not bought with charges.** It is bought with **the herd**: every buffalo segment
+you break by completing a row fills one notch of a 10-notch meter, and a full meter spends itself.
+§13.2f is why, and the reason is measured rather than aesthetic — the charge economy **cannot** fund
+a late-game tool, because score per turn falls by a third in exactly the phase the tool is for.
 
 **Costs are priced from measurement, not from size** — §13.2d. Scope scales with size; price
 scales with measured value, and the two ladders deliberately do not agree.
 
-**Scope scales with size, and that is the design.** Rat acts on one animal, fox on one turn's
-actions, elk on one species, elephant on the board's whole layout, buffalo on time itself. The
-game's central claim is that size is what matters; the abilities restate it in a second
-language rather than introducing an unrelated one.
+**Scope scales with size, and the ordinal is "what nothing smaller can reach."** Rat acts on
+one animal, fox on one turn's actions, elk on one species, elephant on the board's whole
+layout, buffalo on **the one object the rules make permanent**. That last rung used to read
+"time itself", which was Hold the Line's freeze; it now reads as the exception to every other
+rule in the game, and that is a strictly larger reach than Migrate's, not a collision with it.
+Migrate touches four species, none of which is the obstacle. Stand Down touches the one species
+that is, and it is the only thing in the game other than a completed row that can.
 
-Notes on the two that need them. **Stampede does not complete rows** — a row with seven cells
+The ordinal is deliberately **not** about cell count — Stampede touches all 135 cells and
+changes nothing's identity, Stand Down touches at most 11 animals and changes what they are.
+Reach is "what would otherwise be impossible", and a test asserts `scope` equals the species'
+own size so the claim stays a number rather than a sentence.
+
+Notes on the ones that need them. **Stampede does not complete rows** — a row with seven cells
 occupied still has seven after packing — it consolidates fragmented gaps into one usable gap
-per row, which is a large help without being a win button. **Hold the Line** is the owner's
-first example and belongs to the buffalo because the buffalo is the thing that stands in the
-herd's way; it is thematically exact.
+per row, which is a large help without being a win button. **Stand Down does not clear a
+buffalo and does not score** (§13.2f): the buffalo stays on the board, still refuses to clear,
+and must still be retired by completing its row. It changes the price of a buffalo from five
+row completions to one; it does not waive the bill.
 
 **Abilities are always available.** They are not gated on that species being on the board.
 "From any animal of choice" reads as *choose whichever ability you want*, and gating would
@@ -1678,10 +1806,12 @@ and the cap was being credited for it.
 you may walk into a crisis already holding. Three is chosen against the owner's intent, not
 against a risk:
 
-- **Three is a genuine rescue.** Stampede to repack the board, Migrate to clear a species,
-  Hold the Line for three turns of no arrivals — that sequence takes a nearly-dead board back
-  to playable. A reserve that cannot save you is not a reserve, and "save up for dangerous
-  situations" requires that saving up be *worth* it.
+- **Three is a genuine rescue.** *(Revised for §13.1's roster.)* One Stand Down to break the
+  herd, or Stampede plus a Burrow to repack and then pick a hole, or three Burrows spent on
+  three rows — any of those takes a nearly-dead board back to playable. A reserve that cannot
+  save you is not a reserve, and "save up for dangerous situations" requires that saving up be
+  *worth* it. Measured, the strongest single play a full reserve can buy takes buffalo cells at
+  game over from 17.9 to 14.3 and retirements from 0.60 to 2.04 (§13.2f-ii).
 - **Four begins to be a reset.** Past three, the reserve stops being a recovery from a bad
   position and becomes an undo of it, which removes the consequence of having played badly —
   and the player holding four has, by construction, been clearing well enough not to need
@@ -1729,7 +1859,13 @@ This is a defect in the economy rather than in its wording, so it gets a fix:
 - Resume needs nothing new: whether Last Stand has fired is reconstructible from the replay,
   since the engine knows when the band was first entered.
 
-### 13.2c The threshold ladder — priced
+### 13.2c The threshold ladder — priced *(SUPERSEDED by §5.9 and §13.2h)*
+
+> **This section is kept as history, not as specification.** It prices three ladders against
+> three habitats, and the habitats are gone (§5.5b). The shipped ladder is **one** array —
+> `[1700, 2300, 3600, 5800, 9200, 13900]` — derived in §5.9 and re-confirmed unchanged by
+> §13.2h. Everything below about *how* a rung is priced (a percentile of the measured
+> abilities-off distribution, re-derived on a retune rather than stranded) is still the rule.
 
 Measured over 300 bot runs per difficulty on the shipped bands. **Each charge is a percentile
 of that difficulty's own final-score distribution**, so a retune re-derives the ladder rather
@@ -1769,46 +1905,123 @@ Meadow would put the first charge beyond a median Tundra run entirely.
 
 ### 13.2d Abilities cost different amounts — priced from measurement
 
-**The diagnosis is about price, so the fix is about price.** Measured on Savanna over 120
-identical seeds per arm with a one-ply-lookahead bot, at one flat charge each:
+**The diagnosis is about price, so the fix is about price.** The original pricing was measured
+on **Savanna**, over 120 identical seeds per arm, at one flat charge each:
 
-| ability | species | scope | measured | **cost** | value per charge |
-|---|---|---|---:|---:|---:|
-| **Stampede** | elephant | the board's layout | +194% | **3** | 65 |
-| **Migrate** | elk | one species | +115% | **2** | 58 |
-| **Hold the Line** | buffalo | time | +16% turns, +4% score | **2** | — buys survival, not points |
-| **Burrow** | rat | one animal | +11% | **1** | 11 |
-| **Dart** | fox | one turn's actions | +8% (a floor — see below) | **1** | — |
+| ability | species | scope | measured | cost then |
+|---|---|---|---:|---:|
+| **Stampede** | elephant | the board's layout | +194% | 3 |
+| **Migrate** | elk | one species | +115% | 2 |
+| **Hold the Line** | buffalo | time | +16% turns, +4% score | 2 |
+| **Burrow** | rat | one animal | +11% | 1 |
+| **Dart** | fox | one turn's actions | +8% (a floor) | 1 |
 
-At a flat price the spread was **24×**. Priced this way it is 8×, and *"five rows at one price,
-four of them a tax on not picking the elephant"* becomes a question about how to spend a
-reserve.
+**Those numbers are superseded and one of them is falsified.** They were taken on the
+three-habitat build, at **1.13 buffalo per run**. This curve delivers **5.45**, and the whole
+shape of a board changed with it. §13.2da re-measures every arm on the shipped curve.
 
-**Scope follows size; price follows value. They are two different ladders and forcing them to
-agree would be dishonest.** §13.1's claim — rat acts on one animal, buffalo on time — is about
-what an ability *reaches*, and it still holds exactly. What it never claimed, and what the
-measurement disproves, is that reach and worth are the same thing: Hold the Line has the
-largest scope in the set and the smallest measured effect on score, because it buys turns
-rather than points. Pricing by size would have charged the most for it.
+#### 13.2da The re-measurement, on this curve
 
-**The 3-charge cap now does a second job.** A full reserve is *one* Stampede or *three*
-Burrows, so §13.2a's "recovery, not reset" dial also governs breadth against depth:
+200 identical seeds per arm. Two changes to the method, both of which matter:
+
+- **The ability is offered to the bot as one more one-ply candidate**, taken only when the
+  resulting board beats the best ordinary move. The old arms spent the charge the instant it
+  was affordable, which measured charge *income* more than it measured the ability — at a flat
+  cost of 1 the old policy fired Stampede **27.8 times a run**, which is not a use pattern any
+  player has.
+- **Each arm is priced at its candidate cost**, so charges are genuinely scarce and `uses/run`
+  is a number about the economy rather than about the harness.
+
+Control: abilities on, nothing spent. **Median score 2,312 · p90 6,165 · median 59 turns ·
+0.60 buffalo retired per run · 17.9 buffalo cells still standing at game over.**
+
+| ability | cost | uses/run | Δ median score | Δ p90 score | Δ turns | retired/run | buffalo cells at end |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **Burrow** *(+ left-pack)* | **1** | 2.98 | **+26%** | +23% | +20% | 0.79 | 19.4 (+9%) |
+| **Dart** | **1** | 2.71 | +10% | **+70%** | +6% | 1.05 | 18.8 (+5%) |
+| **Migrate** | **2** | 1.13 | +13% | +36% | +19% | 1.00 | 21.1 (+18%) |
+| **Stampede** | **2** | 0.57 | +5% | +51% | +8% | 1.22 | 19.7 (+10%) |
+| *Stand Down, priced at 3 charges — see below* | *3* | *0.55* | *+4%* | *+75%* | *+5%* | *2.04* | *14.3 (−20%)* |
+| *Burrow, as it shipped* | *1* | *2.73* | *+9%* | *+12%* | *+12%* | *0.73* | *19.9* |
+| *Hold the Line — withdrawn* | *2* | *0.98* | *+2%* | *−5%* | *+8%* | *0.60* | *18.4* |
+
+**Two orderings, and they are almost inverted.** On Δ median per charge the order is Burrow,
+Migrate, Stampede, Dart, Stand Down. On Δ p90 per charge it is Stand Down, Stampede, Dart,
+Migrate, Burrow. That is not noise and it is not a defect:
+
+> **The cheap abilities pay a median player. The dear ones pay a p90 player.**
+
+Which is the correct shape for an economy whose income scales with score, and it is the honest
+answer to *"3 points is a little bit costly"*: **a 3-charge ability is a p90 instrument by
+construction.** §13.2f measures exactly how few players reach it and names the lever.
+
+#### What moved, and why
+
+**Stampede 3 → 2.** The +194% that bought it the top price **does not reproduce**: on this
+curve it measures +5% median and +51% p90, and it measures *identically at cost 2 and cost 3*
+because the binding constraint on a one-ply bot is usefulness rather than affordability. That
+caveat cuts both ways and I am not claiming Stampede is weak — a one-ply search cannot value a
+repack it will only cash in two turns later, the same blindness §13.2d already conceded for
+Dart. What I am claiming is narrower and sufficient: **the specific measurement that justified
+3 has been falsified, the argument that Stampede "made the other four irrelevant" is no longer
+true of any column in the table, and the top rung now has a tenant that needs it.** At 2,
+Stampede sits beside Migrate (+13%/+36% against +5%/+51%) — different jobs, comparable worth.
+
+**Dart stays at 1, and the pre-commitment is discharged rather than ignored.** The superseded
+text promised that *"if human play shows Dart is strong, it moves to 2 before anything else
+changes"*, and a bot that actually plays out all three moves now shows it is: +70% at p90, the
+second-best in the table, at the cheapest price. **It still stays at 1**, for a reason the
+pre-commitment could not have known: repricing it to 2 puts it at +6% median and +11% p90 —
+which would make Dart *the worst row at that price*, recreating in one move the exact defect
+§13.2d was written to fix. Dart's value comes from **volume** (2.71 uses a run), not from power
+per use, and doubling its price halves the volume and throws away the value. The spread at rung
+1 is now 3× (Burrow's +23% p90 against Dart's +70%), against the 8× §13.2d accepted across the
+whole set.
+
+**Burrow gains its second lever** — §13.2e's condition was already met and the re-measurement
+met it again. See §13.2e.
+
+#### 13.2db The arm table measures one ability at a time, and that is its limit
+
+Every row above was measured with **that ability alone** available. That is the right way to
+price an ability against a control and the wrong way to ask whether a player will ever pick it.
+Re-measured with the **whole roster** available and every ability offered to the bot as a
+candidate, 200 seeds:
+
+| roster | uses/run, per ability | median | p90 | turns |
+|---|---|---:|---:|---:|
+| Burrow 1, Dart 1, Migrate 2, Stampede 2, **Stand Down 3** | burrow **1.51**, dart **1.41**, migrate 0.08, stampede 0.00, **standDown 0.01** | 2,962 | 9,435 | 68 |
+| the same with **Stand Down at 2** | burrow 1.51, dart 1.40, migrate 0.08, **standDown 0.01** | 2,962 | 9,765 | 68 |
+
+> **Priced in charges, Stand Down is never taken — 0.01 times a run — and dropping it to 2 does
+> not change that.**
+
+Two things cause it and only one of them is the bot:
+
+- **A 3-cost ability competes with three 1-cost purchases for a reserve that refills slowly.** The
+  bot spends on Burrow and Dart the moment it can and therefore never banks to 3. A human would bank
+  deliberately — but *deliberately refusing help for ten turns to afford the late-game lever* is
+  exactly the feeling the owner reported about Stampede at 3.
+- **A one-ply search cannot value Stand Down**, whose payoff is *"every buffalo is now one completion
+  from +650"* — two or more turns away. Same blindness as Stampede's. So 0.01 is a floor, not a
+  verdict, and the single-ability arm (+75% p90, 2.04 retirements) is the honest measure of the
+  *effect*.
+
+**Both point the same way, and neither is fixed by a price.** §13.2f prices it in a different
+currency instead.
+
+#### The reserve, after the repricing
 
 ```
 1 charge   Burrow, Dart
-2 charges  + Migrate, Hold the Line
-3 charges  + Stampede                      — your entire reserve, once
-4 charges  Stampede and change             — only reachable via Last Stand
+2 charges  + Migrate, Stampede
+3 charges  Stampede and change, or three Burrows
 ```
 
-**Stampede costing the whole reserve is the point.** It was the ability that made the other
-four irrelevant; now taking it costs you the other four, which is the decision the set was
-supposed to contain.
-
-**One caution about the numbers.** Dart's +8% is a **floor, not a verdict** — a one-ply bot
-cannot use three moves as a *plan*, so the measurement understates it in a way that will not
-show up until a human plays. It is priced at 1 on the assumption that the bot is wrong about
-it; if human play shows Dart is strong, it moves to 2 before anything else changes.
+**Nothing costs 3 any more, and that is deliberate.** The superseded ladder had Stampede alone at 3
+and Hold the Line as a trap at 2; this one has no trap and no unreachable top. The cap stays at 3
+(§13.2a) because it still bounds how many turns of intervention you may walk into a crisis holding —
+and Stand Down's absence from this ladder is the point of §13.2f, not an omission from it.
 
 ### 13.2e Burrow — the revisit condition is already met
 
@@ -1826,8 +2039,8 @@ Two findings, and they are separable:
 2. **Burrow is weak on its own terms**, and repricing it to 1 charge does not fix that — at 11
    per charge it is still the worst in the set.
 
-**So repricing is the first lever and not the last.** I am applying one change and naming the
-second rather than doing both, because two simultaneous changes make the next measurement
+**So repricing was the first lever and not the last.** One change was applied and the second
+was named rather than doing both, because two simultaneous changes make the next measurement
 unattributable — the discipline §5.7 sets and that §5.6b was written for ignoring.
 
 > **If Burrow is still the least-picked ability at 1 charge in human play, it gains gap
@@ -1843,17 +2056,329 @@ identifies for Dart, and it may understate Burrow too. It is not a reason to ign
 it is a reason to weigh human play more heavily than the sweep before applying the second
 lever.
 
+#### 13.2e · THE SECOND LEVER IS NOW APPLIED
+
+The condition has been met **a second time, on a second curve, by a second measurement**, and
+the reprice did not fix it: at 1 charge on this curve, Burrow-as-shipped is **+9% median and
++12% p90** — still last in the set on both, and still *"the row you pick once and never
+again."* One reprice, one re-measurement, one lever each: the ordering discipline is satisfied.
+
+> **Burrow is now: remove one animal of your choice, then left-pack the row it was in.**
+
+Measured at 1 charge, 200 seeds: **+26% median, +23% p90, 2.98 uses per run.** That is the
+highest *median* delta in the set at the lowest price, which is exactly right for the rung that
+34% of runs never leave (§13.2f). It does not threaten anything above it — at 2 charges the
+same effect collapses to +11% median and **−7% p90**, because its value is volume, so it is
+priced at 1 and can only ever be priced at 1.
+
+**Three things it deliberately does not become.**
+
+- **Not a second Stampede.** One row, of the player's choosing, and only the row the removed
+  animal was standing in. A player who wants a different row must spend a different charge.
+- **Not a row-completer.** Left-packing a row is a permutation of that row's occupancy
+  (AC-1411's argument, applied to one row): a row that was two cells short is two cells short
+  afterwards. Burrow's *removal* is what changes occupancy, and it changes it by exactly one
+  animal, as it always did.
+- **Not a buffalo tool.** The row it packs may contain a buffalo, and the buffalo packs with it
+  like any other body — its `x` may move, its `size` may not. AC-1412b is untouched: Burrow
+  still cannot target a buffalo and still cannot remove one.
+
+### 13.2f Stand Down — the buffalo's own counter
+
+**The owner, after build 5:** *"We need to have a mean to deal with buffalo, probably 3 points
+ability is for that. Either clear them or shrink them to 1."* And then, on what it is for: *"yea,
+having a solution to deal with buffalo is a way I think to balance the late game."*
+
+> **Stand Down.** Every buffalo on the board loses all but one segment: each buffalo's `size`
+> becomes **1**, its `x` unchanged. Gravity then settles as it does after any action. No buffalo is
+> removed, nothing is retired, and **no score is awarded** (§13.2f-iv).
+>
+> **It costs no charge.** It is earned by breaking **10 buffalo segments** through play, on a meter
+> the herd itself fills (§13.2f-ii).
+
+**Two decisions, and both are measured rather than argued.** §13.2f-ii is the price — *why the
+charge economy cannot fund a late-game tool at any price*. This section is the effect: **shrink, not
+clear**, and they are not alternatives but a factor of two apart. The owner offered both; over 200
+identical seeds they separate decisively:
+
+| the effect, measured at a fixed price | Δ median | Δ p90 | **buffalo retired / run** | buffalo cells at game over |
+|---|---:|---:|---:|---:|
+| control (nothing spent) | — | — | 0.60 | 17.9 |
+| **shrink every buffalo to 1** | +4% | **+75%** | **2.04** | 14.3 (−20%) |
+| clear every buffalo | +6% | +2% | **0.51** | 13.5 (−25%) |
+| clear one buffalo | −0% | −7% | 0.61 | 16.8 (−6%) |
+
+**Clearing them forfeits §6.4's premium and the measurement shows it going backwards.**
+Retirements *fall below control* — 0.51 against 0.60 — because a buffalo deleted is a buffalo
+that can never be retired, and the +650 goes with it. It clears the board a little better and
+pays 2% at p90 against shrink's 75%. **Clearing one buffalo for three charges is actively bad
+play**: −7% at p90, which is what spending your entire reserve to delete one +650 looks like.
+
+So: **shrink to 1.** The owner's instinct held and their own second option was the better one.
+
+#### 13.2f-i Why this does not overrule AC-1412b
+
+AC-1412b forbids any ability reaching the buffalo, on two grounds. Read closely, **both are
+objections to *removal*, and both are priced in charges** — which is why a 3-charge shrink
+threads them rather than breaking them.
+
+| AC-1412b's objection | Why Stand Down does not raise it |
+|---|---|
+| *"If rat's one animal may be the largest obstacle in the game, the weakest ability quietly becomes the strongest single play"* — **the scope ladder inverts** | Stand Down is not the weakest ability. It is the **buffalo's own**, at scope 5, at the **top of the price ladder**, and it reaches **nothing but buffalo**. The ladder is not inverted; it is completed — the one rung whose object nothing else could touch now has an ability that touches it, and it costs the most. Burrow still cannot target a buffalo and still cannot remove one. |
+| *"The buffalo is worth 900 against 500 for five clean rows **because** you commit to it. One charge that deletes it makes taking the premium optional and never costly"* — **the premium stops being a decision** | Stand Down **removes nothing and waives nothing.** The buffalo stays on the board, still refuses to clear, still has to be retired by completing its row, and still pays +650 when it is. The commitment is reduced from five completions to one; it is not skipped. The measurement is the proof: the premium gets **paid 3.4× more often** with Stand Down than without it (2.04 retirements against 0.60), where clearing them pays it **less** often (0.51). An ability that makes a premium get collected is not an ability that makes it optional. |
+
+**So AC-1412b survives unamended in its own terms and gains a stated boundary:** the rule is
+*no ability **removes** a buffalo*, and it is per-object. Stand Down is the one ability that may
+**change** one, and it changes the only field of it that the rules already change — `size`, by
+the only mechanism the rules already use, a decrement. It does not invent a new relationship
+with the buffalo; it buys the one the game already has, in bulk, once.
+
+#### 13.2f-ii It is not bought with charges. It is bought with the herd.
+
+**The owner has given this ability a job:** *"yea, having a solution to deal with buffalo is a way I
+think to balance the late game."* That is them choosing a **tool** over a population cap, having
+already refused a cap with the worst case in front of them — and the reasoning is right. A cap is
+the game protecting the player, so past the third buffalo ignoring them stops costing anything, and
+*"clear it as soon as possible"* means nothing. A tool keeps the ratchet and makes spending against
+it a decision.
+
+**Which is exactly why it cannot be priced in charges.** Charges are earned by score and score is
+earned by clearing rows, and *the late game is the phase in which the player stops clearing rows* —
+that is what makes it the late game. Measured over 262 runs of 40+ turns:
+
+| phase of the run | clearing turns | **score per turn** | locked buffalo segments |
+|---|---:|---:|---:|
+| first 15 turns | 25.6% | 38 | 0.9 |
+| the middle | 38.2% | **51** | 5.8 |
+| **last 15 turns** | 29.8% | **34** | **11.2** |
+
+**Score per turn falls 33% from the middle of a run to its last fifteen turns, while the herd's
+locked load doubles.** So a charge-priced anti-buffalo tool is at its dearest, in real terms, at the
+exact moment the owner wants it used. §13.2db then shows the other half: even when it *is*
+affordable, a 3-cost ability never gets taken over three 1-cost ones — **0.01 uses a run.**
+
+Repricing does not fix either half. **A different currency does**, and the buffalo is holding it:
+
+> **Stand Down is earned, not bought. Every buffalo segment broken by a completed row fills one
+> notch of a 10-notch meter. At 10, Stand Down is available and costs no charge; using it empties
+> the meter.** Only play fills it — Stand Down's own shrinks never do, or it would refill itself.
+
+**The currency is generated by the problem it solves, which is the whole argument.** Measured over
+the same 262 runs, the two currencies move in **opposite directions** across a run:
+
+| | early half | late half | change |
+|---|---:|---:|---:|
+| **score** per turn | 38 → 51 (peak) | **34** | **−33%** from the peak |
+| **buffalo segments broken** per turn | 0.128 | **0.189** | **+48%** |
+
+A board crowded with buffalo is a board where most completed rows contain one, so **the meter fills
+faster the worse the board gets.** That is the exact property the score ladder lacks, and it is why
+this is a second currency rather than a discount on the first.
+
+**Why 10.** Measured with the full roster available, 200 seeds, against a control of median 2,962 /
+p90 9,435 / 68 turns / 1.03 buffalo retired / 20.1 buffalo cells standing at game over:
+
+| meter | uses/run | Δ median | Δ p90 | **Δ turns** | retired/run | cells at end |
+|---:|---:|---:|---:|---:|---:|---:|
+| 9 | 1.13 | +24% | +99% | **+6%** | 3.93 | 14.9 (−26%) |
+| **10** | **0.98** | **+11%** | **+97%** | **+3%** | **3.79** | **15.8 (−21%)** |
+| 11 | 0.81 | +2% | +89% | +3% | 3.37 | 16.7 |
+| 12 | 0.69 | +2% | +67% | **0%** | 3.04 | 16.7 (−17%) |
+| 16 | 0.42 | 0% | +72% | 0% | 2.48 | 18.1 |
+| *priced at 3 charges instead* | *0.01* | *0%* | *0%* | *0%* | *1.05* | *20.1* |
+
+**10 fires once in a run that reached the late game, and barely moves how long a run lasts.** Median
+run length goes 68 → 70, **+3%** — so the tool is not a survivability handout; what it moves is the
+buffalo specifically, taking cells still standing at game over down **21%** and retirements up from
+1.03 to **3.79**. p90 nearly doubles. That is *survivable by skilful play, not flat*: the average
+game is the same length, the buffalo become tractable, and the skilled run is rewarded.
+
+**And 10 has a symmetry worth stating rather than a round-number defence:** the median run's worst
+herd locks **13** segments (§5.9). So a median run's own buffalo debt pays for **exactly one** Stand
+Down, with change. The herd charges you thirteen and hands you the tool at ten.
+
+> **The levers, named in advance.** Too dear → **9** (1.13 uses, +6% turns). Too generous → **12**
+> (0.69 uses, **0%** turns, cells still −17%). Do not reach for a charge price: §13.2db measured
+> both 3 and 2 at **0.01 uses a run**.
+
+#### 13.2f-ii-b Does it reach the drowning player, or only the one doing well?
+
+**This is the question a charge price failed.** Bucketing 300 runs by the worst herd they ever
+carried, and asking whether the tool was available to them:
+
+| peak locked segments | runs | **meter fires ≥ once** | charges ≥ 3 at the crisis *(the superseded model)* | median lifetime charges |
+|---:|---:|---:|---:|---:|
+| 5–9 | 56 | **13%** | 8% | 1 |
+| **10–14** *(the modal crisis)* | **175** | **26%** | **34%** | **2** |
+| 15–19 | 63 | **24%** | 81% | 3 |
+| 20+ | 6 | **33%** | 100% | 4 |
+
+**Read the shape, not the level.** Charge availability climbs 8 → 34 → 81 → 100%: it concentrates
+the tool in the runs that need it least. The meter runs 13 → 26 → 24 → 33%: **flat to rising,
+because it does not ask how well you have been scoring.** That is Last Stand's principle
+(§13.2b, AC-1408e) expressed as a currency instead of as a one-off grant — and unlike Last Stand it
+is not capped at once per run, because the buffalo are not capped either.
+
+*(The levels in that column are measured with Stand Down as the **only** ability available, so runs
+are shorter and the meter fills less often than in the full-roster measurement above; 0.33 uses a run
+there against 0.98. The comparison between columns is the finding; the absolute level is the
+roster-free floor.)*
+
+#### 13.2f-iii It does not reward hoarding buffalo, and that was measured before it was claimed
+
+The obvious objection, and the meter makes it sharper than a charge price did: an ability whose
+value scales with the herd, **paid for by the herd**, looks like it teaches the player to *let the
+herd grow* — the exact opposite of the owner's *"the player need to try to clear it as soon as
+possible."*
+
+**It does not, and the meter is the reason.** The meter fills **only from segments broken through
+play**. A player who lets the herd grow and does not grind it is a player whose meter does not fill:
+**ignoring buffalo is the one strategy that cannot buy the anti-buffalo tool.** The currency is not
+the herd's *size*, it is the *work already done against it* — which is "as soon as possible" written
+as an economy rather than as an instruction.
+
+Measured, 200 seeds, varying the size of herd a policy waits for before firing:
+
+| fires when ≥ n buffalo have segments to lose | uses/run | segments per use | Δ p90 score | buffalo cells at end |
+|---:|---:|---:|---:|---:|
+| **1** (fire at the first opportunity) | 0.63 | 9.9 | **+79%** | 13.8 |
+| 2 | 0.63 | 10.0 | +80% | 13.9 |
+| 3 | 0.63 | 10.8 | +80% | 13.7 |
+| 5 | 0.47 | 13.5 | +52% | 13.7 |
+| 7 | 0.15 | 16.8 | +41% | 16.1 |
+
+**Waiting converts more per use and scores less.** At a gate of 7 it converts 70% more segments
+each time and gives up half the p90 gain, and the ratchet barely moves (16.1 against 13.8). The
+second reason is structural and needs no balancing: the run ends when it ends, so **a run spent
+waiting for an eleven-buffalo board is a run that ends on an eleven-buffalo board.** The greedy read
+— fire it when it helps — is also the correct one.
+
+*(That table was measured against the superseded charge price. It is kept because the property it
+tests — does waiting pay? — belongs to the **effect** rather than to the price, and the meter can
+only strengthen the answer: under the meter, waiting also stops the currency arriving.)*
+
+#### 13.2f-iv Four rules the implementation must not get wrong
+
+1. **It scores nothing.** Not +50 per segment, not +650 per buffalo, not anything. AC-1403 says
+   spending costs no score; this says spending *earns* none either. The shrink path inside
+   `resolveClears` pays 50 a segment because it was bought with a completed row; a button is not
+   a completed row, and wiring Stand Down through that path would pay up to 500 for one tap.
+2. **A buffalo already at size 1 is untouched**, and is not a reason to refuse the ability.
+3. **With no buffalo on the board the ability is unavailable** — the sheet row is disabled with the
+   reason shown and an armed use is rejected. **The meter is not emptied**, which is AC-1414's rule
+   in the second currency: a full meter that evaporates for nothing is the opposite of an assist.
+4. **It is the turn's action**, like every other ability (AC-1406). Gravity settles, the arrival
+   lands, the board is judged. Freeing up to 44 cells in one ACTION phase is the largest single
+   structural change the engine can be asked to make, and it resolves through exactly the same
+   SETTLE → ARRIVAL → JUDGE path as a one-cell drag.
+
+#### 13.2f-v The meter, specified
+
+| | |
+|---|---|
+| **unit** | one buffalo **segment** removed by a completed row — the same event that pays +50 (§7.2) and the same event `stats.buffaloShrinks` already counts |
+| **full at** | **10**. `STAND_DOWN_SEGMENTS`, and it joins `TUNING_SURFACE` |
+| **a retirement** | a buffalo going from size 1 to retired is **one** segment and fills **one** notch. It is the last segment, not a bonus |
+| **Stand Down's own shrinks** | fill **nothing**. Otherwise the ability refills itself and the meter is not a cost |
+| **spending** | using Stand Down empties the meter to **0**. It does not carry a remainder |
+| **overflow** | the meter **stops at 10** and does not bank past it. A player sitting on a full meter is a player the game is telling to use it, which is §13.2a's saturation pressure applied to the second currency |
+| **persistence** | reconstructed by replay like everything else (§13.4a). `buffaloShrinks` is already in the event stream, so nothing new is stored |
+| **no buffalo on the board** | the meter still fills and still holds; the **ability** is unavailable because it has no target (§13.2f-iv rule 3) |
+
+**Why the meter stops at 10 rather than banking two uses.** A banked second use is a reset rather
+than a recovery — §13.2a's dial, applied to the second currency, and the same reasoning that caps
+charges at 3. It also removes the only version of the hoarding incentive §13.2f-iii could not
+argue away: if the meter banked, a player would have a reason to grind buffalo *without spending*,
+and grinding without spending is the behaviour that leaves the board locked.
+
+#### 13.2f-vi Two currencies, and why that is a simplification rather than an addition
+
+The economy now has two, and they do not touch:
+
+| | **charges** | **the meter** |
+|---|---|---|
+| earned by | crossing score thresholds; plus Last Stand | breaking buffalo segments by play |
+| earned fastest | mid-run, when clearing is easiest | **late**, when the board is crowded (+48% per turn) |
+| buys | Burrow, Dart, Migrate, Stampede | Stand Down, and nothing else |
+| held | 3, plus a crisis slot | 10 notches, no bank |
+| the problem it answers | *"I cannot see a move"* | *"the herd has taken the board"* |
+
+**One currency was doing two jobs badly.** The score ladder is a fine instrument for *"help me play
+better"* — it rewards the clearing it is earned by, and §13.2's ruling that spending costs no score
+keeps the leaderboard honest. It is the wrong instrument for *"help me with the thing that is
+stopping me clearing"*, because it is downstream of the blockage. Splitting them means neither has
+to compromise: the charge ladder does not need a special rung, Stand Down does not need a price, and
+the two never compete for the same reserve — which is what §13.2db measured going wrong.
+
+**What it costs.** One new constant, one new HUD element on a strip that already exists (`ui.md`
+§7.1), and a second thing for a new player to learn. The last is real, and it is paid for by the
+onboarding beat that already teaches the buffalo: the meter is taught by the same board that teaches
+what a buffalo is, because it is the same fact — *breaking a buffalo is progress, and it is counted.*
+
+### 13.2g Hold the Line is withdrawn
+
+**The owner:** *"`Hold the line` and `Dart` are basically the same thing."*
+
+**They are right about the feel, and the mechanisms really are different.** Dart keeps the turn
+open: the turn number, the streak, the queue and the PRNG all stand still while the board and
+the score move (`engine.js:445-457`). Hold suppressed the arrival on N turns that otherwise ran
+normally (`frozen`, `engine.js:180`). But over the window a player experiences them in, the
+ratio they change is the same one:
+
+| | moves | arrivals | turns |
+|---|---:|---:|---:|
+| an ordinary turn, ×3 | 3 | 3 | 3 |
+| **Dart** | 3 | 1 | 1 |
+| **Hold the Line** | 3 | 0 | 3 |
+
+**Both are "board work without the board filling", and one cost 1 while the other cost 2** — so
+the dearer one looked strictly worse unless the difference was legible, and the owner reports it
+is not. The measurement agrees and is blunter than the owner was: Hold is the **only arm in the
+table with a negative p90** (−5%), at the second-highest price, and the sweep that was built to
+defend it found it spends 0.98 charges a run to achieve +2% median.
+
+**So it is Hold that goes, and the choice between the two is structurally forced rather than a
+judgement about which I liked more.** The anti-buffalo ability belongs on the buffalo's card —
+the buffalo is the obstacle, so the buffalo's ability should be the thing that moves it — and
+the buffalo's card is the one Hold was on. Dart survives on its own merits besides: it is the
+one ability that does nothing *for* the player and instead lets them do more, so its ceiling
+rises with skill, and a one-ply bot that plays all three moves already measures it second-best
+at p90.
+
+**Recorded honestly: Hold the Line was the owner's own first example of an ability** (§13.1 said
+so), and deleting it is the largest departure from approved design in this pass. It is
+`open-questions.md` **Q14** for that reason, with my recommendation being to delete it.
+
+**What goes with it, and it is a real simplification.** `HOLD_TURNS`, the `frozen` state, the
+`arrivalSkipped` branch in ADVANCE (`engine.js:400`), the tray's second state (`FROZEN · n`,
+`frozenLabel`, `FROZEN_STRIP_OPACITY`, `trayStripOpacity`), `format.js`'s frozen accessibility
+sentence, and `AC-1410`/`1410b`/`1410c`/`1410d` in their entirety. After it, **nothing in the
+game can suppress an arrival** — which makes §5.5b's *"there is nothing left that can suppress a
+scheduled buffalo"* true of the abilities too, and turns §13.3's self-limiting argument from a
+piece of reasoning into a structural fact. The tray has one state again.
+
+**One loss to name:** a frozen turn used to skip a scheduled buffalo outright (§6.4a), so Hold
+was a weak, prospective anti-buffalo tool. Stand Down replaces a prospective one with a
+retrospective one, which is the right way round — the buffalo the player needs help with is the
+one already standing on their board, not the one on the countdown.
+
 ### 13.3 What it does to the difficulty curve
 
-§5.5's ramp guarantees every run ends, and **Hold the Line attacks that guarantee directly**.
-It survives, for a reason worth stating because it is not obvious:
+§5.5's ramp guarantees every run ends, and **Hold the Line was the only ability that attacked
+that guarantee.** With Hold withdrawn (§13.2g) the guarantee stops needing an argument:
 
-> **The economy is self-limiting. Charges are earned by score, score is earned by clearing,
-> and clearing requires arrivals.** A player cannot freeze their way to an unbounded run,
-> because freezing stops the supply of the thing that buys freezes.
+> **No ability can suppress an arrival.** Every turn, however it is spent, delivers its batch.
+> The economy's self-limiting property — charges come from score, score from clearing, clearing
+> from arrivals — is now a *consequence* of that rather than a defence against a counterexample.
 
-With escalating thresholds and a 3-charge cap, a strong run might spend 9–12 frozen turns in
-total. That extends a run; it does not make one unbounded. **Runs still always end.**
+The measurement is still worth keeping, because it is what retires the worry rather than
+restating it: with every remaining ability available and a policy that spends everything it
+earns, **zero of 200 runs per arm failed to end**, and the longest arm moved the median run from
+59 turns to 62 (+5%, Stand Down). **Runs still always end**, and now by construction.
+
+**Stand Down is the ability a future reader will suspect of this**, so: it frees up to 44 cells at
+once and moves median run length by **+3%** at its shipped 10-segment meter (68 → 70 turns). It buys
+score, not time — §13.2f-ii.
 
 The pacing ranges in **AC-318** are measured with abilities disabled. They describe the difficulty
 curve, and a curve measured with an optional player-controlled intervention in it is not a
@@ -1874,4 +2399,110 @@ Resume is nearly free: `moves[]` already records one entry per turn (§9), so an
 a third move type — `{ t: 'A', ability, target }` — and the replay reconstructs charges by
 re-running the score. Nothing new is persisted.
 
+### 13.4a What the revised roster costs stored runs
+
+**Every stored resume written before this pass is discarded, and that is correct rather than
+unfortunate.** `ABILITIES` and `HOLD_TURNS` are both members of `TUNING_SURFACE`
+(`src/ui/session.js:101`), which is FNV-1a hashed into `ENGINE_VERSION`. Five of this pass's
+changes touch it:
+
+| change | in the fingerprint via |
+|---|---|
+| `hold` removed, `standDown` added | `ABILITIES` |
+| `STAND_DOWN_SEGMENTS = 10` added | a new member of the surface |
+| `stampede.cost` 3 → 2 | `ABILITIES` |
+| Burrow's effect gains the left-pack | `ABILITIES` *(a `packs: true` field — see below)* |
+| `HOLD_TURNS` deleted | the surface loses a member |
+| `CHAIN_GUARD_STEPS` 32 → 68 (§6.4b) | `CHAIN_GUARD_STEPS` |
+
+So `ENGINE_VERSION` changes, and AC-1016 discards every stored resume without replaying it.
+**That is the only correct outcome**: a replay of `{seed, moves[]}` under this roster rebuilds a
+different board from the same inputs — a stored `{t:'A', ability:'hold'}` names an ability that
+no longer exists, and a stored `{t:'A', ability:'stampede'}` replays into a different charge
+count. Same ruling as §5.10: **no migration, one interrupted run per player, silence.**
+
+**The developer must not add a tolerant replay.** Skipping an unknown ability, or defaulting its
+cost, is replaying a run under rules that did not produce it — the precise failure AC-1016
+exists to prevent. The version check is the whole mechanism and it must stay the only one.
+
+**Burrow's change must be visible to the fingerprint**, and a `cost` that did not move will not
+make it so. `ABILITIES.burrow` therefore carries the behaviour as data — a `packs: true` field
+alongside `scope`, `cost` and `target` — so the hash sees an effect change the way it already
+sees a price change. A behaviour change invisible to `TUNING_SURFACE` is the one shape of this
+bug the surface cannot catch, and §5.10's `ENGINE_REVISION` bump exists for exactly the cases
+where that cannot be arranged. Here it can be, so it is.
+
+**The save is untouched.** Records, lifetime totals, unlocks, the daily streak and settings are
+a separate blob, and none of the four unlock conditions references an ability
+(`src/ui/cosmetics.js:36-76`). No migration step is needed for this pass.
+
+**The meter costs the resume nothing.** `stats.buffaloShrinks` is already folded from the event
+stream (`engine.js:477`), and the meter is a function of that stream plus the turns Stand Down was
+used on — both of which a replay reproduces. **Nothing new is persisted**, exactly as for charges
+(AC-1416). The one thing the replay must get right is rule 2 of §13.2f-v: a shrink caused by Stand
+Down does not fill the meter, so the fold has to distinguish a shrink that came from a completed row
+from one that came from the ability. The event stream already carries the phase, so it can.
+
 ---
+
+### 13.2h The threshold ladder does not move, and this is why
+
+The natural worry about a repricing is that it strands the ladder. **It cannot, and the reason
+is structural: AC-1404 requires the score distribution the ladder is priced from to be measured
+with abilities *disabled*.** The ladder is therefore a function of the **curve**, not of the
+roster. Pass 1 re-derived it because the curve moved (median score 2,655 → 2,325); nothing in
+this pass touches a band, a weight, a phase or the scoring table.
+
+Re-derived independently over 300 abilities-off seeds while checking this, and reproduced
+exactly:
+
+| rung | p35 | p50 | p75 | p90 | p90×1.6 | p90×2.4 |
+|---|---:|---:|---:|---:|---:|---:|
+| measured raw | 1,750 | 2,335 | 3,635 | 5,870 | — | — |
+| **ladder, floored to 100** | **1,700** | **2,300** | **3,600** | **5,800** | **9,200** | **13,900** |
+
+which is `ABILITY_THRESHOLDS` as it ships. **No change, and the confirmation is worth as much as
+the change would have been.**
+
+**What the income actually is, measured**, because §13.2f's pricing argument rests on it — rungs
+crossed plus Last Stand, over the same 300 seeds:
+
+| charges earned in a run | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| runs | 102 | 42 | 79 | 47 | 23 | 6 | 1 |
+
+Median **3**, mean 2.56, p90 **5**. **52% of runs can afford a 3-charge ability at some point;
+2% can afford two.** AC-1405e asked for "a median run earns two, a p90 run earns four" and the
+curve delivers three and five — one rung generous of specification, in the player's favour, and
+not worth retuning for.
+
+---
+
+## 13.5 The build-5 report, and what each half of it became
+
+The owner played build 5 and reported three things. They are recorded here together because two
+of the three turned out to be the same defect seen from different sides.
+
+| what they said | what it was | where it went |
+|---|---|---|
+| *"`Hold the line` and `Dart` are basically the same thing"* | True of the felt effect, and the measurement is harsher than the report: Hold is the only arm with a **negative p90**, at the second-highest price | §13.2g — Hold withdrawn; the buffalo's slot freed |
+| *"Stampede is good, but 3 points is a little bit costly"* | True, and the price rested on a **falsified** measurement: the +194% that bought it 3 was taken at 1.13 buffalo a run and measures +5%/+51% here | §13.2d — Stampede to 2 |
+| *"We need to have a mean to deal with buffalo, probably 3 points ability is for that. Either clear them or shrink them to 1"* | The expected consequence of their own uncapped-herd decision (§5.9), not a reversal of it. Their two variants are **a factor of two apart** and the second is the better one | §13.2f — Stand Down, on the slot Hold vacated |
+| *"yea, having a solution to deal with buffalo is a way I think to balance the late game"* | This makes it a **balance lever**, not a convenience — and a lever the charge economy **cannot fund**: score per turn falls 33% in the late game while buffalo work rises 48%, and a 3-cost ability measures **0.01 uses a run** against a full roster | §13.2f-ii — it leaves the charge economy for a meter the herd fills |
+
+**The four fit together into one change rather than four patches**, and that is the reason to land
+them at once: the redundancy freed the buffalo's slot, the anti-buffalo tool needed a currency, the
+currency the roster had could not reach the late game, and the rung it would have sat on had a
+tenant on a falsified price. Fixing any one alone leaves the roster worse shaped than fixing all
+four.
+
+**What this does not change.** The charge cap is still 3 (§13.2a), Last Stand is unchanged
+(§13.2b), the threshold ladder is unchanged and does not need re-deriving (§13.2h), spending
+still costs no score (§13.2), and an ability is still the turn's action.
+
+**And the thing it does not do, because the owner chose against it twice:** there is still **no
+population cap on buffalo** (§5.9, `open-questions.md` Q3). A cap is the game protecting the player,
+so past the third buffalo ignoring them would stop costing anything and *"clear it as soon as
+possible"* would mean nothing. A tool keeps the ratchet and makes spending against it a decision —
+and the meter makes that decision sharper still, because the only way to earn the tool is to have
+been doing the work.

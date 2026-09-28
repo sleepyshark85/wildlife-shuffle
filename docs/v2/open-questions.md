@@ -238,24 +238,24 @@ is "hard, and I keep starting another run", the cap stays off.
 
 ---
 
-## Q12 · The merged records — one line of explanation, or none?
+## Q12 · The merged records — one line of explanation, or none? — **CLOSED, DECIDED**
 
 > **ANSWERED (owner, 23 Sep 2026): merge by best score.** The highest of the three per
 > stat survives; which habitat produced it is lost. Not "keep as history" and not "reset" —
 > the owner's best score stays their best score.
-
-
-Your three sets of per-habitat bests merge into one by taking the maximum (`gameplay.md` §9a).
-That is a decision I made and I am not asking you to remake it. What I am asking is whether
-the app **says so**.
-
-**My recommendation: one line on Records, once, dismissible.** *"Habitats are gone — your
-best from any habitat is now just your best."* A player who had a Tundra best and now sees a
-different number on a screen that never explains itself will assume the app lost their data,
-and a support email about a lost high score costs more than one line of copy.
-
-The alternative is silence, which is defensible — the numbers only go up, so nobody is worse
-off. I recommend against it because the number that changed is the one people remember.
+>
+> **The second half is now decided rather than re-asked (`gameplay.md` §9a-i, D70): one
+> dismissible line on Records, shown only if the migration actually ran.**
+>
+> `Habitats are gone. Your best from any habitat is now just your best.`
+>
+> 13/400 `ink-muted`, a 28 pt tappable ×, dismissal persisted, once per install. Not a modal,
+> not on Home, not on the Game Over sheet. **Reasoning:** the number that changed is the one
+> people remember, and a player who sees a different figure on a screen that never explains
+> itself concludes the app lost their data. One line of copy is cheaper than one support email.
+> Silence was defensible — the numbers only go up — and it is not worth the risk. **It is out of
+> this document because it is a product-voice call rather than a question about your intent, and
+> re-asking half a question you already answered is surveying.** Overrule it here if you disagree.
 
 ---
 
@@ -282,6 +282,94 @@ statement about what the game is.
 
 ---
 
+## Q14 · Hold the Line was **your** first example of an ability, and I am deleting it
+
+> **ANSWERED (owner, 28 Sep 2026): delete it.** They were shown that it is the only arm
+> with a negative p90 (−5%) at the second-highest price, and that its slot on the buffalo's
+> card is where Stand Down goes. They chose deletion over redesigning it a new job.
+
+
+**This is the one thing in this pass that genuinely turns on how far the design may depart from what
+you have approved, so it is the one thing I am asking rather than deciding.**
+
+You reported that *"`Hold the line` and `Dart` are basically the same thing"*. That is a complaint
+about the **pair**. It does not say which of the two to remove, and §13.1 of the approved design
+records Hold the Line as **your own first example of what an ability should be** — *"score thresholds
+where players are able to use a special ability from any animal of choice"* came with the freeze
+attached.
+
+**My recommendation: delete Hold the Line, and give its slot to Stand Down** (`gameplay.md` §13.2g).
+
+- **The measurement is harsher than your report.** Hold is the **only ability in the set with a
+  negative p90** (−5%), at the second-highest price, spending 0.98 charges a run to buy +2% median.
+  The sweep that was built to defend its termination properties is the sweep that found this.
+- **The choice between the two is structurally forced once you accept that the anti-buffalo ability
+  belongs on the buffalo's card** — and it does, because the buffalo is the obstacle. That card was
+  Hold's. If Dart went instead, the anti-buffalo ability would sit on the fox, which has no
+  relationship with the buffalo at all.
+- **Dart survives on its own merits besides.** It is the one ability that does nothing *for* the
+  player and instead lets them do more, so its ceiling rises with skill. A bot that plays all three
+  moves measures it second-best at p90 (+70%), and §13.2d always suspected the harness was
+  understating it.
+- **It is a real simplification.** After it, nothing in the game can suppress an arrival — which
+  makes §5.5b's *"there is nothing left that can suppress a scheduled buffalo"* true of the
+  abilities too, and returns the tray to one state.
+
+**The alternative, if you want the freeze kept:** delete **Dart** instead and move Stand Down onto
+the elephant's card at 3, leaving Stampede without a home. I think that is clearly worse — it puts
+the anti-buffalo ability on the wrong animal and removes the one ability a skilled player will love —
+but it is your call, because it is your example I am deleting.
+
+**One thing I will not do either way:** keep both at different prices and hope legibility fixes it.
+You already played that build and it did not.
+
+---
+
+## Q15 · With Stand Down in the game, is the buffalo still an obstacle or has it become a resource?
+
+> **ANSWERED (owner, 28 Sep 2026): unstrand the premium, meter at 10.** Retirements go
+> 1.03 → 3.79 per run and that is the intent, not a side effect: 89% of buffalo were never
+> retired, so §6.4's 900-point premium was mostly theoretical. They declined the meter at 12
+> and declined deferring the call to a device round.
+
+
+**This is the biggest downstream consequence of Q14's change and it is a statement about what the
+game is, which makes it yours.** It is sharper now than when I drafted it, because you have given the
+ability a job — *"having a solution to deal with buffalo is a way I think to balance the late game"* —
+and the design I landed on **pays for it with buffalo work rather than with charges** (`gameplay.md`
+§13.2f-ii). So the buffalo now both *cause* the problem and *fund* the answer.
+
+Measured, over 200 seeds with the full roster: **buffalo retired per run goes 1.03 → 3.79, p90 score
++97%, and median run length moves only +3%.** Almost all of that score gain is the +650 retirement
+premium — the ability's entire payoff is that §6.4's premium finally gets **collected**. Today 89% of
+buffalo that arrive are never retired; the game advertises a reward it almost never pays.
+
+So there are two readings of the same number and they imply different games:
+
+- **"The premium was stranded and this unstrands it."** The buffalo is still an obstacle; Stand Down
+  is how a good player converts obstacles into the run's biggest scores, once. This is my reading, and
+  it is why the meter is 10 rather than 4 — at 4 it fires 2.85 times a run for +176% median and the
+  buffalo stops being frightening.
+- **"The buffalo has become the scoring engine."** If the best way to score is now to accumulate
+  buffalo and cash them, then the thing you designed as a ratchet has become a bank, and *"the player
+  need to try to clear it as soon as possible"* means something different.
+
+**My recommendation: the first reading, and there are now three measurements that defend it.**
+
+1. **Waiting for a bigger herd scores less**, not more — at a gate of 7 buffalo the p90 gain falls
+   from +79% to +41% and the ratchet barely moves (§13.2f-iii).
+2. **Only segments broken by play fill the meter**, so *ignoring* buffalo is the one strategy that
+   cannot buy the anti-buffalo tool. Banking buffalo does not bank the tool.
+3. **Median run length moves +3%.** The average game is the same length; what changed is that the
+   buffalo debt at game over falls 21% and the premium gets paid. The late game is survivable by
+   skilful play, not flat.
+
+**What would change if you read it the other way:** the meter would go to **12**, at which median run
+length does not move at all (0%), the tool fires 0.69 times a run, and the ratchet still falls 17%.
+One constant. Tell me and I will change it.
+
+---
+
 ## Things I decided rather than asking you
 
 Listed so you can overrule any of them. Rationale for each is in `gameplay.md` §12.
@@ -303,6 +391,27 @@ Listed so you can overrule any of them. Rationale for each is in `gameplay.md` �
 - Buffalo's retirement bonus rose **500 → 650** so the premium tracks its larger imposition.
 - Special abilities are **Layer D**, blocking nothing, with every threshold provisional until
   scores are measured (`gameplay.md` §13).
+- **Stand Down shrinks the herd to 1 rather than clearing it.** Your two variants were a factor of two
+  apart on measurement: shrinking collects §6.4's premium 3.4× more often, clearing collects it *less*
+  often than using nothing at all (§13.2f).
+- **Stand Down costs no charge. It is earned by breaking 10 buffalo segments through play** — because
+  the charge economy cannot fund a late-game tool: score per turn falls **33%** in the last fifteen
+  turns of a run while buffalo work rises **48%**, and against a full roster a 3-charge ability
+  measures **0.01 uses a run** (§13.2f-ii). This is the largest mechanical addition in the pass and it
+  is the direct consequence of your *"balance the late game"*; if you would rather keep one currency
+  and accept that the tool is rarely reachable, say so and I will put it back at 3 charges with the
+  numbers on the record.
+- **Stampede drops to 2** because the +194% that priced it at 3 does not reproduce on this curve
+  (§13.2d), and **Dart stays at 1** because at 2 it would become the worst row at that price
+  (AC-1429).
+- **Burrow gains its named second lever** — remove one animal, then left-pack its row. The revisit
+  condition has now been met twice by two measurements (§13.2e).
+- **"At most one buffalo per row" is withdrawn.** 4 + 5 = 9, and 15.2% of settled boards have a
+  doubled row (§6.4a).
+- **`CHAIN_GUARD_STEPS` goes 32 → 68, derived from the constants**, because the true mass floor is 2
+  cells a step, not 4, so 32 was *below* the bound it claimed to be twice (§6.4b).
+- **The danger rows become part of the board theme**, and three base-theme colour values change to
+  clear a floor they never cleared (`ui.md` §16.5).
 - **Session resume is ported from v1, not dropped** — stored as a seed plus a move list rather
   than a board snapshot, written on backgrounding only (`gameplay.md` §9). This is listed here
   because the v1 review's stale feature inventory nearly caused v2 to ship without it; the

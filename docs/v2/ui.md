@@ -697,17 +697,19 @@ board's only dynamic children.
 ### 7.1 The buffalo row — a herd, and a countdown
 
 Multiple buffalo may now stand on the board at once (`gameplay.md` §6.4a, AC-311), and the
-measured worst case over 300 bot runs is **ten**. The HUD has to carry that without becoming
-the screen.
+measured worst case over 300 bot runs is **eleven** — reproduced three independent ways, and
+corrected here from the **ten** this section and `gameplay.md` §5.9 both carried. The HUD has to
+carry eleven without becoming the screen.
 
 ```
  ┌───────────────────────────────────────────────────────┐
  │  SCORE                                    ×2.0    ❙❙  │  52 pt
  │  12,450                                               │
  ├───────────────────────────────────────────────────────┤
- │  🐃▌▌▌▌▌ 🐃▌▌▌░░ 🐃▌░░░░            NEXT 🐃  4       │  20 pt
+ │  🐃▌▌▌▌▌ 🐃▌▌▌░░ 🐃▌░░░░    ▮▮▮▮▮▮▯▯▯▯   NEXT 🐃  4  │  20 pt
  └───────────────────────────────────────────────────────┘
-      ▲ bottom row first          ▲ turns until the next scheduled buffalo
+      ▲ bottom row first          ▲              ▲ turns until the next
+                        Stand Down, 6 of 10        scheduled buffalo
 ```
 
 **A second strip, 20 pt, directly under the 52 pt HUD, present only when a buffalo is on the
@@ -722,17 +724,62 @@ ladder steps down one rung below that. It never pushes the board.
 | strip height | **20 pt**, 6 pt top padding, hidden entirely when empty |
 | chip, 1–4 buffalo | glyph 13 pt + five **5 × 12 pt** bars, 2 pt bar gap, 10 pt between chips |
 | chip, 5–7 buffalo | bars **3 × 12 pt**, 1.5 pt gap, 7 pt between chips |
-| chip, 8–10 buffalo | bars **2 × 12 pt**, 1 pt gap, 5 pt between chips; the glyph drops |
+| chip, 8–11 buffalo | bars **2 × 12 pt**, 1 pt gap, 5 pt between chips; the glyph drops |
 | chip fill | remaining `buffalo-body` `#8E2F3A`, spent same hue at 22% |
 | chip rim | 1 pt `#E8B44A` gold — the same rim the body wears, so chip and animal are the same object |
 | countdown | `NEXT 🐃 n`, 11/600 mono, `ink-muted`; right-aligned, never wraps |
 | order | **bottom row first**, left to right |
+| **Stand Down meter** | **10 ticks, each 3 × 10 pt, 1.5 pt gap = 43.5 pt**, centred between the last chip and the countdown with 10 pt either side. Filled ticks `buffalo-body`, empty ticks `cell-line`. See below |
 
-**Ten chips at the 8–10 rule occupy 10 × (5 × 2 + 4 × 1) + 9 × 5 = 185 pt** of a 361 pt
-content width, leaving 176 pt for the countdown and its gap. It fits with room, which is why
-the chips shrink rather than scroll or collapse behind a `+3` (AC-509d). **A count you have to
-tap to read is not a status, it is a menu** — and the whole reason the chips exist is that the
-player must be able to price "ignore it one more turn" at a glance.
+**Eleven chips at the 8–11 rule occupy 11 × (5 × 2 + 4 × 1) + 10 × 5 = 204 pt** of a 361 pt
+content width, leaving 157 pt for the countdown and its gap — `NEXT 🐃 12` at 11/600 mono is
+about 78 pt, so it fits with 79 pt spare. The arithmetic is given for the measured worst case and
+not for a round number, which is the whole reason the correction from ten mattered: **at the
+superseded figure the row was sized 19 pt narrower than the board can actually demand.** The
+chips shrink rather than scroll or collapse behind a `+3` (AC-509d). **A count you have to tap to
+read is not a status, it is a menu** — and the whole reason the chips exist is that the player
+must be able to price "ignore it one more turn" at a glance.
+
+#### The Stand Down meter lives here, because it is the herd's own number
+
+`gameplay.md` §13.2f-ii: Stand Down is not bought with charges, it is earned by breaking **10
+buffalo segments** through play. That meter belongs on this strip and nowhere else — the strip is the
+only part of the screen that is about the herd, and the meter is the herd's own ledger.
+
+| | spec |
+|---|---|
+| geometry | 10 ticks, **3 × 10 pt**, 1.5 pt gap — **43.5 pt** total, vertically centred in the 20 pt strip |
+| position | between the last chip and the countdown, **10 pt** clear either side |
+| filled | `buffalo-body` — the same ink as the chips, because it counts the same substance |
+| empty | `cell-line`, the board's own faintest structural ink. Not a scrim: an unfilled tick is a place, not a shadow |
+| **full** | every tick goes `last-stand` gold, and the abilities button takes the **same gold ring** it takes for a Last Stand grant. No pulse, no loop — §7's danger wash stays the only ambient animation in the game |
+| a tick filling | **180 ms** `ease-out`, on the **board's clock**, at the moment the segment it counts cracks (AC-509b's rule — the HUD and the board never disagree about a buffalo) |
+| spending | all ten ticks drain left-to-right over **200 ms** as part of Stand Down's beat (§13.4a), so the player sees the cost being paid |
+| hidden | with the rest of the strip — i.e. when no buffalo is on the board and the countdown is > 5. The meter's **value** persists; only its display comes and goes, exactly like the chips' |
+
+**Width, at the measured worst case.** Eleven chips are 204 pt, the meter 43.5 pt with 20 pt of
+gaps, and the countdown about 78 pt: **345.5 pt of a 361 pt content width.** It fits with 15.5 pt
+spare, which is tight and deliberate — at twelve or more buffalo the chips already step down to
+2 × 10 pt bars (below), recovering 22 pt.
+
+**Why ticks and not `6/10`.** The meter is a *quantity the player accumulates*, and the charge pips
+established that vocabulary on the abilities button already; a numeral here would be a second
+grammar for the same idea. Ticks also make the two facts the player needs readable without arithmetic
+— *how close am I* and *am I there* — where `6/10` requires reading two numbers and subtracting.
+**The VoiceOver label is the numeral**, because a screen reader cannot count ticks: *"Stand Down, six
+of ten."*
+
+**Why it is not on the abilities button.** The button carries the charge pips, and the meter is not
+charges. Putting a second progress indicator there would say the two currencies are the same one,
+which is exactly the confusion §13.2f-vi exists to prevent.
+
+**Beyond eleven, the rule is stated rather than left to the next measurement.** Nothing caps the
+herd (`gameplay.md` §5.9), so twelve is not impossible, only unobserved. At **12+ the bars drop
+to 2 × 10 pt with a 1 pt gap and 4 pt between chips**, which carries fifteen chips in 224 pt.
+Past fifteen the row **clips at the right edge with no ellipsis and no count badge** — a board
+carrying sixteen buffalo is a board about to end, and at that point the chips have stopped being
+the information the player needs. Specified so the layout has a defined behaviour at every *n*
+rather than a measured one.
 
 **Ordered bottom row first, and never reordered for any other reason.** Chip *k* is buffalo
 *k* counted up from the floor, so the eye can match a chip to a body without counting. When a
@@ -755,6 +802,10 @@ the game (§7) and a second one competing with it would make neither mean anythi
 **Accessibility.** The strip is one `accessibilityElement` reading *"Three buffalo on the
 board: five segments, three segments, one segment. Next buffalo in four turns."* It is
 `accessibilityLiveRegion="polite"`, so an arrival is announced without interrupting the score.
+**At eleven buffalo that sentence is long**, so above six the label enumerates a tally instead of
+a list: *"Eleven buffalo on the board: four at five segments, three at three, four at one. Next
+buffalo in eight turns."* Same facts, bounded length — the list form is unreadable at eleven and
+a truncated list would be worse than a tally.
 Bar colour is never the only cue — the filled count is in the label, and at Dynamic Type
 `xxLarge` and above the chips keep their fixed size while the countdown's label shortens from
 `NEXT 🐃 4` to `🐃 4` (§10's HUD rule: trade labels for values, never height).
@@ -1350,21 +1401,32 @@ Short, active, never cute. The game never apologises and never explains twice.
 | Pass button | `Pass` |
 | Tray label | `NEXT ARRIVAL` / `6 CELLS` |
 | Buffalo shrink | `BUFFALO −1` |
-| Buffalo retired | `BUFFALO DOWN  +500` |
+| Buffalo retired | `BUFFALO DOWN  +650` |
 | Chain step 2+ | `×2 CHAIN` |
 | Perfect clear | `PERFECT  +1000` |
-| Game over heading | `Run over · Savanna` |
+| Game over heading | `Run over` |
 | New best | `NEW BEST · previous 11,205` |
-| Difficulties | `Meadow` · `Savanna` · `Tundra` |
+| Buffalo strip | `NEXT 🐃 4` |
+| Ability armed, no target needed | *(none — it resolves)* |
+| Stand Down announce | `STAND DOWN` |
+| Stand Down unavailable | `No buffalo on the board` |
+| Last Stand | `LAST STAND` |
+| Records, after the merge, once | `Habitats are gone. Your best from any habitat is now just your best.` |
+
+**Three corrections to this table, and in all three the document was the stale thing rather than the
+build.** `BUFFALO DOWN +500` was written before the retirement premium rose to **650** with the
+buffalo's size (`gameplay.md` §7.2) — the code has always derived it,
+`theme.js:831` is `` `BUFFALO DOWN  +${SCORE.buffaloRetire}` ``. `Run over · Savanna` and the
+`Meadow · Savanna · Tundra` row both name habitats that **AC-320 deleted**, and
+`GameOverSheet.js:42` already reads `title="Run over"`. *(So no code change falls out of this — but
+a copy table that disagrees with the build is worse than no copy table, because it is the document a
+future reader trusts for the strings. The paragraph that justified habitat names over Easy/Normal/Hard
+is removed with them, not kept as history: it argued for a control that no longer exists.)*
 
 **`BLOCKED` is gone** (§5.6, AC-406). It announced a rejected drop, and there is no longer such
 a thing; the action bar has no blocked state left to label. It could not be retargeted to the
 mid-drag contact either — the action bar is React, and a word appearing there while the finger
 is down would be a re-render mid-drag, which AC-831 forbids outright.
-
-Difficulty names are habitats, not Easy/Normal/Hard, because "Hard" is a judgement about the
-player and a habitat is a description of the place. They also make a straight-faced promise
-the numbers keep: Tundra is where the big animals live.
 
 ---
 
@@ -1409,6 +1471,55 @@ Tapping opens a bottom sheet (22 pt top radius, the standard treatment): five ro
 species chip at its §4.3 fill, the ability name at 16/600, its effect in one line at 13/400,
 and its **cost in charge pips** right-aligned — ●, ●● or ●●● (`gameplay.md` §13.2d).
 
+**The five rows, as they read after `gameplay.md` §13.1's revision:**
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ 🐀  Burrow                                            ●  │
+│     Remove one animal, then close up its row             │
+├──────────────────────────────────────────────────────────┤
+│ 🦊  Dart                                              ●  │
+│     Three moves this turn instead of one                 │
+├──────────────────────────────────────────────────────────┤
+│ 🦌  Migrate                                          ●●  │
+│     Every animal of one species leaves                   │
+├──────────────────────────────────────────────────────────┤
+│ 🐘  Stampede                                         ●●  │
+│     Every row packs to the left                          │
+├──────────────────────────────────────────────────────────┤
+│ 🐃  Stand Down                             ▮▮▮▮▮▮▯▯▯▯    │
+│     Every buffalo drops to one segment                   │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Stand Down's cost column is the meter, not pips** (`gameplay.md` §13.2f-ii). Same 10 ticks at the
+same geometry as the strip's, so the sheet and the strip are showing one object rather than two
+readings of it. When the meter is full the ticks are gold and the row is live; below full the row sits
+at 40% opacity with the effect line replaced by **`6 of 10 buffalo segments`** — the cost stated in
+its own unit, which is the same rule the pips follow.
+
+**This is the one row whose cost is not comparable to the others**, and the design leans into that
+rather than hiding it: four rows priced in dots you spend, one row priced in a thing the buffalo hand
+you. A player who cannot tell those apart would try to save charges for Stand Down, which is the
+confusion §13.2f-vi is built to prevent, so **the two vocabularies are deliberately different
+shapes** — round pips for charges, square ticks for the meter.
+
+**Stand Down's line is the one that had to be written carefully**, and the rejected drafts say
+why. *"Shrink every buffalo"* omits the amount, which is the only number that matters. *"Clear
+the herd"* promises a removal the ability does not perform — the buffalo stay, and a player who
+read that and then watched eleven one-cell buffalo remain would reasonably think it had failed.
+*"Every buffalo loses all but one segment"* is accurate and three words too long for 13/400 on a
+361 pt row at `xxLarge`. **`Every buffalo drops to one segment`** states the destination rather
+than the delta, which is both shorter and the thing the player can verify by looking at the
+chips afterwards: every chip shows one bar.
+
+**Rows are ordered by scope, not by price** — rat, fox, elk, elephant, buffalo, which is
+`ABILITY_IDS`' own order and therefore size order. So the price column reads `● ● ●● ●● ●●●`,
+ascending but with repeats, rather than being sorted by cost. Sorting by price would put the
+sheet's rows in a different order from every other place the species appear (§4.3's ramp, the
+board, the tray) and would reorder itself if anything were ever repriced. **The list is a
+bestiary; the pips are an attribute of each entry.**
+
 **Cost renders as pips rather than a numeral** so it reads against the same vocabulary as the
 reserve on the button: the player compares two rows of dots, not a number against a number.
 Unaffordable rows sit at 40% opacity with their cost still legible — *why* a row is
@@ -1438,7 +1549,34 @@ would name something not on the board. **The buffalo is never a valid target for
 ability and cannot back out of it has been punished for exploring the system, which is the
 opposite of what an assist mechanic is for. Tapping outside any valid target also cancels.
 
-**Stampede**, **Dart** and **Hold the Line** need no target and resolve immediately on arming.
+**Stampede**, **Dart** and **Stand Down** need no target and resolve immediately on arming.
+
+**Stand Down is the first no-target ability that can have nothing to do**, and that needs one
+rule rather than a special case. With **no buffalo on the board** its sheet row is drawn at 40%
+opacity like any unaffordable row, with the reason in place of the effect line — `No buffalo on
+the board` — and tapping it does nothing. It is never hidden: an ability the player cannot find
+is an ability they cannot plan around, and *why* a row is unavailable must be visible or the
+sheet looks broken rather than conditional (§13.2's rule, applied to a second kind of
+unavailability). **The meter is not emptied**, which is AC-1414's ruling reached in the second
+currency: a full meter that evaporates for nothing is the opposite of an assist.
+
+**So Stand Down's row has three states and they must not be confused**, because two of them look
+unavailable for different reasons and the player's next move differs:
+
+| state | cost column | second line |
+|---|---|---|
+| meter not full | ticks, `6 of 10` filled, at 40% | **`6 of 10 buffalo segments`** — *keep breaking them* |
+| meter full, no buffalo on the board | **gold** ticks, at 40% | **`No buffalo on the board`** — *ready, nothing to use it on* |
+| meter full, buffalo on the board | **gold** ticks, full opacity | `Every buffalo drops to one segment` |
+
+The middle row is the one a lazier design would collapse into the first. It must not be: a player
+holding a full meter with an empty board has **nothing to do about it**, and telling them to keep
+breaking segments would be false.
+
+At **one buffalo already at size 1** the row is live and the ability is legal — it changes that
+buffalo not at all, which is the player's business and not the sheet's. The board's own
+information is sufficient there: the chip shows one bar, so a player who spends three charges on
+it has been told exactly what they are buying.
 
 ### 13.4 Feedback
 
@@ -1447,15 +1585,55 @@ over an ordinary structural resolution:
 
 | Ability | What the player sees |
 |---|---|
-| **Burrow** | The target dissolves downward — the rat's own vanishing act, 260 ms |
+| **Burrow** | The target dissolves downward — the rat's own vanishing act, 260 ms — and the row it left **closes up over the following 140 ms** `ease-out`, one beat, not a stagger |
 | **Dart** | The action bar shows `2 MOVES LEFT`, counting down; the board stays live |
 | **Migrate** | Every animal of that species flashes once in unison, then leaves together |
 | **Stampede** | Rows slide left bottom-up, staggered over the rows that **actually move**, capped at **4 beats / 480 ms** with the tail folded — the herd moving as one |
-| **Hold the Line** | Announce `HOLD THE LINE · 3 TURNS`; the tray then greys out and shows **arrivals remaining** — `FROZEN · 2`, `FROZEN · 1` — the freeze having started immediately (AC-1410) |
+| **Stand Down** | Announce `STAND DOWN`; **every buffalo's spent segments crack and fall away at once**, bodies spring to one cell, every chip in the strip collapses to one bar on the same clock — §13.4a |
 
-**Hold the Line's tray treatment is load-bearing, not decoration.** The tray's whole contract
-is that it shows what is coming (§6); when nothing is coming it must say so, or the contract
-reads as broken for three turns.
+**Burrow's pack is one beat and not a stagger, deliberately.** Stampede's stagger exists to read
+as fifteen rows moving in sequence; Burrow moves one row, and a staggered one-row slide is a
+stagger the player cannot perceive as one. It runs **after** the dissolve rather than with it, so
+the two halves of the ability read as cause and effect — *this leaves, and then the row closes* —
+rather than as one confusing simultaneous event. Total 400 ms, inside the §8.2 budget with the
+dissolve's 260 ms already accounted for.
+
+#### 13.4a Stand Down's beat — the largest single frame in the game
+
+Up to eleven bodies lose up to four segments each in one ACTION phase. It is the biggest
+structural change the engine can be asked to make and its animation has to be **one event, not
+eleven**, or it reads as a bug.
+
+| beat | what | duration | why |
+|---|---|---|---|
+| 1 | `STAND DOWN` label rises from the abilities button; the strip's chips take a single gold rim flash | **0 → 260 ms** | The announce names the ability before anything moves, the way every other ability's does |
+| 2 | **Every** spent segment on **every** buffalo cracks and falls, all buffalo in unison | **180 → 380 ms** | This is §5.3's existing 120 ms crack, played once across the whole herd rather than once per segment. Per-segment or per-buffalo staggering at eleven buffalo × four segments is 44 units and the AC-1411b error repeated |
+| 3 | Bodies spring to one cell wide; chips collapse to one bar; **the meter drains all ten ticks left-to-right** | **380 → 640 ms** | The spring is §5.3's existing shrink, and the chip rides **the same clock as the body** (AC-509b) — the HUD and the board must never disagree about a buffalo's size, least of all on the turn the player changed eleven of them. The meter drains on that clock too, so the player sees the cost paid in the same breath as the effect |
+| 4 | Gravity settles the ordinary way; the arrival lands; the board is judged | **640 ms →** | A Stand Down turn resolves through the same SETTLE → ARRIVAL → JUDGE path as a one-cell drag. Nothing here is a special path |
+
+**The announce and the crack overlap by 80 ms on purpose.** Sequencing them end to end costs
+260 + 200 + 260 = 720 ms before gravity even starts, and the turn's whole input lock is capped at
+1,500 ms (§8.2). Overlapping the label's tail with the crack's attack puts the structural work
+inside the budget without compressing any single motion below the floor at which it reads.
+
+**The meter drains rather than vanishing, and that is the point of putting it on this clock.** Stand
+Down is the only thing in the game a player pays for in a currency they watched themselves earn; if
+the ticks simply blinked out, the most expensive action in the game would have no moment of
+expenditure. Ten ticks over 260 ms is 26 ms a tick — fast enough not to be a wait, slow enough to
+read as *spending*.
+
+**No per-buffalo score float, and no `−4` labels.** Stand Down scores nothing
+(`gameplay.md` §13.2f-iv), and eleven floating numbers that all say nothing would be the loudest
+moment in the game attached to the one event that pays no points. §5.3's `BUFFALO −1` label
+belongs to a shrink *bought with a completed row*; a button did not buy this one.
+
+**Reduce Motion:** beats 2 and 3 collapse into a single 200 ms cross-fade from the old widths to
+the new, with no crack and no spring. The announce stays — it is text, not motion.
+
+**Sound:** one cue, not eleven. §15's buffalo metal, struck once, at the pitch of the **largest**
+buffalo on the board before the ability fired — so the sound reports the size of what was broken.
+§15.6's collision rule applies: it suppresses nothing and nothing suppresses it, because no other
+cue fires in that 380 ms window.
 
 A charge being earned is announced in the HUD: the pip fills with a 300 ms bloom and the
 abilities button pulses once. It never interrupts play.
@@ -1680,7 +1858,11 @@ reason: a half-second three-tap pattern was sized for a once-per-mistake announc
 a bump that can happen twice in one drag (AC-1102).
 
 **Ability cues borrow their species' pitch**, so Stampede is low and Burrow is high — the
-scope ladder (§13.1) audible without a new vocabulary.
+scope ladder (§13.1) audible without a new vocabulary. **Stand Down is the one exception and it is
+the same rule one level down:** the buffalo's cue is *metal*, not wood (§15.2), so Stand Down strikes
+metal once at the pitch of the **largest buffalo on the board before it fired** — the ability that
+reaches the one object with its own material sounds like that object, and the pitch reports the size
+of what was broken. AC-1431d: **one** strike, never one per buffalo.
 
 ### 15.4 Cascades rise through a pentatonic scale, not chromatically
 
@@ -1868,7 +2050,28 @@ never checked against the ground it *was* designed for either.** On slate its el
 `#41587A` at **2.25:1** on fill and 1.48:1 on edge — under the floor on the dark board it
 shipped for, and 2.56:1 over Night Savanna.
 
-So the rule is stated once, for every cosmetic × theme combination, and not per species:
+So the rule is stated once, for every cosmetic × theme combination, and not per species.
+
+> ### Rule 0 — THE GROUND RULE, and it is the one that matters (AC-1533)
+>
+> **Everything drawn on the board is drawn on a ground a cosmetic can change.** So the rule is not a
+> list of elements; it is a property of the surface, and every element inherits it:
+>
+> **(a)** A cosmetic that supplies a ground supplies **every ground on that surface**.
+> **(b)** Every colour drawn **on** a board ground is supplied **once per ramp**.
+> **(c)** The **ramp in force** selects the variant, and the ramp comes from the ground's own
+> declaration.
+> **(d)** The check is **the product** — every ground × every colour drawn on it × every state it can
+> be in — and the product is enumerated from **one inventory** (`BOARD_INKS`, §16.6) rather than from
+> a list written into the checking script.
+>
+> **(d) is the part that has now failed three times**, and it is why Rule 0 exists above the three
+> below rather than beside them. §16.4 caught the animals. §16.5 caught the danger band. §16.6 caught
+> the arrival silhouette. Each was found by a person noticing, and each time the rule was extended by
+> **adding the element somebody had noticed**. An inventory that a test asserts is complete is the
+> only version of this rule that catches the fourth one.
+
+The three specific rules, which are Rule 0 applied:
 
 > **1. A cosmetic that supplies a GROUND names the ramp it pairs with (AC-1518).** Night
 > Savanna is "the board after dark" — a dark ground by definition, so the animals on it
@@ -1915,3 +2118,307 @@ keeps its theme's own fill and its rim, which is AC-1505 holding across cosmetic
 × 2 gild states × 5 species = 60 combinations, every one of them something a player can be
 looking at. Planted against the palette as it shipped, the check fails on 4 of them;
 planted against the merged light accent it fails on 4 accent pairs.
+
+---
+
+## 16.5 The danger rows are part of the board, and the board theme never reached them
+
+AC-1523 to AC-1532.
+
+**The owner, after build 5:** *"the board theme does change the theme of normal rows, but the
+dangerous rows are still the same, I think those rows need new design for the theme too."*
+
+**Confirmed, with the cause.** `BOARD_THEMES.nightSavanna` (`src/ui/cosmetics.js:140-147`)
+supplies exactly four tokens — `board`, `cell`, `cellLine`, `ramp` — and `cosmeticsFor` spreads
+exactly those three colours over the base theme (`cosmetics.js:249`). The danger rows draw
+from tokens it cannot reach: the band's fill and its cell line from `theme.colors.dangerBand` and
+`dangerCellLine` (`BoardCells.js:81,85`), the kill row's fill from **`theme.colors.bg`**
+(`BoardCells.js:79` — `kill ? colors.bg : …`), its rule from `killLine` and its stripes from `hazardStripe`
+(`BoardCells.js:123,133`), the pulse from `dangerWash` (`ClearLayer.js:570`), and a body standing
+in the band from `dangerOutline` (`AnimalView.js:571`).
+
+So Night Savanna repaints rows 0–10 to `#151026` and leaves rows 11–14 in the base theme's
+colours. **That is the report, and it is the smaller of the two problems.**
+
+### 16.5a This is §16.4's finding again, and the rule has the same hole
+
+§16.4's rule says *"a cosmetic that supplies a **GROUND** names the ramp it pairs with"* — and it
+was written against the grounds anybody had thought to enumerate, which were the board and the
+cell. **The danger band is a third ground. Animals stand on it, and they stand on it at the one
+moment in the run when the player most needs to read the board.** Nothing has ever measured
+against it, in either theme, with or without a cosmetic. The Tundra palette shipped unmeasured
+against the ground it was designed for; the danger band shipped unmeasured against every ground
+there is. Same shape, one layer down.
+
+Extending the sweep to the band turned up **two failures that are already in the build**, neither
+of them Night Savanna's, and a third that is:
+
+| # | combination | measured | floor |
+|---|---|---:|---:|
+| 1 | **dark** theme, base ramp, **elephant on the pulsed band** | **2.65:1** | 3.0 |
+| 2 | **light** theme, **Golden Herd** gild, **rat on the pulsed band** | **2.65:1** | 3.0 |
+| 3 | **Night Savanna in the light theme**, base ramp, **rat on the band** | **1.53:1** | 3.0 |
+
+**Failure 3 is the one the owner is looking at and it is much worse than "it looks
+disconnected."** Light is the default theme (AC-1501). A light-theme player who unlocks Night
+Savanna gets a **bone-pink** danger band `#EBD3CE` under the **dark** animal ramp — because
+AC-1518 correctly makes the ramp dark on a dark ground, and the band is not a thing the board
+theme can supply. Measured on that combination: **rat 1.53:1, fox 2.64:1**, and under the pulse
+rat **1.27:1**, fox 2.19, elk 2.99 — three of five species invisible, in the danger band, in the
+default theme. The kill row is worse still: it draws `colors.bg` = `#F2EDE3`, a near-white row at
+**14.98:1** against a midnight board.
+
+**Failures 1 and 2 have nothing to do with cosmetics**, and they share a cause worth stating
+because it predicts the next one:
+
+> **The pulse moves the band toward whatever carries the contrast floor.** On the dark ramp the
+> floor is carried by light **fills** and the pulse lightens the ground. On the light ramp it is
+> carried by dark **edges** and the pulse darkens it. In both themes the alarm erodes exactly the
+> token AC-1503 relies on.
+
+Lowering the pulse does not fix either: the dark elephant fails at **every** alpha including 0.05
+(2.93:1), and the light gilded rat fails at alpha **zero** (3.20:1 at rest, under any wash). The
+band itself is the marginal thing; the pulse only makes it visible.
+
+### 16.5b The rule, extended
+
+> **4. A cosmetic that supplies a GROUND supplies all THREE of them (AC-1523).** The grounds a
+> board can present are the **ordinary cell**, the **danger band** and the **kill row**. A board
+> theme supplies `board`, `cell`, `cellLine`, `dangerBand` and `killRow` — five tokens, up from
+> four — and a board theme missing any of them is a defect that fails AC-1504 rather than falling
+> back to the base theme.
+>
+> **5. A board theme may change what the hazard is drawn ON. It may never change what the hazard
+> is drawn IN (AC-1524).** `killLine`, `dangerCellLine`, `hazardStripe`, `dangerWash` and
+> `dangerOutline`, with their alphas, come from **the ramp the board theme names** and are never
+> supplied by the cosmetic. The hazard language belongs to the game, not to the unlock: red-family,
+> flat, pulsing, at fixed opacities. A cosmetic that could restyle the alarm is a cosmetic that
+> could make the alarm quieter, and an unlock must never be able to do that.
+>
+> **6. `killRow` is its own token and is not `bg` (AC-1525).** The kill row's colour is *the
+> deepest ground on the board*, which happened to equal the app background in both base themes and
+> was therefore written as `colors.bg`. It is not the same fact. Reusing `bg` is what put a
+> bone-white row on a midnight board, and it is the whole defect in one line of code.
+
+**Why not the cheaper answer.** *Deriving the band from the cell* — the band as the cell mixed
+with the hazard hue at a fixed alpha — was the first thing I tried, and it is rejected on
+measurement: neither shipped band is such a mix (solving for the dark one gives a negative alpha
+in green), and a formula that fails the two values the owner has already accepted is a formula
+that would have to change them to be adopted. The values are declared and swept, the way the
+palettes are.
+
+### 16.5c The eleven duties, and where their floors come from
+
+**The floors are the shipped themes' own measured values, rounded down, not invented ideals.**
+The gate is *"no worse than what the owner has already seen and accepted"* — which is the only
+honest floor available for a band whose whole design is to be subtle at rest. Two duties have a
+real external floor (D4, D5: AC-1503's 3:1) and those are the two that catch the defects.
+
+| # | duty | measure | floor |
+|---|---|---|---:|
+| **D1** | the band is separable from the ordinary cell | `cr(dangerBand, cell)` | ≥ 1.02 |
+| **D2** | the band is in the hazard hue family | `hueΔ(dangerBand, killLine)` | ≤ 60°, **and** < `hueΔ(cell, killLine)` |
+| **D3** | the band's cell line separates it from the band | `cr(dangerCellLine ∘ dangerBand, dangerBand)` | ≥ 1.25 |
+| **D4** | every body clears the band at rest | best of fill/edge vs `dangerBand` | **≥ 3.0** |
+| **D5** | every body clears the band **pulsed** | best of fill/edge vs `dangerBand + dangerWash @ high` | **≥ 3.0** |
+| **D6** | the pulse is perceptible | `cr(band@high, band@low)` | ≥ 1.09 |
+| **D7** | the kill row is separable from the band | `cr(killRow, dangerBand)` | ≥ 1.05 |
+| **D8** | the kill row is separable from the ordinary cell | `cr(killRow, cell)` | ≥ 1.15 |
+| **D9** | the kill rule reads on the kill row | `cr(killLine, killRow)` | ≥ 4.5 |
+| **D10** | the hazard stripes read on the kill row | `cr(hazardStripe ∘ killRow, killRow)` | ≥ 1.10 |
+| **D11** | a body standing in the band takes an outline that reads | `cr(dangerOutline ∘ dangerBand, dangerBand)` | ≥ 1.50 |
+
+**D1 and D3 deserve a note, because their numbers look alarmingly low and are correct.** The
+shipped bands sit at **1.074:1** and **1.023:1** against their ordinary cells. **Contrast is not
+what identifies the danger band, and it never was** — the band is recognised by its *hue* (D2),
+by its *cell line* (D3) and by the *pulse* (D6), and a designer who read a 1.02 and "fixed" it
+would produce a band that shouts at rest, which §7 explicitly does not want. D1 exists to catch
+a band that is literally the same colour as the cell, not to demand a contrasting one.
+
+### 16.5d The values
+
+Five ground tokens per board, five hazard inks per ramp. Three changed values in the base themes,
+two new tokens, and one new board-theme block.
+
+**Grounds — supplied by the theme, overridden by a board theme:**
+
+| token | **dark** | **light** | **nightSavanna** |
+|---|---|---|---|
+| `board` | `#16212C` | `#E6DFD2` | `#151026` |
+| `cell` | `#1A2833` | `#DDD5C6` | `#1B1533` |
+| `cellLine` | `#223442` | `#CBC1AE` | `#2A2047` |
+| `dangerBand` | **`#1C1218`** *(was `#2A1D24`)* | **`#F5E3DF`** *(was `#EBD3CE`)* | **`#1A0A16`** *(new)* |
+| `killRow` | **`#080C11`** *(was `colors.bg` `#0D141B`)* | **`#F2EDE3`** *(unchanged value, newly its own token)* | **`#08040F`** *(new)* |
+
+**Hazard inks — supplied by the ramp, never by a board theme.** Night Savanna names the **dark**
+ramp (AC-1518), so it takes the dark column unchanged:
+
+| token | **dark ramp** | **light ramp** |
+|---|---|---|
+| `killLine` | `#E05260` | `#A32B36` |
+| `dangerCellLine` | `rgba(107,47,58,.55)` | `rgba(163,43,54,.45)` |
+| `hazardStripe` | `rgba(224,82,96,.13)` | `rgba(163,43,54,.14)` |
+| `dangerWash` | `#E05260` | `#A32B36` |
+| `dangerOutline` | `rgba(224,82,96,.40)` | `rgba(163,43,54,.45)` |
+| pulse `low ↔ high` | `0.05 ↔ 0.13` | `0.05 ↔ 0.13` |
+
+**Measured, every duty on every ground:**
+
+| duty | floor | dark | light | nightSavanna |
+|---|---:|---:|---:|---:|
+| D1 band : cell | 1.02 | **1.214** | **1.175** | **1.093** |
+| D2 hueΔ band → killLine *(cell's own Δ)* | ≤ 60° | **30°** *(148°)* | **16°** *(45°)* | **39°** *(102°)* |
+| D3 band line : band | 1.25 | **1.33** | **2.09** | **1.35** |
+| D4 worst body at rest | 3.0 | **3.51** elephant | **4.33** rat | **3.67** elephant |
+| D5 worst body pulsed | 3.0 | **3.05** elephant | **3.01** rat *(gilded)* | **3.20** elephant |
+| D6 pulse swing | 1.09 | **1.095** | **1.134** | **1.093** |
+| D7 kill row : band | 1.05 | **1.073** | **1.063** | **1.062** |
+| D8 kill row : cell | 1.15 | **1.303** | **1.249** | **1.161** |
+| D9 kill rule : kill row | 4.5 | **5.18** | **6.09** | **5.36** |
+| D10 stripes : kill row | 1.10 | **1.119** | **1.243** | **1.114** |
+| D11 band outline : band | 1.50 | **1.76** | **2.09** | **1.77** |
+
+**What each changed value buys, and what it costs.**
+
+- **Dark `dangerBand` `#2A1D24` → `#1C1218`** (L\* 12.6 → 6.7). Fixes failure 1: the elephant
+  goes 2.65 → **3.05** under the pulse and 3.10 → 3.51 at rest. It also **improves** D1 from 1.074
+  to 1.214 and D3 from 1.27 to 1.33, so the band is more legible at rest as well as under the
+  alarm. The change in feel is real and, I think, better: the danger rows now **sink into shadow**
+  and the pulse lights them, rather than being a maroon tint nobody can see either way. *The
+  lights go out up there, and something red flickers.*
+- **Dark `killRow` `#0D141B` → `#080C11`.** Forced by the band's darkening — at the old value the
+  kill row and the new band are **1.014:1**, indistinguishable. At `#080C11` D7 is 1.073 and D8
+  improves to 1.303.
+- **Light `dangerBand` `#EBD3CE` → `#F5E3DF`** (L\* 86.4 → 91.5). Fixes failure 2: the gilded rat
+  goes 2.65 → **3.01** under the pulse and 3.20 → 3.67 at rest, and the base rat goes 3.12 → 3.55.
+  The light kill row keeps its value, at D7 1.063. **I looked at fixing this on the gild instead
+  and rejected it**: `lastStand` `#9C6D14` is also the buffalo's rim (AC-1505) and the Last Stand
+  pulse, so darkening it to clear one ground moves three measured things; lightening one band
+  moves one.
+- **Night Savanna `dangerBand` `#1A0A16`, `killRow` `#08040F`.** A very dark wine — the indigo
+  drains out of the cell and it goes bloody. hueΔ 39° against the cell's 102°, so the band moves
+  toward the hazard hue as it does in both base themes. It needs its **own** value rather than the
+  dark theme's `#1C1218` for the same reason the cell does: the Night Savanna cell is already
+  darker (L\* 9.1 against 15.4), so the dark band would read as *lighter* than the ordinary rows
+  and the band's direction would invert on that ground alone. It takes the dark ramp's
+  `dangerCellLine` unchanged, which lands at **1.35** on it — better than the dark theme's own
+  1.33, because the band is darker.
+
+### 16.5e The sweep, extended
+
+`docs/v2/theme-contrast.mjs` already sweeps **cosmetic × ground** for the board (AC-1521, 60
+rows). It now also sweeps **cosmetic × ground × pulse state** for the band:
+
+> **3 grounds × 2 palette states × 2 gild states × 5 species × 2 pulse states = 120 band rows**,
+> plus the nine non-species duties per ground, on top of the existing 60 board rows.
+
+Every row is something a player can be looking at: a species, with or without an unlock, on a
+board they may have equipped, in the danger band, with the pulse at either end of its loop. And
+because §16.4's rule 3 stands, the palette variant is selected by the **ramp in force** — so
+Tundra over Night Savanna is Tundra's dark table in the band exactly as it is on the
+board, and the product stays finite.
+
+**It fails on the build as it stands, which is the point (AC-1532).** Planted with the three tokens
+at their current values the sweep exits non-zero with **8 defects**: the dark elephant pulsed at
+2.65, **five** gilded light rows (rat and fox with no palette, rat, fox **and elk** with Tundra), a
+declaration error for Night Savanna, and a row-count guard catching that the sweep shrank from 120
+rows to 80. Run and verified, then restored from a scratchpad copy rather than from git (§6.6).
+
+**The planted run found more than §16.5a predicted, and the extra rows are a finding.** The gild
+replaces **every** species' edge with the theme's gold, so on the light band every species whose
+*fill* is under 3:1 depends entirely on that single gold value — rat (fill 1.56), fox (2.38), and
+with Tundra equipped the elk at 2.99. §16.5a's table names the three worst; the sweep names all of
+them, which is the difference between a table and a check. Before this extension the script passed
+with every one of them in the build — §6.2's check that could only ever pass.
+
+---
+
+## 16.6 The arrival silhouette is the third instance, and the inventory is the fix
+
+AC-1533 to AC-1538.
+
+**Found while fixing two build-5 defects and reported rather than patched, because it needs a
+contract:** `ArrivalFlight` takes its silhouette from `useTheme()` (`ArrivalFlight.js:51-52`,
+`const shadow = theme.silhouette`) and the ground it flies over from `useCosmetics()`
+(`ArrivalFlight.js:50`). Those are two different sources for one pairing.
+
+**The reachable failure, measured in CIEDE2000 because WCAG contrast cannot see it at all:**
+
+| combination | silhouette | ground | dE | the faintest **landed** animal on that ground |
+|---|---|---|---:|---:|
+| light theme, no board theme | `#BFB5A2` | `#DDD5C6` | 8.18 | 22.97 |
+| dark theme, no board theme | `#495764` | `#1A2833` | 15.42 | 24.34 |
+| **light theme + Night Savanna** | **`#BFB5A2`** | **`#1B1533`** | **63.80** | **28.82** |
+
+**The "shadow" is 2.2× more prominent than any animal on the board it crosses.** It is not a
+contrast failure — it is the *opposite* of one, and it breaks the rule the silhouette exists to keep:
+§6.1's claim that a silhouette is *less specific than the animal, not less true*. A shadow louder than
+every body on the board states something false about its own importance. The buffalo silhouette in
+that combination measures **75.16**.
+
+### 16.6a Rule 0 applied
+
+**The silhouette is a colour drawn on a board ground, so Rule 0 (b) and (c) settle it with no new
+rule:** it is supplied once per ramp — it already is, `SILHOUETTE_DARK` and `SILHOUETTE_LIGHT` — and
+**the ramp in force selects it**, not the theme. Two lines of wiring, identical to what AC-1520
+already does for the species table.
+
+```
+          before                                    after
+  theme.silhouette                        cosmetics.silhouette
+  ← the app's theme preference            ← THE RAMP IN FORCE, from the ground's declaration
+```
+
+**Measured after the fix**, with Night Savanna taking the dark ramp (AC-1518):
+
+| silhouette on the Night Savanna cell `#1B1533` | dE | floor 7.0 | ceiling *(faintest landed body 28.82)* |
+|---|---:|---:|---:|
+| ordinary `#495764` | **24.34** | ✓ | ✓ — 84% of the ceiling |
+| buffalo `#3A2E38` | **12.23** | ✓ | ✓ |
+
+Both clear the 7.0 floor — which is the light buffalo's own body separation, *"as legible as the
+buffalo"* stated literally (`theme.js:344-352`) — and both stay under the faintest landed animal, so
+a shadow is still the faintest thing on the board. **Night Savanna needs no silhouette of its own**;
+unlike the danger band (§16.5d) the existing dark values clear both bounds on it.
+
+**The margin is thinner than on the dark board and that is worth recording:** ordinary shadow to
+faintest body is 15.42 → 24.34 on slate (a margin of 8.9) and 24.34 → 28.82 on Night Savanna (a
+margin of 4.5). Half the headroom. It passes, and a future board theme darker than `#1B1533` is the
+one that will not — which is what the sweep is for.
+
+### 16.6b `BOARD_INKS` — the inventory, so the fourth instance is caught by a test
+
+**Three findings, one shape, and each was found by a person looking.** The rule kept being extended
+by adding whatever somebody noticed:
+
+| # | what sat on a themed ground unmeasured | found by |
+|---|---|---|
+| 1 | the **species** fills and edges, and the Tundra palette | §16.4, after the palette shipped broken on its own ground |
+| 2 | the **danger band**, kill row, and everything drawn on them | §16.5, the owner playing build 5 |
+| 3 | the **arrival silhouette** | §16.6, a developer fixing something else |
+
+> **So the fix is not a fourth entry. It is an inventory that the check reads and a test asserts is
+> complete (AC-1536).**
+>
+> `BOARD_INKS` lists every colour token drawn on a board ground, each with the ground(s) it can appear
+> over, the floor it must clear, and the metric it is measured in. `theme-contrast.mjs` **iterates
+> that list** rather than an enumeration written into the script, and a hygiene test fails if any
+> component reads a colour for something drawn on the board that the list does not contain.
+
+| token group | metric | floor | ceiling |
+|---|---|---|---|
+| species fill / edge | WCAG contrast, better of the two | 3:1 (AC-1503) | — |
+| danger band, kill row and their inks | WCAG contrast, eleven duties | §16.5c | — |
+| **arrival silhouette** fill / buffalo fill | **CIEDE2000** | **7.0** | **< the faintest landed body** |
+| the numeral chip, the ghost, the origin recess | WCAG contrast | 3:1 | — |
+
+**The metric column is not decoration.** The silhouette's defect is invisible to WCAG contrast — a
+bone shadow on a midnight board has *excellent* contrast, which is precisely the problem — so a single
+metric across the inventory would have missed it again. Each entry names how it is measured, and an
+entry with no metric is a defect in the inventory.
+
+**What this does not claim.** A grep-based hygiene test can be fooled, and an inventory can be
+incomplete the first time it is written. What it changes is where the burden sits: today a new element
+on the board is safe until someone notices; with the inventory, a new element that reads a colour
+must either be in the list or fail the test. **That converts the fourth instance from a defect the
+owner finds into a build that does not go out.**
