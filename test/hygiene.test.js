@@ -1502,9 +1502,16 @@ test('AC-1415 the components render the composed value, never a factor of it', (
   assert.ok(!/restAlpha/.test(pips),
     'AbilityButton reaches past pipAlpha() into restAlpha, which is how 25% became 13.75%');
 
-  const tray = code(path.join(ROOT, 'src/ui/components/Tray.js'));
-  assert.match(tray, /trayStripOpacity\(/, 'the tray stopped reading the composed opacity');
-  assert.ok(!/opacity:\s*0\.45/.test(tray), 'the frozen opacity is hard-coded in the component');
+  // The tray's half of this went with Hold the Line (AC-1410b): it had exactly
+  // one composed opacity, `trayStripOpacity(frozen)`, and nothing suppresses an
+  // arrival any more, so the strip has one state and one opacity source. The
+  // rule it was an instance of is not lost — `AC-1410b a style array may set
+  // opacity from only one source` above is the audit, and it still sweeps Tray.js
+  // along with every other component.
+  const meter = code(path.join(ROOT, 'src/ui/components/Controls.js'));
+  assert.match(meter, /METER\.tick/, 'the meter stopped reading its geometry from layout.js');
+  assert.ok(!/width:\s*3,\s*height:\s*10/.test(meter),
+    'the meter tick hard-codes the geometry ui.md §7.1 puts in layout.js');
 });
 
 
@@ -1539,7 +1546,9 @@ test('AC-902 no shipped string pastes a count next to a noun that must agree', (
   assert.match('`${cells} CELLS`', bare);
   assert.match('`Abilities, ${button.charges} charges`', bare);
   assert.match('`${run.turns} turns`', bare);
-  assert.match('`Nothing arrives for ${frozen} more turns.`', bare);
+  // The fifth shape was the frozen tray's `Nothing arrives for ${frozen} more
+  // turns.`, and it went with Hold the Line (AC-1410b). Four real shapes still
+  // prove the audit fires; a sixth invented for this list would prove nothing.
   assert.equal(bare.test("`${plural(cells, 'cell')}.`"), false);
   assert.equal(bare.test('`on turn ${resume.turn} —`'), false);
 
@@ -1547,7 +1556,7 @@ test('AC-902 no shipped string pastes a count next to a noun that must agree', (
   // with a helper they do not call (§6.7: the pip asserted 25% and drew 13.75%).
   for (const [rel, pattern] of [
     ['src/ui/components/Tray.js', /plural\(cells, 'CELL', 'CELLS'\)/],
-    ['src/ui/components/Tray.js', /trayLabel\(queue, cells, frozen\)/],
+    ['src/ui/components/Tray.js', /trayLabel\(queue, cells\)/],
     ['src/ui/components/AbilityButton.js', /plural\(button\.charges, 'charge'\)/],
     ['src/ui/screens/RecordsScreen.js', /plural\(run\.turns, 'turn'\)/],
   ]) {

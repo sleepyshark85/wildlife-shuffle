@@ -12,10 +12,15 @@
  * those same events, and `longestStreak` the settled streak the ADVANCE event
  * carries (AC-706e). There is no statistic that comes from anywhere else.
  *
- * `abilitiesUsed`, `chargesEarned` and `lastStands` are Layer D read the same
- * way: an ability use is an ACTION event and a granted charge is a CHARGE
- * event, so the HUD's pip, the run record's count and the engine's own
+ * `abilitiesUsed`, `chargesEarned`, `lastStands` and `standDowns` are Layer D
+ * read the same way: an ability use is an ACTION event and a granted charge is a
+ * CHARGE event, so the HUD's pip, the run record's count and the engine's own
  * `state.charges` are three readings of one stream and cannot disagree.
+ *
+ * `buffaloShrinks` is also the Stand Down meter's unit (AC-1433), and the fold
+ * below is why the meter cannot be refilled by the ability that spends it: only
+ * CLEAR_STEP contributes to it, and Stand Down's shrinks ride an ACTION event.
+ * One event stream, two currencies, no rule to remember.
  *
  * `mostRowsInStep` is the Golden Herd unlock's condition — "clear 4 rows in a
  * single step" (gameplay.md §9). It is the widest CLEAR_STEP the stream
@@ -37,6 +42,7 @@ export function summariseEvents(events) {
   let abilitiesUsed = 0;
   let chargesEarned = 0;
   let lastStands = 0;
+  let standDowns = 0;
 
   for (const event of events) {
     switch (event.type) {
@@ -58,6 +64,10 @@ export function summariseEvents(events) {
         // them comes off the stream with everything else rather than from a
         // counter somebody remembers to increment (§6.3).
         if (event.action === 'ABILITY') abilitiesUsed += 1;
+        // AC-1433's "spending empties the meter": which turn spent it is a fact
+        // about the stream, exactly as the charge grants are, so `commit` reads
+        // it here rather than branching on the action it was handed.
+        if (event.ability === 'standDown') standDowns += 1;
         break;
       case 'CHARGE':
         chargesEarned += 1;
@@ -89,5 +99,6 @@ export function summariseEvents(events) {
     abilitiesUsed,
     chargesEarned,
     lastStands,
+    standDowns,
   };
 }

@@ -56,11 +56,11 @@ export function useTurnCues(plan, clock) {
    * A turn that moves nothing has no clock to hang cues on.
    *
    * `useTurnClock` does not ramp when `clockMs` is 0, which is right — there is
-   * nothing to interpolate. But such a turn can still END the run (Hold the
-   * Line with a frozen tray, and the board already at the kill line), and the
-   * one thing that must never be swallowed is the game-over cue. Every cue on
-   * such a turn is at t=0 by construction, so firing the lot is not an
-   * approximation of the schedule, it IS the schedule.
+   * nothing to interpolate. But such a turn can still END the run (a Pass whose
+   * arrival lands on a board already at the kill line, moving nothing that had
+   * anywhere to fall), and the one thing that must never be swallowed is the
+   * game-over cue. Every cue on such a turn is at t=0 by construction, so firing
+   * the lot is not an approximation of the schedule, it IS the schedule.
    */
   useEffect(() => {
     if (!plan || plan.clockMs > 0) return;

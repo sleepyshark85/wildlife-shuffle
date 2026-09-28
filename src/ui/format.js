@@ -36,10 +36,9 @@ export function formatScore(value) {
  * Eight sites were deciding it separately, and FOUR of them were wrong: the
  * tray's VoiceOver label said `1 cells`, its visible counter said `1 CELLS`,
  * the abilities button said `1 charges` and the Records screen said `1 turns`.
- * The other four were right — the frozen tray, the Dart counter, and two
- * strings whose count is a constant that can never be one. That is §6.3's
- * shape exactly: the copies that agreed are what made the copies that did not
- * look survivable.
+ * The other four were right — the Dart counter, and three strings whose count
+ * is a constant that can never be one. That is §6.3's shape exactly: the copies
+ * that agreed are what made the copies that did not look survivable.
  *
  * `many` is spelled out rather than always suffixed, so a plural the `s` rule
  * does not reach has somewhere to go without a second helper appearing beside
@@ -56,6 +55,27 @@ export function plural(count, one, many) {
 }
 
 /**
+ * A small count as a word, for the labels VoiceOver reads.
+ *
+ * ONE COPY, and it moved here to become one. The buffalo strip needed it for
+ * "Three buffalo on the board: five segments…" (AC-509) and the Stand Down
+ * meter needs it for "Stand Down, six of ten" (ui.md §7.1) — a screen reader
+ * cannot count ticks any more than it can count bars, so both labels are
+ * numerals spelled out, and a second table of number words is the §6.3 shape.
+ *
+ * It falls back to the digits past the table rather than growing one: eleven
+ * buffalo is the measured worst case and nothing caps the herd, so "12" is
+ * better than a gap.
+ */
+const WORDS = Object.freeze([
+  'no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+]);
+
+export function word(n) {
+  return n >= 0 && n < WORDS.length ? WORDS[n] : String(n);
+}
+
+/**
  * AC-902 — what VoiceOver reads off the tray.
  *
  * It lives here rather than in the component because it is DELIBERATELY more
@@ -64,10 +84,9 @@ export function plural(count, one, many) {
  * has to be checkable, and a function inside a file that imports Reanimated is
  * not (§6.7).
  */
-export function trayLabel(queue, cells, frozen) {
-  if (frozen > 0) {
-    return `Nothing arrives for ${frozen} more ${pluralNoun(frozen, 'turn')}.`;
-  }
+export function trayLabel(queue, cells) {
+  // The tray has ONE state again (AC-1410b): nothing in the game can suppress an
+  // arrival, so there is no "nothing arrives for n more turns" to say.
   if (queue.length === 0) return 'Next arrival: nothing queued.';
   const parts = queue.map((a) => {
     const where = a.size === 1 ? `column ${a.x + 1}` : `columns ${a.x + 1} to ${a.x + a.size}`;

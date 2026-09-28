@@ -350,7 +350,6 @@ export function GameScreen({ seed, resumed = null, onboarding = null, onHowToPla
       compact={compact}
       revealAt={arrivalLandsAt}
       reduced={reduced}
-      frozen={run.view.charges.frozen}
     />
   );
 
@@ -394,6 +393,8 @@ export function GameScreen({ seed, resumed = null, onboarding = null, onHowToPla
               countdown={run.view.buffaloIn}
               contentW={railSlots(railW).content}
               reduced={reduced}
+              meter={run.view.meter}
+              meterPlan={run.view.plan ? run.view.plan.meter : null}
               column
             />
             <IconButton glyph="❙❙" label="Pause" onPress={() => setPaused(true)} muted={!inputOpen} />
@@ -438,6 +439,8 @@ export function GameScreen({ seed, resumed = null, onboarding = null, onHowToPla
           countdown={run.view.buffaloIn}
           contentW={Math.max(0, width - GUTTER)}
           reduced={reduced}
+          meter={run.view.meter}
+          meterPlan={run.view.plan ? run.view.plan.meter : null}
         />
         {/* The board + tray group is a flex child centred in whatever remains. */}
         <View style={styles.centre}>

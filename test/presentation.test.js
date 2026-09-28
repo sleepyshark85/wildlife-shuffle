@@ -714,19 +714,21 @@ test('AC-902 the tray label names each animal, and agrees with its own count', (
     { id: 'b', type: 'fox', x: 3, size: 2 },
   ];
   assert.equal(
-    trayLabel(many, 3, 0),
+    trayLabel(many, 3),
     'Next arrival: rat at column 1, fox at columns 4 to 5. 3 cells.',
   );
 
   // AC-902/AC-902b: the species names are the information the silhouette
   // withholds, so they are asserted rather than assumed.
-  for (const type of ['rat', 'fox']) assert.match(trayLabel(many, 3, 0), new RegExp(type));
+  for (const type of ['rat', 'fox']) assert.match(trayLabel(many, 3), new RegExp(type));
 
-  assert.equal(trayLabel([], 0, 0), 'Next arrival: nothing queued.');
+  assert.equal(trayLabel([], 0), 'Next arrival: nothing queued.');
 
-  // AC-1410: while the freeze holds, the label counts turns and agrees too.
-  assert.equal(trayLabel(many, 3, 2), 'Nothing arrives for 2 more turns.');
-  assert.equal(trayLabel(many, 3, 1), 'Nothing arrives for 1 more turn.');
+  // AC-1410b: ONE state. Nothing can suppress an arrival any more, so the
+  // label has no second thing to say and the third argument it used to take is
+  // gone rather than ignored — a stray `trayLabel(queue, cells, 2)` returns the
+  // arrival, because there is no branch left for it to reach.
+  assert.equal(trayLabel(many, 3, 2), trayLabel(many, 3));
 });
 
 test('AC-902 a count and its noun agree at one, and above it', () => {

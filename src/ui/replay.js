@@ -16,9 +16,9 @@
 // the board they were emitted against is the only source for that which cannot
 // drift from the engine, because it IS the engine's output.
 
-import { ABILITIES } from '../engine/abilities.js';
-import { BOARD } from '../engine/constants.js';
-import { CUE, chainRate, coalesceCues } from './cues.js';
+import { STAND_DOWN_SEGMENTS } from '../engine/abilities.js';
+import { BOARD, SPECIES } from '../engine/constants.js';
+import { CUE, buffaloRate, chainRate, coalesceCues } from './cues.js';
 import { COPY, MOTION } from './theme.js';
 import { playoutEnd, stampedeBeats, turnTimeline } from './timeline.js';
 
@@ -93,9 +93,16 @@ function compact(keys, startY) {
  *                                cost has not happened yet when the plan is
  *                                built. The lock timer corrects the remainder
  *                                exactly, so this only has to be close.
+ * @param {number} prevMeter      the Stand Down meter as it stood before the
+ *                                turn. Passed rather than derived, because the
+ *                                event stream carries the notches this turn
+ *                                GAINED and the ticks have to know which ones
+ *                                those are — and the meter clamps at
+ *                                STAND_DOWN_SEGMENTS, so `now − gained` is not
+ *                                the same number.
  * @returns {object} the plan; see the shape returned at the bottom
  */
-export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
+export function buildReplay(prevAnimals, lastTurn, reservedMs = 0, prevMeter = 0) {
   /** Identity for this turn: the announcement layer and the shared clock
    *  both key off it, and so does every animal's own schedule. */
   // `seq` and not `turn`: a Dart resolves up to three times inside one turn
@@ -143,6 +150,18 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
   let firstCollapseAt = null;
   let lastCollapseAt = null;
   let floatRow = 0;
+  /**
+   * ui.md §7.1 — the Stand Down meter's schedule, on the BOARD's clock.
+   *
+   * `fills` is one entry per notch gained this turn, each at the moment the
+   * segment it counts cracks (AC-509b's rule, applied to the meter: the HUD and
+   * the board never disagree about a buffalo). `drainAt` is when all ten ticks
+   * empty left to right, and it is on the SPRING's clock, so the player sees the
+   * cost paid in the same breath as the effect.
+   */
+  const meterFills = [];
+  let meterDrainAt = null;
+  let meterAt = Math.max(0, Math.min(STAND_DOWN_SEGMENTS, prevMeter));
 
   /** `startY` is where the animal stood when the turn began: the row every
    *  key below is a departure from, and the one a no-op key returns to. */
@@ -252,17 +271,67 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
           motion.delete(id);
         }
 
-        // AC-1410c: Hold the Line's announce beat. It moves no animal, so
-        // without this the only sign the ability fired is a tray that quietly
-        // stopped — the player spends two charges and sees nothing happen.
-        if (event.ability === ABILITIES.hold.id) {
+        // AC-1431 / ui.md §13.4a — STAND DOWN, AND IT IS ONE EVENT, NOT ELEVEN.
+        //
+        // Up to eleven bodies lose up to four segments each. Everything below is
+        // written at ONE of two times — the crack at 180 and the spring at 380 —
+        // and never at a time that depends on which buffalo or which segment it
+        // belongs to. Staggering 11 x 4 is 44 units and is AC-1411b's error
+        // repeated: what should read as the herd breaking at once would read as
+        // a machine gun, which is to say as a bug.
+        if (event.shrunk.length > 0) {
+          const crackAt = MOTION.standDownCrackAt * scale;
+          const springAt = MOTION.standDownSpringAt * scale;
           floats.push({
-            key: `hold-${lastTurn.seq}`,
+            key: `standDown-${lastTurn.seq}`,
             at: 0,
             y: BOARD.dangerBandLow - 4,
-            text: COPY.holdAnnounce,
+            text: COPY.standDownAnnounce,
             tone: 'buffalo',
           });
+          // AC-1431d: ONE cue, not eleven, at the pitch of the LARGEST buffalo
+          // on the board BEFORE the ability fired — so the sound reports the
+          // size of what was broken (ui.md §15.2, §15.3).
+          let widest = 0;
+          for (const shrink of event.shrunk) widest = Math.max(widest, shrink.fromSize);
+          cues.push({
+            at: crackAt, cue: CUE.shrink, rate: buffaloRate(widest, SPECIES.buffalo.size),
+          });
+
+          for (const shrink of event.shrunk) {
+            const animal = board.get(shrink.id);
+            if (!animal) continue;
+            // Every SPENT segment cracks, not just the trailing one: a size-5
+            // buffalo loses four panels here where a completed row takes one.
+            for (let seg = shrink.toSize; seg < shrink.fromSize; seg += 1) {
+              shards.push({
+                key: `${shrink.id}@standDown${seg}`,
+                id: shrink.id,
+                x: animal.x + seg,
+                y: animal.y,
+                ...trackAt(shrink.id, animal.y),
+                at: crackAt,
+                // AC-1431: the crack is the 180 -> 380 window and nothing
+                // longer. A clear step's shard falls for `buffaloCrack +
+                // buffaloShrink` because its crack and its re-width are one
+                // continuous motion; here the re-width is a SEPARATE beat, at
+                // 380, on every buffalo at once.
+                dur: MOTION.standDownCrack * scale,
+              });
+            }
+            animal.size = shrink.toSize;
+            entry(shrink.id, animal.y).size = {
+              at: springAt,
+              dur: shrinkMs,
+              to: shrink.toSize,
+            };
+          }
+          // AC-1433: spending empties the meter, and it drains rather than
+          // blinking out — Stand Down is the only thing in the game paid for in
+          // a currency the player watched themselves earn, so the expenditure
+          // needs a moment (ui.md §13.4a).
+          meterDrainAt = springAt;
+          meterAt = 0;
         }
 
         // Stampede: rows slide left, staggered from the bottom up. The slide is
@@ -271,15 +340,23 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
         // moved the body on the UI thread. Nothing had moved this one, so
         // without a key here the whole board would teleport left while every
         // position check still passed (§6.7).
+        //
+        // BURROW'S PACK RIDES THE SAME KEY AND NOT THE SAME SCHEDULE (AC-1428).
+        // It is ONE beat, after the dissolve: Stampede's stagger exists to read
+        // as fifteen rows moving in sequence, and a staggered one-row slide is a
+        // stagger nobody can perceive as one. Running it after the dissolve
+        // rather than with it is what makes the two halves read as cause and
+        // effect — this leaves, and then the row closes.
         if (event.moved.length > 0) {
-          const beats = stampedeBeats(event.moved);
+          const packing = event.removedIds.length > 0;
+          const beats = packing ? null : stampedeBeats(event.moved);
           for (const slid of event.moved) {
             const animal = board.get(slid.id);
             if (!animal) continue;
             animal.x = slid.toX;
             entry(slid.id, animal.y).slide = {
-              at: (beats.get(slid.y) || 0) * scale,
-              dur: MOTION.snap * scale,
+              at: (packing ? MOTION.burrow : (beats.get(slid.y) || 0)) * scale,
+              dur: (packing ? MOTION.burrowPack : MOTION.snap) * scale,
               fromX: slid.fromX,
               toX: slid.toX,
             };
@@ -407,6 +484,22 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
         }
 
         for (const shrink of event.shrunk) {
+          // ui.md §7.1: the tick fills at the moment the segment it counts
+          // cracks, which is this one. Only a segment broken BY A COMPLETED ROW
+          // reaches this branch, so Stand Down's own shrinks fill nothing and
+          // the ability cannot refill itself — the engine's rule (AC-1433) and
+          // the animation's schedule come off the same event.
+          //
+          // IT IS ABOVE THE RETIREMENT GUARD ON PURPOSE. A buffalo going from
+          // size 1 to retired is a shrink AND a departure, and the engine counts
+          // it as one notch (AC-1433: "it is the last segment, not a bonus"). A
+          // fill scheduled after `continue` would have left the engine's meter
+          // and the drawn meter one tick apart on exactly the turn the player
+          // finally retired one.
+          if (meterAt < STAND_DOWN_SEGMENTS) {
+            meterFills.push({ index: meterAt, at: unit.collapseAt });
+            meterAt += 1;
+          }
           const animal = board.get(shrink.id);
           if (!animal) continue; // retired: it left as a departure above
           animal.size = shrink.toSize;
@@ -438,6 +531,7 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
             y: animal.y,
             ...trackAt(shrink.id, animal.y),
             at: unit.collapseAt,
+            dur: (MOTION.buffaloCrack + MOTION.buffaloShrink) * scale,
           });
           floats.push({
             key: `shrink-${shrink.id}@${unit.phase}${unit.index}`,
@@ -651,6 +745,8 @@ export function buildReplay(prevAnimals, lastTurn, reservedMs = 0) {
     flashes,
     shards,
     floats,
+    /** ui.md §7.1: the Stand Down meter's ticks, on the board's own clock. */
+    meter: { fills: meterFills, drainAt: meterDrainAt, to: meterAt },
     /** AC-1101: sorted, de-machine-gunned, and read by useTurnCues.js. */
     cues: coalesceCues(cues),
     shakeAt,

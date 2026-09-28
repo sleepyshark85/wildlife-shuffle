@@ -372,11 +372,12 @@ const Shard = memo(function Shard({ shard, clock, planKey, cell, reduced }) {
   const fill = theme.species.buffalo;
   const go = useSharedValue(0);
   useEffect(() => {
-    go.value = delay(
-      shard.at,
-      withTiming(1, timing(MOTION.buffaloCrack + MOTION.buffaloShrink, EASE.fall, reduced)),
-    );
-  }, [shard.at, reduced, go]);
+    // The span comes off the PLAN, because the two kinds of crack are different
+    // lengths: a clear step's shard cracks and re-widths as one continuous
+    // motion, where Stand Down's crack is its own 200 ms beat and the spring
+    // that follows it is another (AC-1431).
+    go.value = delay(shard.at, withTiming(1, timing(shard.dur, EASE.fall, reduced)));
+  }, [shard.at, shard.dur, reduced, go]);
 
   const now = useTurnT(clock, planKey);
   const cap = reduced ? MOTION.reduced : 0;

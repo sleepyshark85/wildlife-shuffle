@@ -228,8 +228,16 @@ test('AC-1016 a retune of the bands, weights or scoring changes the engine versi
   // BUFFALO_PHASES, so the claim is checked rather than assumed — and the
   // SHIPPED version string is pinned, so a future change that happened to hash
   // back to it would fail here.
-  assert.equal(ENGINE_VERSION, 'e1.x2hg53', 'the engine version moved unexpectedly');
+  assert.equal(ENGINE_VERSION, 'e1.bf5512', 'the engine version moved unexpectedly');
   assert.notEqual(ENGINE_VERSION, 'e1.1plkiik', 'the collapse did not move the engine version');
+  // AC-1430: the abilities pass moved it again, and every stored resume written
+  // before it is discarded unreplayed. Five changes touch the surface — Hold
+  // removed and Stand Down added, STAND_DOWN_SEGMENTS joining it, HOLD_TURNS
+  // leaving, Stampede repriced, Burrow's `packs` flag, and CHAIN_GUARD_STEPS —
+  // so the previous string is pinned too: a future change that happened to hash
+  // back to either of them would fail here.
+  assert.notEqual(ENGINE_VERSION, 'e1.x2hg53',
+    'the roster revision did not move the engine version');
 
   const reschedule = copy();
   reschedule[2][0].every = 11;

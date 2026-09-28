@@ -242,9 +242,60 @@ export const COUNTDOWN_W = 78;
 /** The gap between the chip row and the countdown. */
 export const COUNTDOWN_GAP = 8;
 
-/** How much width the chip row has, given the screen (or rail) width. */
-export function chipRoomFor(contentW) {
-  return Math.max(0, contentW - COUNTDOWN_W - COUNTDOWN_GAP);
+/**
+ * ui.md §7.1 — the Stand Down meter, which lives on this strip and nowhere else.
+ *
+ * Ten ticks at 3 x 10 pt with a 1.5 pt gap is 43.5 pt, with 10 pt clear either
+ * side. It is between the last chip and the countdown, because the strip is the
+ * only part of the screen that is about the herd and the meter is the herd's own
+ * ledger. It is NOT on the abilities button: that button carries the charge
+ * pips, and a second progress indicator there would say the two currencies were
+ * the same one — the confusion gameplay.md §13.2f-vi exists to prevent.
+ *
+ * The ticks are SQUARE and the pips are ROUND, deliberately (ui.md §13.2): a
+ * player who could not tell them apart would try to save charges for Stand Down.
+ */
+export const METER = Object.freeze({
+  tick: 3, tickH: 10, gap: 1.5, clear: 10,
+});
+
+export function meterWidth(ticks) {
+  return ticks * METER.tick + Math.max(0, ticks - 1) * METER.gap;
+}
+
+/**
+ * The meter's own margin, given that the strip already sets `COUNTDOWN_GAP`
+ * between its children.
+ *
+ * §7.1 asks for 10 pt clear either side and the strip's flex gap pays 8 of it,
+ * so the meter adds 2. It is DERIVED here rather than written into the
+ * component, because a component doing arithmetic on two layout constants is
+ * exactly how the two came to disagree in v1 (AC-107).
+ */
+export const METER_MARGIN = METER.clear - COUNTDOWN_GAP;
+
+/**
+ * How much width the chip row has, given the screen (or rail) width.
+ *
+ * THE METER COMES OUT OF THE CHIPS' ROOM, not out of the countdown's, and it is
+ * subtracted only when it is showing. §7.1's own arithmetic for the measured
+ * worst case is eleven chips at 204 pt, the meter at 43.5 with 20 pt of gaps and
+ * the countdown at about 78 — 345.5 of a 361 pt content width, which it calls
+ * "tight and deliberate". The sweep (AC-119) supports 272 pt of width, where
+ * that budget is gone entirely, so the chips must be the thing that yields:
+ * `chipRuleFor` already scales them monotonically rather than dropping any, and
+ * this is what tells it the room it actually has. Giving the countdown away
+ * instead would break a promise the engine always keeps (AC-509c).
+ */
+export function chipRoomFor(contentW, meterTicks = 0) {
+  // With the meter showing, its 10 pt right-hand clearance IS the separation
+  // from the countdown — §7.1's own figure (204 + 43.5 + 20 + 78 = 345.5 of
+  // 361) counts one pair of clearances and no second gap, so `COUNTDOWN_GAP` is
+  // replaced by them rather than added to them.
+  const tail = meterTicks > 0
+    ? meterWidth(meterTicks) + 2 * METER.clear
+    : COUNTDOWN_GAP;
+  return Math.max(0, contentW - COUNTDOWN_W - tail);
 }
 
 

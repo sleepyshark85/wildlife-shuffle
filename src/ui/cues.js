@@ -170,6 +170,33 @@ export function chainRate(step) {
   return Math.pow(2, (CHAIN_SEMITONE * (step - 1)) / 12);
 }
 
+// ---- AC-1431d: Stand Down strikes metal once, at the herd's own pitch ------
+
+/**
+ * The playback rate for the buffalo's metal at `size`, against the shipped cue.
+ *
+ * ui.md §15.2 is the whole derivation and it is the audio half of the game's
+ * thesis: `species pitch = root − 2 × (size − 3)`, so PITCH FALLS AS SIZE RISES
+ * and a player who cannot see the board still knows what just landed. The
+ * shipped `shrink` sample is voiced at root − 4, which is a FULL buffalo — so a
+ * full one is rate 1 and a shrunk one is proportionally higher.
+ *
+ * Stand Down is the one caller that needs it (AC-1431d): one strike, never one
+ * per buffalo, at the pitch of the LARGEST buffalo on the board before the
+ * ability fired, so the sound reports the size of what was broken. An ordinary
+ * shrink does not use it — a shrink bought with a completed row is one segment
+ * off one buffalo and already has §15.3's own voice.
+ *
+ * Derived rather than tabulated, so it cannot disagree with §15.2's formula if
+ * the buffalo's size ever moves again (it went 4 -> 5 once already, and the chip
+ * did not follow). `full` is PASSED rather than read off `SPECIES`, because this
+ * module imports nothing and the one caller already holds the constants.
+ */
+export function buffaloRate(size, full) {
+  'worklet';
+  return Math.pow(2, (2 * (full - Math.max(1, size))) / 12);
+}
+
 // ---- AC-1103 / AC-1105: the audio session ---------------------------------
 
 /**

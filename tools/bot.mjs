@@ -7,7 +7,8 @@
 import { BOARD, BUFFALO, STATUS } from '../src/engine/constants.js';
 import { checkMove, MOVE_OK } from '../src/engine/board.js';
 import {
-  ABILITIES, MIGRATE_SPECIES, abilityCost, stampede,
+  ABILITIES, ABILITY_IDS, MIGRATE_SPECIES, abilityCost, abilityFault, isAbilityRemovable,
+  stampede,
 } from '../src/engine/abilities.js';
 import { ACTIONS, createRun, reduce } from '../src/engine/engine.js';
 
@@ -129,11 +130,19 @@ export function measurePacing(seeds = 30, turnCap = 3000) {
  *
  * THREE policies, because AC-1405h's pricing split them. A policy that spends
  * the moment it holds a charge buys Burrow at 1 and therefore NEVER saves the
- * 3 a Stampede costs — measured over 60 runs it took Stampede zero times. One
+ * 2 a Stampede costs — measured over 60 runs it took Stampede zero times. One
  * policy is now one half of the economy, so there are three: spend on value,
- * buy nothing but the freeze, or save the whole reserve for the elephant.
- * All three must terminate, and the freeze one is the policy §13.3's guarantee
- * is actually worded against.
+ * buy nothing but Stand Down, or save the whole reserve for the elephant.
+ * All three must terminate.
+ *
+ * THE MIDDLE ONE USED TO BE `freeze`, and it was the policy §13.3's guarantee
+ * was worded against — "a player cannot freeze their way to an unbounded run".
+ * Hold the Line is withdrawn (AC-1410), so nothing in the game can suppress an
+ * arrival and that attack no longer exists. Its replacement attacks the same
+ * guarantee from the only angle left: Stand Down frees up to 44 cells in one
+ * ACTION phase, which is the largest structural change the engine can be asked
+ * to make, and a policy that fires it on sight is what proves that buys score
+ * rather than time (AC-1409, AC-1434's +3%).
  *
  * Dart is skipped deliberately: it buys extra moves rather than extra turns,
  * and the greedy search already plays the first of them.
@@ -145,9 +154,9 @@ export function measurePacing(seeds = 30, turnCap = 3000) {
 const POLICY = Object.freeze({
   /** Spend on the best thing affordable, right now. Never saves, so never
    *  reaches Stampede — which is exactly why it is not the only policy. */
-  value: ['stampede', 'migrate', 'hold', 'burrow'],
-  /** Buys nothing but the freeze. The policy AC-1409's wording is about. */
-  freeze: ['hold'],
+  value: ['standDown', 'stampede', 'migrate', 'burrow'],
+  /** Buys nothing but Stand Down — and buys it in the second currency. */
+  standDown: ['standDown'],
   /** Saves the entire reserve for the one ability that costs all of it. */
   stampede: ['stampede'],
 });
@@ -159,12 +168,18 @@ export function chooseAbility(state, { policy = 'value' } = {}) {
   for (const ability of wanted) {
     if (state.charges < abilityCost(ability)) continue;
 
-    if (ability === ABILITIES.stampede.id) {
-      if (stampede(state.animals).moved.length === 0) continue;
+    if (ability === ABILITIES.standDown.id) {
+      // The meter and the target are both the engine's own predicate, so this
+      // policy cannot ask for something `reduce()` would reject (AC-1421).
+      if (abilityFault(state, ability)) continue;
+      // AC-1422 makes an all-size-1 herd legal, and a policy that spent the
+      // meter on one would be measuring nothing. §13.2f-iii's "fire at the
+      // first opportunity" means the first USEFUL one.
+      if (!state.animals.some((a) => a.type === BUFFALO && a.size > 1)) continue;
       return { type: ACTIONS.ABILITY, ability };
     }
-    if (ability === ABILITIES.hold.id) {
-      if (state.frozen > 0) continue;
+    if (ability === ABILITIES.stampede.id) {
+      if (stampede(state.animals).moved.length === 0) continue;
       return { type: ACTIONS.ABILITY, ability };
     }
     if (ability === ABILITIES.migrate.id) {
@@ -200,9 +215,7 @@ export function chooseAbility(state, { policy = 'value' } = {}) {
 export function playAbilityRun(seed, turnCap = 3000, policy = {}) {
   let state = createRun({ seed, abilities: true });
   let spent = 0;
-  let frozenTurns = 0;
   while (state.status === STATUS.READY && state.turn < turnCap) {
-    if (state.frozen > 0) frozenTurns += 1;
     const ability = chooseAbility(state, policy);
     const next = ability ? reduce(state, ability) : reduce(state, chooseAction(state));
     if (ability && next.lastAction && next.lastAction.type === 'REJECTED') {
@@ -218,8 +231,144 @@ export function playAbilityRun(seed, turnCap = 3000, policy = {}) {
     score: state.score,
     ended: state.status === STATUS.GAME_OVER,
     spent,
-    frozenTurns,
     charges: state.charges,
     earned: state.stats.chargesEarned,
+  };
+}
+
+
+// ---- AC-1434 / AC-1435 · the arm measurement -----------------------------
+
+/**
+ * The ONE-PLY CANDIDATE policy — §13.2da's method, and the reason it exists.
+ *
+ * The `chooseAbility` policies above spend the instant they can afford to,
+ * which measures charge INCOME more than it measures an ability: at a flat cost
+ * of 1 that fired Stampede 27.8 times a run, which is not a use pattern any
+ * player has. So the measurement offers each ability to the search as ONE MORE
+ * CANDIDATE and takes it only when the resulting board beats the best ordinary
+ * move. `uses/run` is then a number about the economy rather than about the
+ * harness.
+ *
+ * `allow` is the roster this arm is measured with; AC-1405L's limit is that a
+ * one-at-a-time arm table cannot say whether a player would ever PICK an
+ * ability, so the shipped measurement passes the whole roster.
+ *
+ * Its blind spot is stated rather than hidden: one ply cannot value a repack it
+ * would cash in two turns' time, which understates Stampede and Burrow (§13.2d,
+ * §13.2e). It does not understate Stand Down, whose cells come free on the turn
+ * it fires.
+ */
+function abilityCandidates(state, ability) {
+  if (abilityFault(state, ability, undefined) && ABILITIES[ability].target === null) return [];
+  switch (ability) {
+    case ABILITIES.burrow.id:
+      return state.animals
+        .filter((a) => isAbilityRemovable(a.type))
+        .map((a) => ({ type: ACTIONS.ABILITY, ability, target: a.id }));
+    case ABILITIES.migrate.id:
+      return [...new Set(state.animals.map((a) => a.type))]
+        .filter((type) => MIGRATE_SPECIES.includes(type))
+        .map((type) => ({ type: ACTIONS.ABILITY, ability, target: type }));
+    default:
+      return [{ type: ACTIONS.ABILITY, ability }];
+  }
+}
+
+/**
+ * What a candidate is worth, one ply out — with Dart PLAYED OUT.
+ *
+ * Dart resolves no turn (AC-1407): arming it leaves the board untouched, so a
+ * one-ply evaluation of the arming action scores exactly the same as PASS and
+ * the ability would never be taken. §13.2da's fix is the honest one: play all
+ * three moves greedily and evaluate the board they leave. That is what took
+ * Dart from "+8%, a floor" to the second-best p90 in the table.
+ */
+function candidateValue(state, action) {
+  let next = reduce(state, action);
+  if (next.lastAction && next.lastAction.type === 'REJECTED') return -Infinity;
+  if (action.ability === ABILITIES.dart.id) {
+    while (next.dart > 0 && next.status === STATUS.READY) {
+      const move = chooseAction(next);
+      const after = reduce(next, move);
+      if (after.lastAction && after.lastAction.type === 'REJECTED') break;
+      next = after;
+    }
+  }
+  return evaluate(next);
+}
+
+export function chooseCandidate(state, { allow = ABILITY_IDS } = {}) {
+  // Inside an open Dart the turn belongs to the moves, not to a second ability.
+  if (state.dart > 0) return chooseAction(state);
+
+  let best = null;
+  let bestValue = -Infinity;
+  for (const action of legalActions(state)) {
+    const value = evaluate(reduce(state, action));
+    if (value > bestValue) {
+      bestValue = value;
+      best = action;
+    }
+  }
+  for (const ability of allow) {
+    for (const action of abilityCandidates(state, ability)) {
+      const value = candidateValue(state, action);
+      // Strictly greater: an ability that ties an ordinary move is not taken,
+      // so nothing is spent for nothing.
+      if (value > bestValue) {
+        bestValue = value;
+        best = action;
+      }
+    }
+  }
+  return best;
+}
+
+/** Σ(size − 1) over the herd: what Stand Down converts (gameplay.md §5.9). */
+function lockedSegments(animals) {
+  let locked = 0;
+  for (const a of animals) if (a.type === BUFFALO) locked += a.size - 1;
+  return locked;
+}
+
+/**
+ * One arm of the measurement: play `seed` with `allow` available, and report
+ * everything AC-1434 and AC-1435 ask about.
+ *
+ * `uses` is per ability, off `state.lastAction` rather than off a counter the
+ * loop keeps, so a rejected use cannot be counted as a use.
+ */
+export function measureArm(seed, { allow = ABILITY_IDS, turnCap = 3000 } = {}) {
+  let state = createRun({ seed, abilities: true });
+  const uses = {};
+  let peakLocked = lockedSegments(state.animals);
+  while (state.status === STATUS.READY && state.turn < turnCap) {
+    const action = chooseCandidate(state, { allow });
+    const next = reduce(state, action);
+    if (next.lastAction && next.lastAction.type === 'REJECTED') {
+      // The search asked for something illegal; fall back rather than stall.
+      state = reduce(state, chooseAction(state));
+      continue;
+    }
+    if (next.lastAction && next.lastAction.type === ACTIONS.ABILITY) {
+      uses[next.lastAction.ability] = (uses[next.lastAction.ability] || 0) + 1;
+    }
+    state = next;
+    peakLocked = Math.max(peakLocked, lockedSegments(state.animals));
+  }
+  let buffaloCells = 0;
+  for (const a of state.animals) if (a.type === BUFFALO) buffaloCells += a.size;
+  return {
+    seed,
+    score: state.score,
+    turns: state.turn,
+    ended: state.status === STATUS.GAME_OVER,
+    retired: state.stats.buffaloRetired,
+    shrinks: state.stats.buffaloShrinks,
+    earned: state.stats.chargesEarned,
+    buffaloCells,
+    peakLocked,
+    uses,
   };
 }

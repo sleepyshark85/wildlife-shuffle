@@ -7,17 +7,21 @@
 //   node tools/play.mjs --seed 42 --turns 200 --quiet
 //   node tools/play.mjs --pacing            # the AC-318 / AC-320h measurement
 //   node tools/play.mjs --pacing --seeds 300
+//   node tools/play.mjs --abilities         # AC-1434 / AC-1435, 200 seeds
 //
 // This is a developer tool. It is not bundled into the app.
 
 import { BOARD, STATUS } from '../src/engine/constants.js';
+import { ABILITY_IDS, STAND_DOWN_SEGMENTS } from '../src/engine/abilities.js';
 import { ACTIONS, createRun, queueCells, reduce, runRecord } from '../src/engine/engine.js';
-import { chooseAction, measurePacing } from './bot.mjs';
+import { chooseAction, measureArm, measurePacing } from './bot.mjs';
 
 const GLYPH = { rat: 'R', fox: 'F', elk: 'K', buffalo: 'B', elephant: 'E' };
 
 function parseArgs(argv) {
-  const args = { seed: 42, turns: 30, every: 1, seeds: 30, quiet: false, pacing: false };
+  const args = {
+    seed: 42, turns: 30, every: 1, seeds: 30, quiet: false, pacing: false, abilities: false,
+  };
   const numeric = {
     '--seed': 'seed', '--turns': 'turns', '--every': 'every', '--seeds': 'seeds',
   };
@@ -32,6 +36,9 @@ function parseArgs(argv) {
       args.quiet = true;
     } else if (flag === '--pacing') {
       args.pacing = true;
+    } else if (flag === '--abilities') {
+      args.abilities = true;
+      if (args.seeds === 30) args.seeds = 200;
     } else if (flag === '--help' || flag === '-h') {
       args.help = true;
     } else {
@@ -73,12 +80,93 @@ function describe(action) {
   return `MOVE #${shortId} -> x=${action.x}`;
 }
 
+const median = (v) => {
+  const sorted = [...v].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+const pct = (v, p) => {
+  const sorted = [...v].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+};
+const mean = (v) => v.reduce((a, b) => a + b, 0) / v.length;
+const delta = (a, b) => `${b >= a ? '+' : ''}${Math.round(((b - a) / a) * 100)}%`;
+
+/**
+ * AC-1434 and AC-1435, re-run.
+ *
+ * TWO ARMS ON IDENTICAL SEEDS, and the control is the SAME roster with Stand
+ * Down withheld rather than a different bot — so the only difference between
+ * the columns is the ability, which is what makes the deltas attributable
+ * (gameplay.md §5.7's ordering rule, applied to a measurement).
+ *
+ * The reach table is measured with Stand Down as the ONLY ability available,
+ * which is a roster-free FLOOR: runs are shorter and it fires less often than
+ * the full-roster figure above. The comparison BETWEEN buckets is the finding;
+ * the level is not.
+ */
+function abilityReport(seeds) {
+  const roster = ABILITY_IDS.filter((id) => id !== 'standDown');
+  const arm = (allow) => {
+    const runs = [];
+    for (let seed = 1; seed <= seeds; seed += 1) runs.push(measureArm(seed, { allow }));
+    return runs;
+  };
+  const control = arm(roster);
+  const full = arm(ABILITY_IDS);
+  const uses = (runs, id) => mean(runs.map((r) => r.uses[id] || 0));
+
+  const row = (name, runs) => `${name.padEnd(22)}`
+    + `${String(median(runs.map((r) => r.score))).padStart(8)}`
+    + `${String(pct(runs.map((r) => r.score), 90)).padStart(9)}`
+    + `${String(median(runs.map((r) => r.turns))).padStart(7)}`
+    + `${mean(runs.map((r) => r.retired)).toFixed(2).padStart(9)}`
+    + `${mean(runs.map((r) => r.buffaloCells)).toFixed(1).padStart(8)}`
+    + `   ${ABILITY_IDS.map((id) => `${id} ${uses(runs, id).toFixed(2)}`).join('  ')}`;
+
+  const lines = [
+    `AC-1434 — ${seeds} identical seeds per arm, one-ply candidate policy, whole roster offered`,
+    `Stand Down's meter is STAND_DOWN_SEGMENTS = ${STAND_DOWN_SEGMENTS}.`,
+    '',
+    `${''.padEnd(22)}${'median'.padStart(8)}${'p90'.padStart(9)}${'turns'.padStart(7)}`
+      + `${'retired'.padStart(9)}${'cells'.padStart(8)}   uses/run`,
+    row('control (withheld)', control),
+    row('with Stand Down', full),
+    '',
+    `delta   median ${delta(median(control.map((r) => r.score)), median(full.map((r) => r.score)))}`
+      + `   p90 ${delta(pct(control.map((r) => r.score), 90), pct(full.map((r) => r.score), 90))}`
+      + `   turns ${delta(median(control.map((r) => r.turns)), median(full.map((r) => r.turns)))}`
+      + `   cells ${delta(mean(control.map((r) => r.buffaloCells)),
+        mean(full.map((r) => r.buffaloCells)))}`,
+    `runs that did not end: ${control.concat(full).filter((r) => !r.ended).length}`,
+    '',
+    'AC-1435 — 300 runs, Stand Down as the ONLY ability available (the roster-free floor)',
+    'The SHAPE is the finding: flat to rising, where charge availability climbed 8 -> 100%.',
+    '',
+    'peak locked   runs   fires >=1   median lifetime charges',
+  ];
+
+  const reach = [];
+  for (let seed = 1; seed <= 300; seed += 1) reach.push(measureArm(seed, { allow: ['standDown'] }));
+  for (const [lo, hi] of [[0, 4], [5, 9], [10, 14], [15, 19], [20, 999]]) {
+    const inBucket = reach.filter((r) => r.peakLocked >= lo && r.peakLocked <= hi);
+    if (inBucket.length === 0) continue;
+    const fired = inBucket.filter((r) => r.uses.standDown).length;
+    lines.push(`${(hi === 999 ? `${lo}+` : `${lo}-${hi}`).padStart(11)}`
+      + `${String(inBucket.length).padStart(6)}`
+      + `${`${Math.round((100 * fired) / inBucket.length)}%`.padStart(11)}`
+      + `${String(median(inBucket.map((r) => r.earned))).padStart(24)}`);
+  }
+  return lines.join('\n');
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stdout.write(
       'Usage: node tools/play.mjs [--seed N] [--turns N] [--every N]\n' +
-        '                          [--quiet] [--pacing [--seeds N]]\n',
+        '                          [--quiet] [--pacing [--seeds N]]\n' +
+        '                          [--abilities [--seeds N]]\n',
     );
     return;
   }
@@ -107,6 +195,11 @@ function main() {
       'meadow/savanna ratio ranged 1.15-1.62. Measure wide before tuning.',
     ];
     process.stdout.write(`${lines.join('\n')}\n`);
+    return;
+  }
+
+  if (args.abilities) {
+    process.stdout.write(`${abilityReport(args.seeds)}\n`);
     return;
   }
 

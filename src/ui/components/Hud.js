@@ -46,7 +46,7 @@ import { MOTION, SPACE, hudScale, themed } from '../theme.js';
 import { useTheme } from '../progressStore.js';
 import { formatScore } from '../format.js';
 import { stripIsVisible, stripLabel } from '../buffaloStrip.js';
-import { BuffaloChip, IconButton, StreakPill } from './Controls.js';
+import { BuffaloChip, IconButton, StandDownMeter, StreakPill } from './Controls.js';
 
 const BUFFALO_GLYPH = '\u{1F403}';
 
@@ -95,7 +95,7 @@ const Chip = memo(function Chip({ size, rule, shrink, leaving, reduced }) {
  * CHROME), so this renders into a fixed box and the board never moves.
  */
 export const BuffaloStrip = memo(function BuffaloStrip({
-  chrome, rows, countdown, contentW, reduced, large, column,
+  chrome, rows, countdown, contentW, reduced, large, column, meter, meterPlan,
 }) {
   const styles = STYLES[useTheme().name];
   const metrics = buffaloStripMetrics(chrome);
@@ -103,7 +103,13 @@ export const BuffaloStrip = memo(function BuffaloStrip({
   // hold a 78 pt countdown beside anything (AC-121 asks for the same
   // components, not the same arrangement — see `railSlots`). In a column the
   // chips get the whole content width.
-  const room = column ? contentW : chipRoomFor(contentW);
+  //
+  // The meter comes out of the CHIPS' room, never the countdown's (`layout.js`):
+  // `NEXT 🐃 n` is a promise the engine always keeps (AC-509c) and the chips are
+  // the thing that already scales rather than scrolling (AC-509d).
+  const room = column
+    ? contentW
+    : chipRoomFor(contentW, meter ? meter.ticks.length : 0);
   const rule = chipRuleFor(rows.length, room);
   const show = stripIsVisible(rows.length, countdown);
   return (
@@ -131,6 +137,18 @@ export const BuffaloStrip = memo(function BuffaloStrip({
               />
             ))}
           </View>
+          {/* ui.md §7.1: between the last chip and the countdown. Its VALUE
+              persists when the strip is hidden; only its display comes and
+              goes, exactly like the chips'. */}
+          {meter ? (
+            <StandDownMeter
+              ticks={meter.ticks}
+              gold={meter.gold}
+              label={meter.label}
+              plan={meterPlan}
+              reduced={reduced}
+            />
+          ) : null}
           <Text
             allowFontScaling={false}
             numberOfLines={1}

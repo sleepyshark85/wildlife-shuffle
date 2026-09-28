@@ -9,6 +9,7 @@
 // reported, and AC-311 removed the thing that used to bound it.
 
 import { BUFFALO } from '../engine/constants.js';
+import { word } from './format.js';
 
 /** ui.md §7.1: the strip shows when a buffalo is up, or the next one is close. */
 export const COUNTDOWN_SHOW_AT = 5;
@@ -69,12 +70,6 @@ export function stripRows(buffaloes, plan) {
  * turns." Bar colour is never the only cue — the filled count is in the words,
  * which is also the half of this that survives a player who cannot see it.
  */
-const WORDS = Object.freeze([
-  'no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
-]);
-
-const word = (n) => (n >= 0 && n < WORDS.length ? WORDS[n] : String(n));
-
 export function stripLabel(sizes, countdown) {
   const turns = countdown === 0
     ? 'A buffalo arrives this turn.'

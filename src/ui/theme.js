@@ -31,10 +31,6 @@
 // other option and it is v1's defect (docs/v1-review.md A3) wearing a hat.
 
 import { SCORE } from '../engine/constants.js';
-import { HOLD_TURNS } from '../engine/abilities.js';
-// The one place a count is made to agree with its noun (src/ui/format.js).
-// It imports nothing, so this stays a leaf that Node can load.
-import { plural } from './format.js';
 
 /**
  * AC-1501. Light is FIRST and light is the default: the owner did not ask for
@@ -708,19 +704,79 @@ export const MOTION = Object.freeze({
    */
   chipIn: 180,
   chipOut: 200,
+  /**
+   * ui.md §7.1 — one Stand Down tick filling, at the moment the segment it
+   * counts cracks. It rides the BOARD's clock, which is AC-509b's rule applied
+   * to the meter: the HUD and the board never disagree about a buffalo.
+   */
+  meterTick: 180,
   scoreCount: 400,
   float: 900,
   shake: 180,
 
   // --- Layer D, special abilities (ui.md §13.4) -------------------------
-  // All four are ANNOUNCEMENTS over an ordinary structural resolution, which
-  // is why none of them appears in the §8.2 input-lock budget (AC-1417): the
-  // turn they decorate is a turn the engine already resolved, and the lock is
-  // scaled from the clears, the arrival and the falls exactly as before.
+  // The announcements over an ordinary structural resolution do not appear in
+  // the §8.2 input-lock budget (AC-1417). The STRUCTURAL halves do — a burrow's
+  // dissolve and pack, a stampede's slide, a Stand Down's crack and spring all
+  // have to finish before gravity may run — and they enter it through
+  // `actionLead` (src/ui/timeline.js), so the whole turn is still scaled to
+  // min(1500, rawMs) and an ability cannot push the lock past AC-822's budget.
   /** The burrowed animal dissolves downward — the rat's own vanishing act. */
   burrow: 260,
+  /**
+   * AC-1428 / ui.md §13.4 — and then the row it left closes up.
+   *
+   * ONE BEAT, NOT A STAGGER, and deliberately: Stampede's stagger exists to
+   * read as fifteen rows moving in sequence, where Burrow moves one row and a
+   * staggered one-row slide is a stagger nobody can perceive as one. It runs
+   * AFTER the dissolve rather than with it, so the two halves read as cause and
+   * effect — this leaves, and then the row closes.
+   */
+  burrowPack: 140,
   /** Rows slide left in a stagger from the bottom up, one row per beat. */
   stampedeStagger: 120,
+  /**
+   * AC-1431 / ui.md §13.4a — Stand Down's beat, and it is ONE EVENT, NOT ELEVEN.
+   *
+   * Up to eleven bodies lose up to four segments each in one ACTION phase, which
+   * is the biggest structural change the engine can be asked to make. Staggering
+   * per segment or per buffalo is 44 units and is AC-1411b's error repeated, so
+   * every buffalo cracks in unison and every body springs on one clock:
+   *
+   *   announce   0 -> 260    the label names the ability before anything moves
+   *   crack    180 -> 380    every spent segment on every buffalo, in unison
+   *   spring   380 -> 640    bodies to one cell; the chips and the meter ride
+   *                          the SAME clock (AC-509b), so the HUD and the board
+   *                          cannot disagree on the turn eleven buffalo changed
+   *   gravity  640 ->        the ordinary SETTLE, by the ordinary path
+   *
+   * THE ANNOUNCE AND THE CRACK OVERLAP BY 80 ms ON PURPOSE. End to end they are
+   * 260 + 200 + 260 = 720 ms before gravity even starts, against a 1,500 ms
+   * whole-turn lock; overlapping the label's tail with the crack's attack puts
+   * the structural work inside the budget without compressing any single motion
+   * below the floor at which it reads. THAT is what `standDownCrackAt: 180`
+   * means, and it is why the announce's own 0 -> 260 is not a number here: an
+   * announce is a `float` on §8's existing 900 ms timing like every other one in
+   * the game — up in 108 ms, then a long decay — so it is readable well before
+   * the crack and it never gates input (AC-813c). The only thing 260 decides is
+   * where the crack starts, and that is the constant below.
+   *
+   * The spring's own duration is `buffaloShrink` above, because ui.md §13.4a
+   * says it IS §5.3's existing shrink — one number, not a second one that has to
+   * agree with it.
+   */
+  standDownCrackAt: 180,
+  standDownCrack: 200,
+  standDownSpringAt: 380,
+  /**
+   * The meter drains all ten ticks left to right on the spring's clock, so the
+   * player sees the cost paid in the same breath as the effect. Ten ticks over
+   * 260 ms is 26 ms a tick — fast enough not to be a wait, slow enough to read
+   * as spending, which is the whole reason it drains rather than blinking out:
+   * Stand Down is the only thing in the game paid for in a currency the player
+   * watched themselves earn.
+   */
+  meterDrain: 260,
   /** A pip fills with a bloom when a threshold is crossed. */
   pipBloom: 300,
   /** Last Stand's is slower and its own, because it is not a reward. */
@@ -840,11 +896,13 @@ export const COPY = Object.freeze({
   cancel: 'Cancel',
   lastStand: 'LAST STAND',
   /**
-   * AC-1410c. The announce says what was BOUGHT and the tray's counter says
-   * what is LEFT, and they are in different units on purpose: `HOLD THE LINE ·
-   * 3 TURNS` beside `FROZEN · 2` cannot be read as an off-by-one, where "3"
-   * beside "2" in the same unit certainly could. The 3 is derived from
-   * HOLD_TURNS so the copy cannot drift from the rule.
+   * AC-1431's announce, and it carries no number.
+   *
+   * Every other Layer D announce that ever existed carried one — the withdrawn
+   * `HOLD THE LINE · 3 TURNS` said what had been bought. This one must not: the
+   * ability's effect is *every* buffalo, and a count beside it would be read as
+   * the count of buffalo it reached, which changes every time it fires. The
+   * chips show that, and they show it truthfully.
    */
-  holdAnnounce: `HOLD THE LINE \u00B7 ${plural(HOLD_TURNS, 'TURN', 'TURNS')}`,
+  standDownAnnounce: 'STAND DOWN',
 });
