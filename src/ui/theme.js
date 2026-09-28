@@ -307,9 +307,51 @@ const RECESS_LIGHT = Object.freeze({
  *   - buffalo keeps its rim, because a buffalo refuses to clear and hiding
  *     that withholds a RULE rather than a flavour (AC-315c).
  *
- * A shadow is darker than its ground on slate and lighter would be wrong on
- * bone for the same reason the recess is: a silhouette reads as a hole in the
- * light, so it darkens on both.
+ * A shadow is darker than its ground on bone and lighter on slate: it reads as
+ * an absence, and what an absence looks like depends on which way the ground
+ * goes.
+ *
+ * ---- THE BUILD-5 DEVIATION: two grounds, one palette -----------------------
+ *
+ * §6.2 specifies `#2C3A47` fill and a 1 pt `#3C4C5B` top edge, and it specifies
+ * them **for the strip** — ground `panel-sunken`. §6.3 then sends those same
+ * views across the board for 260 ms without restating them, and the board's
+ * ground is not `panel-sunken`. Nothing in `docs/v2/`, in this file or in the
+ * suite ever evaluated the silhouette against the surface it spends most of its
+ * life on. That is the Tundra incident again (CLAUDE.md): a palette measured
+ * against one ground and shipped over another.
+ *
+ * What it cost. The colours below were read back off the rendered DOM in a
+ * browser at 390x844 on the batch `rat @1, buffalo @3-7, rat @8` — the flier's
+ * computed `backgroundColor` at t=0, not these literals — and then scored with
+ * CIEDE2000 against the ground each shape is actually drawn on. It has to be
+ * CIEDE2000: WCAG contrast cannot see this defect at all (`separation` below
+ * says why).
+ *
+ *                       on the strip     on the board cell
+ *   light ordinary fill      4.98              3.27
+ *   light buffalo fill       7.98              7.20
+ *   dark  ordinary fill     10.13              5.81
+ *   dark  buffalo fill      15.37             14.90
+ *
+ * For scale: an empty cell differs from the board ground by 2.42 (light) and
+ * 2.50 (dark), and the faintest LANDED animal body differs from it by 22.97 and
+ * 24.34. So an ordinary arrival spent the first 100 ms of its flight drawn 0.8
+ * of a grid line away from the cell behind it, beside a buffalo that was 3
+ * grid lines away and carrying a 1.5 pt gold rim at 21.3 on top. The owner:
+ * "other arriving animal got blur a little bit, that make it hard to see if
+ * there is animal arriving with the buffalo at all."
+ *
+ * THE FLOOR, and why it is not a number somebody liked. 7.0 is the light
+ * buffalo's own body separation (7.20) rounded down — the one shape in the
+ * reproduction that the owner could see. "As legible as the buffalo" is
+ * therefore the literal assertion, not an analogy for one. The new fills clear
+ * it on every ground a silhouette can be painted on, and stay below the
+ * faintest landed animal on both native grounds, so a shadow is still the
+ * faintest thing on the board. `test/theme.test.js` holds both ends.
+ *
+ * The rim is untouched. It stays the buffalo's alone (AC-315c, AC-1505), and
+ * it is now the buffalo's ONLY advantage rather than its second one.
  */
 const SILHOUETTE_METRICS = Object.freeze({
   radius: 3,
@@ -319,16 +361,20 @@ const SILHOUETTE_METRICS = Object.freeze({
 });
 const SILHOUETTE_DARK = Object.freeze({
   ...SILHOUETTE_METRICS,
-  fill: '#2C3A47',
-  edge: '#3C4C5B',
+  /** §6.2's `#2C3A47`, lifted until it clears the floor on the board too. */
+  fill: '#495764',
+  /** §6.2's `#3C4C5B`. Still the LIGHTER of the pair: on slate an outline is a
+   *  highlight, and on bone it is a shadow. Lifted with the fill, by the same
+   *  step, so the shape of the pair is unchanged. */
+  edge: '#576572',
   buffaloRim: 'rgba(232,180,74,.6)',
   /** The faint ox-blood tint that says "this one is different". */
   buffaloFill: '#3A2E38',
 });
 const SILHOUETTE_LIGHT = Object.freeze({
   ...SILHOUETTE_METRICS,
-  fill: '#D3C9B6',
-  edge: '#BCB09A',
+  fill: '#BFB5A2',
+  edge: '#A99F8C',
   buffaloRim: 'rgba(156,109,20,.6)',
   buffaloFill: '#E0CFC9',
 });
@@ -462,6 +508,108 @@ export function contrast(a, b) {
 }
 
 /**
+ * CIE L*a*b*, the space `separation` below measures in.
+ *
+ * Module-private: only `separation` needs it, and an export nothing imports is
+ * what `test/hygiene.test.js` bans. The whole of why it is here is under
+ * `separation`.
+ */
+function lab(hex) {
+  const value = parseInt(hex.slice(1), 16);
+  const lin = (c) => {
+    const x = c / 255;
+    return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+  };
+  const r = lin((value >> 16) & 255);
+  const g = lin((value >> 8) & 255);
+  const b = lin(value & 255);
+  // D65, the white point sRGB is defined against.
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : (841 / 108) * t + 4 / 29);
+  const [fx, fy, fz] = [f(x), f(y), f(z)];
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+/**
+ * CIEDE2000 colour difference between two opaque colours — `contrast`'s second
+ * half, exported for the same reason and added because `contrast` alone got a
+ * defect wrong.
+ *
+ * WCAG contrast is a ratio of LUMINANCE, so it is blind to a colour that
+ * differs from its ground in hue at the same brightness. The tray's buffalo
+ * silhouette is exactly that: `#E0CFC9` against the light board cell `#DDD5C6`
+ * is 1.03:1 — by WCAG the two are the same colour — and on screen it is an
+ * unmistakable pink block. The ordinary silhouette `#D3C9B6` measures a very
+ * similar 1.13:1 and is genuinely invisible. A metric that scores the visible
+ * shape BELOW the invisible one cannot be the metric that guards legibility,
+ * and it was the only metric this project had.
+ *
+ * CIEDE2000 scores those two 7.20 and 3.27 against the same ground, which is
+ * the order a person sees them in. `test/theme.test.js` uses it to hold the
+ * silhouette palette to the buffalo's own separation (AC-315/AC-315c), and it
+ * is the honest tool for any future question of the form "can this be seen on
+ * that". Roughly: 1 is the just-noticeable difference, 2-3 is visible on
+ * inspection, 5+ is obvious at a glance. Checked against the canonical pairs —
+ * white against black is exactly 100, red against green 86.615.
+ *
+ * `TURN` is a full circle of hue in degrees. It is a named constant only
+ * because AC-126's audit bans the bare literal anywhere under `src/` — it is
+ * also an iPhone width — and an exemption list would be the more expensive
+ * way to say the same thing.
+ */
+const HALF_TURN = 180;
+const TURN = HALF_TURN * 2;
+
+export function separation(a, b) {
+  const [L1, a1, b1] = lab(a);
+  const [L2, a2, b2] = lab(b);
+  const rad = Math.PI / HALF_TURN;
+  const c1 = Math.hypot(a1, b1);
+  const c2 = Math.hypot(a2, b2);
+  const cBar = (c1 + c2) / 2;
+  const gain = 0.5 * (1 - Math.sqrt(cBar ** 7 / (cBar ** 7 + 25 ** 7)));
+  const a1p = (1 + gain) * a1;
+  const a2p = (1 + gain) * a2;
+  const c1p = Math.hypot(a1p, b1);
+  const c2p = Math.hypot(a2p, b2);
+  const h1p = (Math.atan2(b1, a1p) / rad + TURN) % TURN;
+  const h2p = (Math.atan2(b2, a2p) / rad + TURN) % TURN;
+  const dL = L2 - L1;
+  const dC = c2p - c1p;
+  let dh = 0;
+  if (c1p * c2p !== 0) {
+    dh = h2p - h1p;
+    if (dh > HALF_TURN) dh -= TURN;
+    else if (dh < -HALF_TURN) dh += TURN;
+  }
+  const dH = 2 * Math.sqrt(c1p * c2p) * Math.sin((dh / 2) * rad);
+  const lBar = (L1 + L2) / 2;
+  const cBarP = (c1p + c2p) / 2;
+  let hBar;
+  if (c1p * c2p === 0) hBar = h1p + h2p;
+  else {
+    hBar = (h1p + h2p) / 2;
+    if (Math.abs(h1p - h2p) > HALF_TURN) hBar += h1p + h2p < TURN ? HALF_TURN : -HALF_TURN;
+  }
+  const t = 1
+    - 0.17 * Math.cos((hBar - 30) * rad)
+    + 0.24 * Math.cos(2 * hBar * rad)
+    + 0.32 * Math.cos((3 * hBar + 6) * rad)
+    - 0.20 * Math.cos((4 * hBar - 63) * rad);
+  const sL = 1 + (0.015 * (lBar - 50) ** 2) / Math.sqrt(20 + (lBar - 50) ** 2);
+  const sC = 1 + 0.045 * cBarP;
+  const sH = 1 + 0.015 * cBarP * t;
+  const rT = -Math.sin(2 * 30 * Math.exp(-(((hBar - 275) / 25) ** 2)) * rad)
+    * 2 * Math.sqrt(cBarP ** 7 / (cBarP ** 7 + 25 ** 7));
+  return Math.sqrt(
+    (dL / sL) ** 2
+    + (dC / sC) ** 2
+    + (dH / sH) ** 2
+    + rT * (dC / sC) * (dH / sH),
+  );
+}
 
 /**
  * ui.md §5.4: the grabbed edge brightens 12%.

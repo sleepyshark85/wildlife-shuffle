@@ -505,7 +505,38 @@ export function GameScreen({ seed, resumed = null, onboarding = null, onHowToPla
           onClose={() => setSheetOpen(false)}
         />
       ) : null}
-      {run.view.gameOver && outcome && !onboarding ? (
+      {/* AC-816's OTHER instant.
+          `run.view.gameOver` is `status === GAME_OVER`, which the engine sets
+          on the commit that resolved the turn — and the turn's animation is a
+          REPLAY of that already-resolved state, played afterwards. So mounting
+          on it put the sheet up while the arrival was still climbing, and the
+          flight then landed behind it: "the arrival row still emerge,
+          overlapping the `Run over` popup and then disappear" (build 5).
+
+          `run.replaying`, not `run.resolving`: `resolving` is about input and
+          AC-824f deliberately ends it early by the unreserved part of the
+          commit gap, so it can go false with the board still moving
+          (src/ui/useGameRun.js). `plan.playoutMs` is the last structural
+          frame, which is the thing the sheet must not be drawn over.
+
+          Nothing about the choreography moved. The run-over cue is at t=0 in
+          the plan (replay.js JUDGE) and still lands on the commit, so the run
+          is still announced the instant it ends in the one channel that
+          cannot be muted; the sheet's own dim-and-slide is untouched and still
+          completes 400 ms after it mounts. What moved is only WHEN it mounts.
+
+          AC-816 SAYS "within 400 ms of the run ending" AND DOES NOT SAY WHICH
+          INSTANT THAT IS. Read as the commit, the shipped behaviour was right
+          and the owner is reporting a defect against a satisfied AC; read as
+          the last frame the player can see, this is right and AC-816 is
+          unchanged. The second reading is the one `timeline.js` already
+          applies to AC-824f — "not when React commits, which is an internal
+          event they cannot perceive" — so it is the house reading rather than
+          a convenient one. Either way the sheet is now fully presented at
+          playout + 400 ms, which is 800 ms from the commit on 98.5% of
+          game-over turns and 1190 on the worst 1.5%. That number is owed to
+          the designer, not chosen here. */}
+      {run.view.gameOver && outcome && !onboarding && !run.replaying ? (
         <GameOverSheet
           record={run.view.record}
           flagged={Boolean(run.guardRecord)}

@@ -60,22 +60,32 @@ test('AC-1301 no console call exists in any shipped source file', () => {
   }
 });
 
-test('AC-828/AC-211 the only timers in the app are the two the state layer owns', () => {
+test('AC-828/AC-211 the only timers in the app are the ones the state layer owns', () => {
   const offenders = [];
   for (const file of SRC) {
     const body = code(file);
     const hits = (body.match(/\b(setTimeout|setInterval|requestAnimationFrame)\s*\(/g) || []).length;
     if (hits) offenders.push([path.relative(ROOT, file), hits]);
   }
-  // ONE, since AC-406: the BLOCKED announcement's timer went with the
-  // announcement — a release can no longer be illegal, so nothing could start
-  // it. What is left is the input lock, which is the one timer this game has a
-  // reason to own.
-  assert.deepEqual(offenders, [['src/ui/useGameRun.js', 1]],
+  // TWO, and they are two because they answer two different questions. The
+  // input lock ends at `lockDelay(...)`, which AC-824f measures from finger-up;
+  // the replay flag ends at `plan.playoutMs`, which is the board's last
+  // structural frame. They coincide on a device with a steady commit gap and
+  // come apart the moment it is not, which is why the Game Over sheet could not
+  // be gated on the first one. (The BLOCKED announcement's timer went with
+  // AC-406: a release can no longer be illegal, so nothing could start it.)
+  assert.deepEqual(offenders, [['src/ui/useGameRun.js', 2]],
     `timers found: ${JSON.stringify(offenders)}`);
-  // ...and it is cleared by its own effect's cleanup.
+  // ...and BOTH are cleared, by the one cleanup of the effect that started
+  // them. A second timer that nobody cancels is a run that keeps ticking after
+  // the screen has gone, which is AC-211 exactly.
   const layer = read(path.join(ROOT, 'src/ui/useGameRun.js'));
-  assert.equal((layer.match(/clearTimeout\(timer\)/g) || []).length, 1);
+  const started = [...layer.matchAll(/const (\w+) = setTimeout\(/g)].map((m) => m[1]);
+  assert.deepEqual(started, ['timer', 'playout'], `timers started: ${started.join(', ')}`);
+  for (const name of started) {
+    assert.equal((layer.match(new RegExp(`clearTimeout\\(${name}\\)`, 'g')) || []).length, 1,
+      `${name} is started and never cleared`);
+  }
 });
 
 /**
