@@ -284,6 +284,11 @@ statement about what the game is.
 
 ## Q14 · Hold the Line was **your** first example of an ability, and I am deleting it
 
+> **ANSWERED (owner, 28 Sep 2026): delete it.** They were shown that it is the only arm
+> with a negative p90 (−5%) at the second-highest price, and that its slot on the buffalo's
+> card is where Stand Down goes. They chose deletion over redesigning it a new job.
+
+
 **This is the one thing in this pass that genuinely turns on how far the design may depart from what
 you have approved, so it is the one thing I am asking rather than deciding.**
 
@@ -321,6 +326,12 @@ You already played that build and it did not.
 ---
 
 ## Q15 · With Stand Down in the game, is the buffalo still an obstacle or has it become a resource?
+
+> **ANSWERED (owner, 28 Sep 2026): unstrand the premium, meter at 10.** Retirements go
+> 1.03 → 3.79 per run and that is the intent, not a side effect: 89% of buffalo were never
+> retired, so §6.4's 900-point premium was mostly theoretical. They declined the meter at 12
+> and declined deferring the call to a device round.
+
 
 **This is the biggest downstream consequence of Q14's change and it is a statement about what the
 game is, which makes it yours.** It is sharper now than when I drafted it, because you have given the
